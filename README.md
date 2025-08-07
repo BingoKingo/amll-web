@@ -1,8 +1,4 @@
-# 
-一个AMLL歌词播放器
-
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
+# 一个AMLL歌词播放器
 
 
 ##  快速开始
@@ -14,7 +10,6 @@
 
 ### 安装和运行
 
-```bash
 # 克隆项目
 
 # 安装依赖
@@ -25,17 +20,14 @@ pnpm dev
 
 # 外部访问（局域网）
 pnpm dev --host
-```
 
 ### 构建生产版本
 
-```
 # 构建项目
 pnpm build
 
 # 预览构建结果
 pnpm preview
-```
 
 ##  使用说明
 
@@ -62,12 +54,11 @@ pnpm preview
 
 ### 静态部署
 
-```bash
+bash
 # 构建项目
 pnpm build
 
 # 将dist目录部署到Web服务器
-
 
 ## 许可证
 
