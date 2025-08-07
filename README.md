@@ -1,3 +1,5 @@
+ <img width="106" height="106" alt="logo" src="https://github.com/user-attachments/assets/d905bb3b-ad10-4e90-bb84-8f61d33ae5eb" />
+ 
 # 一个AMLL歌词播放器
 
 
@@ -11,30 +13,30 @@
 ## 安装和运行
 
 ### 安装依赖
-'''
+```
 pnpm install
-'''
+```
 
 ### 启动开发服务器
-'''
+```
 pnpm dev
-'''
+```
 
-### 外部访问（局域网）
-'''
+### 外部访问
+```
 pnpm dev --host
-'''
+```
 ## 构建
 
 ### 构建项目
-'''
+```
 pnpm build
-'''
+```
 
 ### 预览构建结果
-'''
+```
 pnpm preview
-'''
+```
 
 ##  使用说明
 
@@ -62,9 +64,9 @@ pnpm preview
 ### 静态部署
 
 构建项目
-'''
+```
 pnpm build
-'''
+```
 将dist目录部署到Web服务器
 
 ## 许可证
@@ -73,7 +75,7 @@ pnpm build
 
 ## 致谢
 
-- [@applemusic-like-lyrics/core](https://github.com/apple-music-like-lyrics/core) - 歌词渲染核心库
+- [applemusic-like-lyrics/core]((https://github.com/Steve-xmh/applemusic-like-lyrics)) - 歌词渲染核心库
 - [jsmediatags](https://github.com/aadsm/jsmediatags) - 音频元数据解析
 
 ⭐ 如果这个项目对您有帮助，请给我一个星标！
