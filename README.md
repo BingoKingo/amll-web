@@ -8,7 +8,7 @@
 ### 环境要求
 
 - **Node.js**: 18.0+
-- **浏览器**: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
+- **浏览器**: Chromium 120+ Firefox 100+ Safari 15.4+
 
 ## 安装和运行
 
