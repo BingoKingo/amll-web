@@ -75,7 +75,6 @@ pnpm build
 
 ## 致谢
 
-- [applemusic-like-lyrics/core]((https://github.com/Steve-xmh/applemusic-like-lyrics)) - 歌词渲染核心库
-- [jsmediatags](https://github.com/aadsm/jsmediatags) - 音频元数据解析
+- [applemusic-like-lyrics/core](https://github.com/Steve-xmh/applemusic-like-lyrics) - AMLL
 
 ⭐ 如果这个项目对您有帮助，请给我一个星标！
