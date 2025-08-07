@@ -1,0 +1,40 @@
+{
+  "name": "AMLL-Player-Page",
+  "version": "1.0.0",
+  "description": "amll网页版",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["lyrics", "music", "player", "animation", "web", "typescript", "vite"],
+  "author": "Your Name",
+  "license": "MIT",
+  "packageManager": "pnpm@10.13.1",
+  "devDependencies": {
+    "@types/stats.js": "^0.17.4",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.5",
+    "vite-plugin-static-copy": "^3.1.1",
+    "vite-plugin-wasm": "^3.5.0"
+  },
+  "dependencies": {
+    "@applemusic-like-lyrics/core": "0.2.0-alpha.5",
+    "@applemusic-like-lyrics/lyric": "0.2.4",
+    "@applemusic-like-lyrics/ttml": "0.1.1",
+    "@pixi/app": "^7.4.3",
+    "@pixi/core": "^7.4.3",
+    "@pixi/display": "^7.4.3",
+    "@pixi/filter-blur": "^7.4.3",
+    "@pixi/filter-bulge-pinch": "^5.1.1",
+    "@pixi/filter-color-matrix": "^7.4.3",
+    "@pixi/sprite": "^7.4.3",
+    "jss": "^10.10.0",
+    "jss-preset-default": "^10.10.0",
+    "lil-gui": "^0.20.0",
+    "stats": "^1.0.0",
+    "stats.js": "^0.17.0"
+  }
+}

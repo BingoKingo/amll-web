@@ -1,0 +1,81 @@
+# 
+一个AMLL歌词播放器
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
+
+
+##  快速开始
+
+### 环境要求
+
+- **Node.js**: 18.0+
+- **浏览器**: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
+
+### 安装和运行
+
+```bash
+# 克隆项目
+
+# 安装依赖
+pnpm install
+
+# 启动开发服务器
+pnpm dev
+
+# 外部访问（局域网）
+pnpm dev --host
+```
+
+### 构建生产版本
+
+```
+# 构建项目
+pnpm build
+
+# 预览构建结果
+pnpm preview
+```
+
+##  使用说明
+
+### 输入方式
+
+1. **本地文件上传**
+   - 音频文件
+   - 歌词文件
+   - 封面图片（可选）
+
+2. **URL参数**
+   ```
+   https://amllp.bikonoo.com/?music=音乐链接&lyric=歌词链接&cover=封面链接&title=歌曲名&artist=艺术家
+   ```
+
+### 快捷键
+
+- `空格键` - 播放/暂停
+- `左右箭头` - 快进/快退（10秒）
+- `F` - 全屏切换
+
+
+## 部署
+
+### 静态部署
+
+```bash
+# 构建项目
+pnpm build
+
+# 将dist目录部署到Web服务器
+
+
+## 许可证
+
+本项目采用AGPL许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 致谢
+
+- [@applemusic-like-lyrics/core](https://github.com/apple-music-like-lyrics/core) - 歌词渲染核心库
+- [jsmediatags](https://github.com/aadsm/jsmediatags) - 音频元数据解析
+
+⭐ 如果这个项目对您有帮助，请给我一个星标！
