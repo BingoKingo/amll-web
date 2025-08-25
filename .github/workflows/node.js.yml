@@ -30,9 +30,7 @@ jobs:
     - run: pnpm run build
     - run: pnpm test
 
-    - name: 上传文件
-  uses: actions/upload-artifact@v4.6.2
-  with:
+    with:
     # Artifact name
     name: # optional, default is artifact
     # A file, directory or wildcard pattern that describes what to upload
