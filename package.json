@@ -9,15 +9,23 @@
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["lyrics", "music", "player", "animation", "web", "typescript", "vite"],
+  "keywords": [
+    "lyrics",
+    "music",
+    "player",
+    "animation",
+    "web",
+    "typescript",
+    "vite"
+  ],
   "author": "Your Name",
   "license": "MIT",
   "packageManager": "pnpm@10.13.1",
   "devDependencies": {
     "@types/stats.js": "^0.17.4",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.5",
-    "vite-plugin-static-copy": "^3.1.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vite-plugin-static-copy": "^3.1.2",
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {

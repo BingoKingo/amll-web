@@ -1,80 +1,60 @@
- <img width="106" height="106" alt="logo" src="https://github.com/user-attachments/assets/d905bb3b-ad10-4e90-bb84-8f61d33ae5eb" />
- 
-# 一个AMLL歌词播放器
+ <img width="192" height="192" alt="logo" src="./public/icons/icon-192x192.png" />
 
+# AMLL Web Lyrics Player
 
-##  快速开始
+![Horizonal Layout](./public/screenshots/amll-web-player-horizonal-layout.png)
+![Vertical Layout](./public/screenshots/amll-web-player-vertical-layout.png)
+## Quick Start
 
-### 环境要求
+### Requirements
 
 - **Node.js**: 18.0+
-- **浏览器**: Chromium 120+ Firefox 100+ Safari 15.4+
+- **Browsers**: Chromium 120+, Firefox 100+, Safari 15.4+
 
-## 安装和运行
-
-### 安装依赖
+## Install & Run
 ```
 pnpm install
-```
-
-### 启动开发服务器
-```
 pnpm dev
 ```
 
-### 外部访问
-```
-pnpm dev --host
-```
-## 构建
+## Build & Preview
 
-### 构建项目
 ```
 pnpm build
-```
-
-### 预览构建结果
-```
 pnpm preview
 ```
 
-##  使用说明
+## Usage Guide
 
-### 输入方式
+### Input Methods
 
-1. **本地文件上传**
-   - 音频文件
-   - 歌词文件
-   - 封面图片（可选）
+1. **Local File Upload （Horizonal Layout）**
+   - Audio File: Right click or long press (3s) the play button to select
+   - Lyrics File: Right click or long press (3s) the fullscreen button to select
+   - Cover Image (optional): Click the cover to select
+   - Artist: Click to edit
+   - Title: Click to edit
 
-2. **URL参数**
+   All the above options can be accessed by clicking on the song information in the vertical layout to enter the control panel for initialization.
+
+
+2. **URL Parameters**
    ```
-   https://amllp.bikonoo.com/?music=音乐链接&lyric=歌词链接&cover=封面链接&title=歌曲名&artist=艺术家
+   https://amlw.vercel.app/?music=music_url&lyric=lyrics_url&cover=cover_url&title=song_title&artist=artist_name
    ```
 
-### 快捷键
+### Hotkeys
 
-- `空格键` - 播放/暂停
-- `左右箭头` - 快进/快退（10秒）
-- `F` - 全屏切换
+- `Space`: Play/Pause
+- `Left/Right Arrows`: Seek forward/backward (10s)
+- `F`: Toggle fullscreen
 
+## License
 
-## 部署
+This project is licensed under AGPL - see [LICENSE](LICENSE) for details.
 
-### 静态部署
-
-构建项目
-```
-pnpm build
-```
-将dist目录部署到Web服务器
-
-## 许可证
-
-本项目采用AGPL许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 致谢
+## Acknowledgments
 
 - [Steve-xmh/applemusic-like-lyrics](https://github.com/Steve-xmh/applemusic-like-lyrics)
 
-⭐ 如果这个项目对您有帮助，请给我一个星标！
+⭐ If you find this project useful, please give it a star!

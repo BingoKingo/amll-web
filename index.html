@@ -1,23 +1,29 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 
 <head>
-  <title>AMLL歌词播放器</title>
+  <title>AMLL Web</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="./assets/favicon.png">
+  <meta name="theme-color" content="#222222">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AMLL Web">
+  <link rel="icon" href="./assets/icon-96x96.png">
+  <link rel="manifest" href="./public/manifest.json">
+  <link rel="apple-touch-icon" href="./public/icons/icon-192x192.png">
   <script src="./public/jsmediatags.min.js"></script>
   <script>
     // 检查jsmediatags库是否加载成功
     window.addEventListener('load', () => {
-      console.log('检查本地jsmediatags库...');
-      
+      console.log('Checking local jsmediatags library...');
+
       if (window.jsmediatags) {
-        console.log('[SUCCESS] jsmediatags库加载成功');
-        console.log('版本:', window.jsmediatags.version);
-        console.log('可用方法:', Object.keys(window.jsmediatags));
+        console.log('[SUCCESS] jsmediatags library loaded successfully');
+        console.log('Version:', window.jsmediatags.version);
+        console.log('Available methods:', Object.keys(window.jsmediatags));
       } else {
-        console.log('[ERROR] jsmediatags库加载失败');
+        console.log('[ERROR] jsmediatags library failed to load');
       }
     });
   </script>
@@ -25,6 +31,20 @@
   <style>
     :root {
       font-family: "Noto Sans SC", "SF Pro Display", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+
+    /* 覆盖歌词hover时的透明度和背景色变化 */
+    .amll-lyric-player:hover ._lyricLine_1vq69_6,
+    .amll-lyric-player:hover ._lyricLine_1ygrf_6 {
+      filter: inherit !important;
+    }
+
+    /* 覆盖所有歌词行hover和active时的背景色 */
+    ._lyricLine_1vq69_6:has(>*):hover,
+    ._lyricLine_1vq69_6:has(>*):active,
+    ._lyricLine_1ygrf_6:has(>*):hover,
+    ._lyricLine_1ygrf_6:has(>*):active {
+      background-color: transparent !important;
     }
 
     body {
@@ -49,16 +69,22 @@
     /* 控制面板 */
     #controlPanel {
       position: fixed;
-      top: 20px;
+      top: 120px;
+      bottom: 60px;
       right: 20px;
-      background: rgba(0, 0, 0, 0.7);
       border-radius: 8px;
       padding: 15px;
       color: white;
+      display: none;
       z-index: 1000;
       width: 320px;
       max-height: calc(100vh - 40px);
       overflow-y: auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(66, 66, 66, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.18);
     }
 
     .control-group {
@@ -81,9 +107,12 @@
       background: rgba(255, 255, 255, 0.1);
       color: white;
       font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 8px;
     }
 
     .control-group input[type="file"] {
+      width: 100%;
       padding: 6px;
     }
 
@@ -92,11 +121,14 @@
     }
 
     .btn {
-      background: #333;
-      border: none;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(66, 66, 66, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       color: white;
       padding: 8px 16px;
-      border-radius: 4px;
+      border-radius: 26px;
       cursor: pointer;
       font-size: 13px;
       margin-right: 8px;
@@ -104,31 +136,27 @@
     }
 
     .btn:hover {
-      background: #555;
-    }
-
-    .btn-secondary {
-      background: #666;
-    }
-
-    .btn-danger {
-      background: #d32f2f;
-    }
+      background: rgba(255, 255, 255, 0.2);
+    } 
 
     /* 播放控制 */
     #playControls {
       position: fixed;
-      bottom: 20px;
+      bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.7);
       border-radius: 8px;
-      padding: 12px 20px;
       color: white;
       z-index: 1000;
       display: flex;
       align-items: center;
       gap: 12px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    body:hover #playControls {
+      opacity: 1;
     }
 
     .play-btn {
@@ -137,18 +165,23 @@
       color: white;
       font-size: 20px;
       cursor: pointer;
-      padding: 8px;
-    }
-
-    .play-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      padding: 6px;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
     }
 
     #progressBar {
-      width: 250px;
-      height: 3px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 2px;
+      width: 60vw;
+      min-width: 120px;
+      max-width: 600px;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(66, 66, 66, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       cursor: pointer;
       position: relative;
     }
@@ -156,7 +189,7 @@
     #progressFill {
       height: 100%;
       background: #fff;
-      border-radius: 2px;
+      border-radius: 6px;
       width: 0%;
       transition: width 0.1s ease;
     }
@@ -166,20 +199,6 @@
       color: #ccc;
       min-width: 100px;
       text-align: center;
-    }
-
-    /* 隐藏控制面板按钮 */
-    #toggleControls {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: rgba(0, 0, 0, 0.7);
-      border: none;
-      color: white;
-      padding: 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      z-index: 1001;
     }
 
     /* 左上角歌曲信息 */
@@ -194,6 +213,17 @@
       z-index: 1000;
       display: none;
       max-width: 300px;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .song-info-tooltip {
+      opacity: 0.7;
+      transition: opacity 0.3s ease;
+    }
+
+    #songInfoTopLeft:hover .song-info-tooltip {
+      opacity: 1;
     }
 
     #songInfoTopLeft .song-cover {
@@ -202,6 +232,7 @@
       border-radius: 8px;
       object-fit: cover;
       margin-right: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     }
 
     #songInfoTopLeft .song-info {
@@ -222,7 +253,104 @@
     }
 
     /* 响应式设计 */
-    @media (max-width: 768px) {
+    /* 横屏/桌面模式布局 */
+    @media (min-width: 769px),
+    (orientation: landscape) {
+      #player {
+        display: flex;
+        flex-direction: row;
+      }
+
+      #albumSidePanel {
+        width: 50%;
+        min-width: 300px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 40px 20px 60px;
+        box-sizing: border-box;
+        position: relative;
+        z-index: 10;
+      }
+
+      #albumCoverLarge {
+        width: 70%;
+        max-width: 512px;
+        aspect-ratio: 1/1;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        margin-bottom: 24px;
+        object-fit: cover;
+        cursor: pointer;
+        position: relative;
+      }
+
+      #albumSidePanel:hover .album-cover-tooltip {
+        opacity: 0.9;
+      }
+
+      #albumInfo {
+        width: 70%;
+        max-width: 512px;
+        text-align: center;
+        color: white;
+        cursor: pointer;
+      }
+
+      #songTitle {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 6px;
+        transition: color 0.2s ease;
+      }
+
+      #songTitle:hover {
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      #songArtist {
+        font-size: 18px;
+        color: rgba(255, 255, 255, 0.8);
+        transition: color 0.2s ease;
+      }
+
+      #songArtist:hover {
+        color: rgba(255, 255, 255, 1);
+      }
+
+      #lyricsPanel {
+        width: 70%;
+        height: 100vh;
+        position: relative;
+      }
+
+      /* 在横屏模式下隐藏左上角的歌曲信息 */
+      #songInfoTopLeft {
+        display: none !important;
+      }
+
+      /* 调整歌词位置 */
+      .amll-lyric-player {
+        padding-top: 20px !important;
+      }
+    }
+
+    /* 竖屏/移动设备模式布局 */
+    @media (max-width: 768px) and (orientation: portrait) {
+      #albumSidePanel {
+        display: none;
+      }
+
+      #lyricsPanel {
+        width: 100%;
+        height: 100vh;
+      }
+
       #controlPanel {
         max-width: calc(100vw - 40px);
         left: 20px;
@@ -253,7 +381,9 @@
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     /* 状态提示 */
@@ -271,6 +401,14 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
+    /* 歌词区域在没有歌词时的样式 */
+    #lyricAreaHint {
+      transition: opacity 0.3s ease;
+    }
+    
+    #lyricsPanel:hover #lyricAreaHint {
+      opacity: 0.9 !important;
+    }
   </style>
 </head>
 
@@ -280,65 +418,61 @@
     <div class="song-info">
       <img class="song-cover" id="songCoverTopLeft" src="" alt="封面">
       <div>
-        <div class="song-title" id="songTitleTopLeft">歌曲名</div>
-        <div class="song-artist" id="songArtistTopLeft">作者</div>
+        <div class="song-title" id="songTitleTopLeft" data-i18n="songTitle">Song Title</div>
+        <div class="song-artist" id="songArtistTopLeft" data-i18n="songArtist">Artist</div>
       </div>
     </div>
   </div>
 
   <!-- 控制面板 -->
   <div id="controlPanel">
-    <h3 style="margin: 0 0 15px 0; color: #fff; font-size: 16px;">AMLL歌词播放器</h3>
-    
     <div class="control-group">
-      <label>音乐文件</label>
-      <input type="file" id="musicFile" accept="audio/*">
-      <input type="text" id="musicUrl" placeholder="或输入音乐文件URL">
+      <label data-i18n="musicFile">Music File</label>
+      <input type="file" id="musicFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac">
+      <input type="text" id="musicUrl" data-i18n-placeholder="musicUrl" placeholder="or enter music URL">
     </div>
 
     <div class="control-group">
-      <label>歌词文件</label>
-      <input type="file" id="lyricFile" accept=".lrc,.ttml,.yrc,.lys,.qrc">
-      <input type="text" id="lyricUrl" placeholder="或输入歌词文件URL">
+      <label data-i18n="lyricsFile">Lyrics File</label>
+      <input type="file" id="lyricFile" accept="text/plain,.lrc,.ttml,.yrc,.lys,.qrc">
+      <input type="text" id="lyricUrl" data-i18n-placeholder="lyricsUrl" placeholder="or enter lyrics URL">
     </div>
 
     <div class="control-group">
-      <label>封面图片</label>
+      <label data-i18n="coverImage">Cover Image</label>
       <input type="file" id="coverFile" accept="image/*">
-      <input type="text" id="coverUrl" placeholder="或输入封面图片URL">
+      <input type="text" id="coverUrl" data-i18n-placeholder="coverUrl" placeholder="or enter cover image URL">
     </div>
 
     <div class="control-group">
-      <label>歌曲信息</label>
-      <input type="text" id="songTitleInput" placeholder="标题">
-      <input type="text" id="songArtistInput" placeholder="作者">
+      <label data-i18n="songInfo">Song Information</label>
+      <input type="text" id="songTitleInput" data-i18n-placeholder="title" placeholder="Title">
+      <input type="text" id="songArtistInput" data-i18n-placeholder="artist" placeholder="Artist">
     </div>
 
     <div class="control-group">
       <label style="display: flex; align-items: center; gap: 8px;">
         <input type="checkbox" id="loopPlay" checked>
-        循环播放
+        <span data-i18n="loopPlay">Loop Playback</span>
       </label>
     </div>
 
     <div style="margin-top: 15px;">
-      <button class="btn" id="loadFromUrl">从URL加载</button>
-      <button class="btn btn-secondary" id="loadFiles">加载文件</button>
-      <button class="btn btn-danger" id="resetPlayer">重置播放器</button>
+      <button class="btn" id="loadFromUrl" data-i18n="loadFromUrl">Load from URL</button>
+      <button class="btn" id="loadFiles" data-i18n="loadFiles">Load Files</button>
+      <button class="btn" id="resetPlayer" data-i18n="resetPlayer">Reset Player</button>
     </div>
   </div>
 
-  <!-- 隐藏控制面板按钮 -->
-  <button id="toggleControls">⚙️</button>
-
   <!-- 播放控制 -->
   <div id="playControls">
-    <button class="play-btn" id="playPauseBtn">▶️</button>
+    <button class="play-btn" id="playPauseBtn"><svg fill="currentColor" class="___12fm75w f1w7gpdv fez10in fg4l7m0" aria-hidden="true" width="1em" height="1em" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.22 8.68a1.5 1.5 0 0 1 0 2.63l-10 5.5A1.5 1.5 0 0 1 5 15.5v-11A1.5 1.5 0 0 1 7.22 3.2l10 5.5Z" fill="currentColor"></path></svg></button>
     <div id="progressBar">
       <div id="progressFill"></div>
     </div>
     <div id="timeDisplay">00:00 / 00:00</div>
     <button class="play-btn" id="fullscreenBtn">⛶</button>
+
   </div>
 
   <!-- 状态提示 -->
@@ -347,7 +481,33 @@
   </div>
 
   <!-- 播放器容器 -->
-  <div id="player"></div>
+  <div id="player">
+    <!-- 左侧歌曲信息面板 -->
+    <div id="albumSidePanel">
+      <img id="albumCoverLarge" src="./assets/icon-512x512.png" alt="歌曲封面">
+      <div id="albumInfo">
+        <div id="songTitle" data-i18n="songTitle">Song Title</div>
+        <div id="songArtist" data-i18n="songArtist">Artist</div>
+      </div>
+    </div>
+
+    <!-- 右侧歌词面板 -->
+    <div id="lyricsPanel" style="position: relative;"></div>
+  </div>
+  <!-- 注册 Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./public/service-worker.js')
+          .then(registration => {
+            console.log('Service Worker registered successfully:', registration.scope);
+          })
+          .catch(error => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
 </body>
 
 </html>

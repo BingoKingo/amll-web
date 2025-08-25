@@ -11,7 +11,7 @@ export default {
     viteStaticCopy({
       targets: [
         {
-          src: "./src/assets/*",
+          src: "./public/icons/*",
           dest: "assets",
         },
       ],
