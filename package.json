@@ -1,7 +1,7 @@
 {
-  "name": "AMLL-Player-Page",
+  "name": "AMLL Web Player",
   "version": "1.0.0",
-  "description": "amll网页版",
+  "description": "AMLL Web Player",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,7 @@
     "typescript",
     "vite"
   ],
-  "author": "Your Name",
+  "author": "BingoKingo",
   "license": "MIT",
   "packageManager": "pnpm@10.13.1",
   "devDependencies": {
