@@ -55,7 +55,7 @@
         max-height: 100vh;
         height: 100vh;
         overflow: hidden;
-        background: #222;
+        background: var(--dominant-color-dark);
         margin: 0;
       }
 
@@ -75,13 +75,13 @@
         right: 20px;
         border-radius: 24px;
         padding: 15px;
-        color: white;
+        color: var(--dominant-color-light);
         display: none;
         z-index: 1000;
         width: 320px;
         max-height: calc(100vh - 40px);
         overflow-y: auto;
-        background: rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -94,9 +94,9 @@
 
       .control-group label {
         display: block;
-        margin-bottom: 8px;
         font-weight: 500;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--dominant-color-light);
+        opacity: 0.8;
       }
 
       .control-group input[type="text"],
@@ -106,8 +106,8 @@
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 24px;
         background: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 14px;
+        color: var(--dominant-color-light);
+        font-size: 0.875em;
         box-sizing: border-box;
         margin-bottom: 8px;
       }
@@ -127,11 +127,11 @@
         -webkit-backdrop-filter: blur(10px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.18);
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--dominant-color-light);
         padding: 8px 16px;
         border-radius: 24px;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 0.875em;
         margin-right: 8px;
         margin-bottom: 8px;
         transition: opacity 0.3s ease;
@@ -167,11 +167,11 @@
         background: none;
         border: none;
         color: rgba(255, 255, 255, 0.6);
-        font-size: 20px;
+        font-size: 1.25em;
         cursor: pointer;
         padding: 6px;
         vertical-align: middle;
-        line-height: 0.5;
+        line-height: 0.8;
       }
 
       #progressBar {
@@ -197,15 +197,20 @@
       }
 
       .control-value {
-        font-size: 12px;
-        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.75em;
+        color: var(--dominant-color-light);
+        opacity: 0.6;
+        display: inline-block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       #progressFill {
         height: 100%;
-        background: white;
+        background: var(--dominant-color-light);
         width: 0%;
-        transition: width 0.1s ease;
+        transition: width 0.2s ease;
         position: relative;
       }
 
@@ -220,8 +225,7 @@
       }
 
       #timeDisplay {
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.8);
+        font-size: 0.875em;
         min-width: 100px;
         text-align: center;
       }
@@ -257,14 +261,16 @@
 
       #songInfoTopLeft .song-title {
         font-weight: bold;
-        font-size: 16px;
+        font-size: 1em;
         margin-bottom: 4px;
-        color: white;
+        color: var(--dominant-color-light);
+        opacity: 0.9;
       }
 
       #songInfoTopLeft .song-artist {
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 14px;
+        color: var(--dominant-color-light);
+        font-size: 0.875em;
+        opacity: 0.8;
       }
 
       @media (min-width: 769px), (orientation: landscape) {
@@ -295,7 +301,7 @@
           background: rgba(255, 255, 255, 0.1);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
           margin-bottom: 24px;
           object-fit: cover;
           cursor: pointer;
@@ -306,29 +312,41 @@
           width: 70%;
           max-width: 512px;
           text-align: center;
-          color: white;
+          color: var(--dominant-color-light);
           cursor: pointer;
         }
 
         #songTitle {
-          font-size: 24px;
+          /* font-size: 2rem; */
+          font-size: clamp(1rem, 4vw, 2rem);
           font-weight: bold;
           margin-bottom: 6px;
-          transition: color 0.2s ease;
+          transition: opacity 0.3s ease;
+          opacity: 0.9;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          width: 100%;
         }
 
         #songTitle:hover {
-          color: rgba(255, 255, 255, 0.9);
+          opacity: 1;
         }
 
         #songArtist {
-          font-size: 18px;
-          color: rgba(255, 255, 255, 0.8);
-          transition: color 0.2s ease;
+          /* font-size: 1.25rem; */
+          font-size: clamp(1.25rem, 4vw, 1.75rem);
+          color: var(--dominant-color-light);
+          opacity: 0.8;
+          transition: opacity 0.3s ease;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          width: 100%;
         }
 
         #songArtist:hover {
-          color: rgba(255, 255, 255, 1);
+          opacity: 0.9;
         }
 
         #lyricsPanel {
@@ -406,7 +424,7 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.9);
+        background: var(--dominant-color-dark);
         color: white;
         padding: 20px 30px;
         border-radius: 12px;
@@ -422,6 +440,11 @@
 
       #lyricsPanel:hover #lyricAreaHint {
         opacity: 0.9 !important;
+      }
+
+      /* 覆盖内联样式中对字号的 px 固定，统一采用 em */
+      #lyricDelayInput {
+        font-size: 0.875em !important;
       }
     </style>
   </head>
@@ -448,6 +471,7 @@
     <div id="controlPanel">
       <div class="control-group">
         <label data-i18n="musicFile">Music File</label>
+        <span class="control-value" id="musicFileDisplay" style="max-width: 100%;">-</span>
         <input
           type="file"
           id="musicFile"
@@ -463,10 +487,11 @@
 
       <div class="control-group">
         <label data-i18n="lyricsFile">Lyrics File</label>
+        <span class="control-value" id="lyricFileDisplay" style="max-width: 100%;">-</span>
         <input
           type="file"
           id="lyricFile"
-          accept="text/plain,.lrc,.ttml,.yrc,.lys,.qrc"
+          accept="text/plain,.lrc,.ttml,.yrc,.lys,.qrc,.ass,.lqe,.lyl,.spl,.srt"
         />
         <input
           type="text"
@@ -483,12 +508,13 @@
         "
         data-i18n="supportedLyricFormats"
       >
-      Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricsify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats
+      Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats
       </div> -->
       </div>
 
       <div class="control-group">
         <label data-i18n="coverImage">Cover Image</label>
+        <span class="control-value" id="coverFileDisplay" style="max-width: 100%;">-</span>
         <input type="file" id="coverFile" accept="image/*" />
         <input
           type="text"
@@ -499,7 +525,7 @@
       </div>
 
       <div class="control-group">
-        <label data-i18n="songInfo">Song Information</label>
+        <label data-i18n="songInfo" style="margin-bottom:0.75em;">Song Information</label>
         <input
           type="text"
           id="songTitleInput"

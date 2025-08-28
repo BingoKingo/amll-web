@@ -52,7 +52,7 @@ export function parseESLyRiC(content: string): RawLyricLine[] {
 
     let remainingLine = line.substring(lineStartMatch[0].length);
 
-    const words: { text: string; startTime: number; endTime: number }[] = [];
+    const words: any[] = [];
     let lastTime = lineStartTime;
 
     // 检查行起始时间与第一个词起始时间是否一致，如果不一致，以后者为准
@@ -63,7 +63,6 @@ export function parseESLyRiC(content: string): RawLyricLine[] {
         parseInt(firstWordTimeMatch[2]) * 1000 +
         parseInt(firstWordTimeMatch[3]);
       if (lineStartTime !== firstWordTime) {
-        console.warn(`行时间戳 [${lineStartTime}] 与第一个音节时间戳 [${firstWordTime}] 不匹配，已以后者为准。`);
         lastTime = firstWordTime;
       }
     }
@@ -79,7 +78,7 @@ export function parseESLyRiC(content: string): RawLyricLine[] {
         parseInt(match[4]);
 
       words.push({
-        text,
+        word: text,
         startTime: lastTime,
         endTime: nextTime,
       });
@@ -92,18 +91,24 @@ export function parseESLyRiC(content: string): RawLyricLine[] {
       const cleanText = lastWordMatch[1].replace(/\d{2}:\d{2}\.\d{3}\]$/, "");
 
       words.push({
-        text: cleanText,
+        word: cleanText,
         startTime: lastTime,
         endTime: lastTime,
       });
     }
 
     if (words.length > 0) {
+      words[0].word = (words[0].word ?? words[0].text ?? "").replace(/^\s+/, "");
+      words[words.length - 1].word = (words[words.length - 1].word ?? words[words.length - 1].text ?? "").replace(/\s+$/, "");
       result.push({
         words,
         startTime: words[0].startTime,
         endTime: words[words.length - 1].endTime,
-      });
+        translatedLyric: "",
+        romanLyric: "",
+        isBG: false,
+        isDuet: false,
+      } as unknown as RawLyricLine);
     }
   }
 
@@ -131,7 +136,7 @@ export function parseLyRiCA2(content: string): RawLyricLine[] {
 
     let remainingLine = line.substring(lineStartMatch[0].length);
 
-    const words: { text: string; startTime: number; endTime: number }[] = [];
+    const words: any[] = [];
     let lastTime = lineStartTime;
 
     // 检查行起始时间与第一个词起始时间是否一致，如果不一致，以后者为准
@@ -142,7 +147,6 @@ export function parseLyRiCA2(content: string): RawLyricLine[] {
         parseInt(firstWordTimeMatch[2]) * 1000 +
         parseInt(firstWordTimeMatch[3]);
       if (lineStartTime !== firstWordTime) {
-        console.warn(`行时间戳 [${lineStartTime}] 与第一个音节时间戳 <${firstWordTime}> 不匹配，已以后者为准。`);
         lastTime = firstWordTime;
       }
     }
@@ -158,7 +162,7 @@ export function parseLyRiCA2(content: string): RawLyricLine[] {
         parseInt(match[4]);
 
       words.push({
-        text,
+        word: text,
         startTime: lastTime,
         endTime: nextTime,
       });
@@ -171,18 +175,24 @@ export function parseLyRiCA2(content: string): RawLyricLine[] {
       const cleanText = lastWordMatch[1].replace(/\d{2}:\d{2}\.\d{3}>$/, "");
 
       words.push({
-        text: cleanText,
+        word: cleanText,
         startTime: lastTime,
         endTime: lastTime,
       });
     }
 
     if (words.length > 0) {
+      words[0].word = (words[0].word ?? words[0].text ?? "").replace(/^\s+/, "");
+      words[words.length - 1].word = (words[words.length - 1].word ?? words[words.length - 1].text ?? "").replace(/\s+$/, "");
       result.push({
         words,
         startTime: words[0].startTime,
         endTime: words[words.length - 1].endTime,
-      });
+        translatedLyric: "",
+        romanLyric: "",
+        isBG: false,
+        isDuet: false,
+      } as unknown as RawLyricLine);
     }
   }
 
@@ -224,16 +234,20 @@ export function convertToTTML(lines: RawLyricLine[]): string {
     ttml += `      <p begin="${startTime}" end="${endTime}" region="bottom">`;
 
     const spans = [];
-    for (const word of line.words) {
+    for (let i = 0; i < line.words.length; i++) {
+      const word = line.words[i];
       const wordStart = formatTime(word.startTime);
       const wordEnd = formatTime(word.endTime);
+      let text = (word as any).word ?? (word as any).text ?? "";
+      if (i === 0) text = text.replace(/^\s+/, "");
+      if (i === line.words.length - 1) text = text.replace(/\s+$/, "");
       spans.push(
         `<span begin="${wordStart}" end="${wordEnd}">${escapeXml(
-          word.text
+          text
         )}</span>`
       );
     }
-    ttml += `        ${spans.join("")}`;
+    ttml += spans.join("");
 
     ttml += `</p>\n`;
   }

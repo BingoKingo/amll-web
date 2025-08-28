@@ -79,7 +79,7 @@ export const translations: Record<Language, Translations> = {
     hideControlPanel: "Hide Control Panel",
     clickToAddLyrics: "Click or drag & drop here to add lyrics",
     supportedLyricFormats:
-      "Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricsify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats",
+      "Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats",
     musicLoadSuccess: "Music file loaded successfully",
     musicLoadFailed: "Failed to load music file",
     lyricsLoadSuccess: "Lyrics file loaded successfully",
@@ -131,7 +131,7 @@ export const translations: Record<Language, Translations> = {
     hideControlPanel: "隐藏控制面板",
     clickToAddLyrics: "点击或拖拽至此区域添加歌词",
     supportedLyricFormats:
-      "支持 LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricsify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) 格式",
+      "支持 LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) 格式",
     musicLoadSuccess: "音乐文件加载成功",
     musicLoadFailed: "音乐文件加载失败",
     lyricsLoadSuccess: "歌词文件加载成功",
