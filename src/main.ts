@@ -195,7 +195,7 @@ class WebLyricsPlayer {
         width: 100%;
         background: transparent;
         border: none;
-        color: white;
+        color: var(--dominant-color-light);
         font-size: inherit;
         font-weight: inherit;
         text-align: center;
@@ -240,7 +240,8 @@ class WebLyricsPlayer {
         width: 100%;
         background: transparent;
         border: none;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--dominant-color-light);
+        opacity: 0.8;
         font-size: inherit;
         text-align: center;
         outline: none;
@@ -278,6 +279,27 @@ class WebLyricsPlayer {
       ?.addEventListener("click", () => {
         this.toggleControlPanel();
       });
+
+    document.getElementById("musicFileBtn")?.addEventListener("click", () => {
+      const musicFileInput = document.getElementById("musicFile") as HTMLInputElement;
+      if (musicFileInput) {
+        musicFileInput.click();
+      }
+    });
+
+    document.getElementById("lyricFileBtn")?.addEventListener("click", () => {
+      const lyricFileInput = document.getElementById("lyricFile") as HTMLInputElement;
+      if (lyricFileInput) {
+        lyricFileInput.click();
+      }
+    });
+
+    document.getElementById("coverFileBtn")?.addEventListener("click", () => {
+      const coverFileInput = document.getElementById("coverFile") as HTMLInputElement;
+      if (coverFileInput) {
+        coverFileInput.click();
+      }
+    });
 
     // 文件上传事件
     document.getElementById("musicFile")?.addEventListener("change", (e) => {
@@ -434,6 +456,24 @@ class WebLyricsPlayer {
       this.loadFromURLs();
     });
 
+    document.getElementById("musicUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        this.loadFromURLs();
+      }
+    });
+
+    document.getElementById("lyricUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        this.loadFromURLs();
+      }
+    });
+
+    document.getElementById("coverUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        this.loadFromURLs();
+      }
+    });
+
     document.getElementById("loadFiles")?.addEventListener("click", () => {
       this.loadFromFiles();
     });
@@ -556,6 +596,115 @@ class WebLyricsPlayer {
     this.background.getElement().style.left = "0";
     this.background.getElement().style.width = "100%";
     this.background.getElement().style.height = "100%";
+
+    const backgroundStyleSelect = document.getElementById("backgroundStyle") as HTMLSelectElement;
+    if (backgroundStyleSelect) {
+      backgroundStyleSelect.addEventListener("change", (e) => {
+        const value = (e.target as HTMLSelectElement).value;
+        this.switchBackgroundStyle(value);
+      });
+
+      backgroundStyleSelect.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          const delta = e.key === "ArrowUp" ? -1 : 1;
+          const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
+          backgroundStyleSelect.selectedIndex = newIndex;
+          this.switchBackgroundStyle(backgroundStyleSelect.value);
+        }
+      });
+
+      backgroundStyleSelect.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 1 : -1;
+        const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
+        backgroundStyleSelect.selectedIndex = newIndex;
+        this.switchBackgroundStyle(backgroundStyleSelect.value);
+      });
+    }
+  }
+
+  private originalDark = '';
+  private originalLight = '';
+  private originalDominant = '';
+  private originalPlayBtnColor = 'rgba(255, 255, 255, 0.6)';
+  private originalLyricColor = '';
+  private isColorsInitialized = false;
+
+  private initColors() {
+    if (this.isColorsInitialized) return;
+
+    this.originalDark = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color-dark');
+    this.originalLight = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color-light');
+    this.originalDominant = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color');
+    this.originalPlayBtnColor = getComputedStyle(document.documentElement).getPropertyValue('--play-btn-color');
+    this.isColorsInitialized = true;
+  }
+
+  private invertColors(checked: boolean) {
+    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
+    if (!invertCheckbox) return;
+
+    this.initColors();
+
+    if (checked) {
+      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDominant);
+      document.documentElement.style.setProperty('--dominant-color-light', this.originalDark);
+      document.documentElement.style.setProperty('--dominant-color', this.originalDark);
+      document.documentElement.style.setProperty('--play-btn-color', 'rgba(0, 0, 0, 0.6)');
+    } else {
+      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
+      document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
+      document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
+      document.documentElement.style.setProperty('--play-btn-color', 'rgba(255, 255, 255, 0.6)');
+    }
+  }
+
+  private switchBackgroundStyle(style: string) {
+    if (!this.background) return;
+
+    const player = document.getElementById("amll-lyric-player");
+    const fluidDesc = document.getElementById("fluid-desc");
+    const coverDesc = document.getElementById("cover-desc");
+    const solidDesc = document.getElementById("solid-desc");
+
+    // 显示/隐藏描述
+    if (fluidDesc) fluidDesc.style.display = style === "fluid" ? "block" : "none";
+    if (coverDesc) coverDesc.style.display = style === "cover" ? "block" : "none";
+    if (solidDesc) solidDesc.style.display = style === "solid" ? "block" : "none";
+
+    switch (style) {
+      case "fluid":
+        this.background.setStaticMode(false);
+        this.background.setFlowSpeed(4);
+        if (player) player.style.background = "";
+        break;
+      case "cover":
+        this.background.setStaticMode(true);
+        this.background.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+        if (player) player.style.background = "";
+        break;
+      case "solid":
+        this.background.setStaticMode(true);
+        this.background.setAlbum("");
+        if (player) player.style.background = "transparent";
+
+        // 处理反转亮暗色
+        const solidInvertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
+        if (solidInvertCheckbox) {
+          solidInvertCheckbox.onchange = () => {
+            this.applyDominantColorAsCSSVariable();
+          };
+
+          // 初始化状态处理
+          if (solidInvertCheckbox.checked) {
+            this.applyDominantColorAsCSSVariable();
+          }
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   private setupAudioEvents() {
@@ -660,8 +809,8 @@ class WebLyricsPlayer {
       `;
       hintElement.innerHTML = `
         <div style="margin-bottom: 15px; font-size: 22px; font-weight: 500;">${t(
-          "clickToAddLyrics"
-        )}</div>
+        "clickToAddLyrics"
+      )}</div>
         <div style="opacity: 0.6; line-height: 1.5;">*.ass, *.lqe, *.lrc, *.lyl, *lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
       `;
       // <div style="opacity: 0.6; line-height: 1.5;">*.alrc, *.ass, *.json, *.krc, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.srt, *.ttml, *.yrc</div>
@@ -750,13 +899,21 @@ class WebLyricsPlayer {
     }
   }
 
- private updateFileInputDisplay(inputId: string, file: File | string) {
+  private updateFileInputDisplay(inputId: string, file: File | string) {
     const fileInput = document.getElementById(inputId) as HTMLInputElement;
     if (!fileInput) return;
 
+    if (!file) {
+      const oldDisplay = document.getElementById(`${inputId}Display`);
+      if (oldDisplay) {
+        oldDisplay.remove();
+      }
+      return;
+    }
+
     const fileDisplay = document.createElement("span");
     fileDisplay.className = "control-value";
-        fileDisplay.style = `max-width: 100%;`;
+    fileDisplay.style = `max-width: 100%;`;
     if (file instanceof File) {
       fileDisplay.textContent = `${file.name}`;
     } else {
@@ -1422,7 +1579,7 @@ class WebLyricsPlayer {
     if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
       return;
     }
-    
+
     switch (e.key) {
       case " ":
         e.preventDefault();
@@ -1488,6 +1645,10 @@ class WebLyricsPlayer {
     this.hasLyrics = false;
     this.lyricPlayer.setLyricLines([]);
     this.updateLyricAreaHint();
+    this.updateFileInputDisplay("musicFile", "");
+    this.updateFileInputDisplay("coverFile", "");
+    this.updateFileInputDisplay("lyricFile", "");
+
     this.background.setAlbum("./assets/icon-512x512.png");
     this.setDefaultColors();
 
@@ -2271,12 +2432,12 @@ class WebLyricsPlayer {
   private async extractAndProcessCoverColor(imageUrl: string): Promise<void> {
     try {
       const img = new Image();
-      
+
       // 只有在非base64和非blob URL时才设置crossOrigin
       if (!imageUrl.startsWith('data:image/') && !imageUrl.startsWith('blob:')) {
         img.crossOrigin = 'Anonymous';
       }
-      
+
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error('Failed to load image'));
@@ -2303,7 +2464,7 @@ class WebLyricsPlayer {
     r /= 255;
     g /= 255;
     b /= 255;
-    
+
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     let h = 0, s, l = (max + min) / 2;
@@ -2313,13 +2474,13 @@ class WebLyricsPlayer {
     } else {
       const d = max - min;
       s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-      
+
       switch (max) {
         case r: h = (g - b) / d + (g < b ? 6 : 0); break;
         case g: h = (b - r) / d + 2; break;
         case b: h = (r - g) / d + 4; break;
       }
-      
+
       h /= 6;
     }
 
@@ -2335,17 +2496,17 @@ class WebLyricsPlayer {
       const hue2rgb = (p: number, q: number, t: number) => {
         if (t < 0) t += 1;
         if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
         return p;
       };
 
       const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
       const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
+      r = hue2rgb(p, q, h + 1 / 3);
       g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
+      b = hue2rgb(p, q, h - 1 / 3);
     }
 
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
@@ -2359,12 +2520,21 @@ class WebLyricsPlayer {
   }
 
   private applyDominantColorAsCSSVariable(): void {
-    document.documentElement.style.setProperty('--dominant-color', this.dominantColor);
-    document.documentElement.style.setProperty('--dominant-color-light', this.lightenColor(this.dominantColor, 0.2));
-    document.documentElement.style.setProperty('--dominant-color-dark', this.darkenColor(this.dominantColor, 0.6));
+    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
+    const isInverted = invertCheckbox?.checked;
+
+    if (isInverted) {
+      document.documentElement.style.setProperty('--dominant-color', this.darkenColor(this.dominantColor, 0.6));
+      document.documentElement.style.setProperty('--dominant-color-light', this.darkenColor(this.dominantColor, 0.2));
+      document.documentElement.style.setProperty('--dominant-color-dark', this.dominantColor);
+    } else {
+      document.documentElement.style.setProperty('--dominant-color', this.dominantColor);
+      document.documentElement.style.setProperty('--dominant-color-light', this.lightenColor(this.dominantColor, 0.2));
+      document.documentElement.style.setProperty('--dominant-color-dark', this.darkenColor(this.dominantColor, 0.6));
+    }
     document.documentElement.style.setProperty('--amll-lp-color', 'var(--dominant-color-light)');
   }
-  
+
   private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? {

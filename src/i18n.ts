@@ -4,9 +4,6 @@ export interface Translations {
   artist: string;
   unknownSong: string;
   unknownArtist: string;
-  uploadMusic: string;
-  uploadLyrics: string;
-  uploadCover: string;
   songInfo: string;
   title: string;
   loopPlay: string;
@@ -57,9 +54,6 @@ export const translations: Record<Language, Translations> = {
     artist: "Artist",
     unknownSong: "Unknown Song",
     unknownArtist: "Unknown Artist",
-    uploadMusic: "Upload Music",
-    uploadLyrics: "Upload Lyrics",
-    uploadCover: "Upload Cover",
     songInfo: "Song Information",
     title: "Title",
     loopPlay: "Loop Playback, Lyrics Delay:",
@@ -109,9 +103,6 @@ export const translations: Record<Language, Translations> = {
     artist: "歌手",
     unknownSong: "未知歌曲",
     unknownArtist: "未知作者",
-    uploadMusic: "上传音乐",
-    uploadLyrics: "上传歌词",
-    uploadCover: "上传封面",
     songInfo: "歌曲信息",
     title: "标题",
     loopPlay: "循环播放, 歌词延迟: ",
