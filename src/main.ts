@@ -36,36 +36,54 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   loopPlay: boolean;
+  backgroundType: 'current' | 'cover';
+  backgroundDynamic: boolean;
+  backgroundFlowSpeed: number;
+  backgroundColorMask: boolean;
+  backgroundMaskColor: string;
+  backgroundMaskOpacity: number;
+  showFPS: boolean;
 }
 
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: DomLyricPlayer;
   private background: BackgroundRender<PixiRenderer | MeshGradientRenderer>;
-  private gui: GUI;
+  private coverBlurBackground: HTMLDivElement; // 封面模糊背景元素
   private stats: Stats;
   private state: PlayerState;
   private isInitialized = false;
 
   constructor() {
     this.audio = document.createElement("audio");
-    this.audio.volume = 0.18;
+    this.audio.volume = 1.0; // 默认音量100%
     this.audio.preload = "auto";
     
     this.lyricPlayer = new DomLyricPlayer();
-        this.state = {
+    this.state = {
       musicUrl: "",
       lyricUrl: "",
       coverUrl: "",
       songTitle: "",
       songArtist: "",
       isPlaying: false,
-  currentTime: 0,
+      currentTime: 0,
       duration: 0,
-      loopPlay: true
+      loopPlay: true,
+      backgroundType: 'current',
+      backgroundDynamic: true,
+      backgroundFlowSpeed: 4,
+      backgroundColorMask: false,
+      backgroundMaskColor: '#000000',
+      backgroundMaskOpacity: 30,
+      showFPS: false
     };
 
-    this.initGUI();
+    // 初始化其他属性
+    this.background = BackgroundRender.new(MeshGradientRenderer);
+    this.coverBlurBackground = document.createElement('div');
+    this.stats = new Stats();
+
     this.initEventListeners();
     this.initBackground();
     this.setupAudioEvents();
@@ -74,32 +92,12 @@ class WebLyricsPlayer {
     this.initUI();
   }
 
-  private initGUI() {
-    this.gui = new GUI();
-    this.gui.hide();
-    this.gui.close();
-    
-    // 添加背景控制选项
-    const bgControls = {
-      dynamicBackground: true,
-      flowSpeed: 4,
-      toggleBackground() {
-        this.dynamicBackground = !this.dynamicBackground;
-        (window as any).player.getBackground().setStaticMode(!this.dynamicBackground);
-      }
-    };
-    
-    const bgFolder = this.gui.addFolder('背景控制');
-    bgFolder.add(bgControls, 'dynamicBackground').name('动态背景').onChange((value: boolean) => {
-      (window as any).player.getBackground().setStaticMode(!value);
-    });
-    bgFolder.add(bgControls, 'flowSpeed', 0, 10, 0.1).name('流动速度').onChange((value: number) => {
-      (window as any).player.getBackground().setFlowSpeed(value);
-    });
-    bgFolder.add(bgControls, 'toggleBackground').name('切换背景模式');
-  }
+
 
   private initEventListeners() {
+    // 加载保存的背景设置
+    this.loadBackgroundSettings();
+    
     // 文件上传事件
     document.getElementById('musicFile')?.addEventListener('change', (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
@@ -138,6 +136,75 @@ class WebLyricsPlayer {
       this.state.loopPlay = (e.target as HTMLInputElement).checked;
     });
 
+    // 背景控制事件
+    document.getElementById('bgCurrent')?.addEventListener('change', (e) => {
+      if ((e.target as HTMLInputElement).checked) {
+        this.state.backgroundType = 'current';
+        this.updateBackground();
+        this.updateBackgroundUI(); // 更新UI状态
+        this.saveBackgroundSettings();
+      }
+    });
+
+    document.getElementById('bgCover')?.addEventListener('change', (e) => {
+      if ((e.target as HTMLInputElement).checked) {
+        this.state.backgroundType = 'cover';
+        this.updateBackground();
+        this.updateBackgroundUI(); // 更新UI状态
+        this.saveBackgroundSettings();
+      }
+    });
+
+
+
+    document.getElementById('bgDynamic')?.addEventListener('change', (e) => {
+      this.state.backgroundDynamic = (e.target as HTMLInputElement).checked;
+      // 只有在AMLL背景模式下才应用动态设置
+      if (this.state.backgroundType === 'current') {
+        this.background.setStaticMode(!this.state.backgroundDynamic);
+      }
+      this.saveBackgroundSettings();
+    });
+
+    document.getElementById('bgFlowSpeed')?.addEventListener('input', (e) => {
+      const value = parseFloat((e.target as HTMLInputElement).value);
+      this.state.backgroundFlowSpeed = value;
+      // 只有在AMLL背景模式下才应用流动速度
+      if (this.state.backgroundType === 'current') {
+        this.background.setFlowSpeed(value);
+      }
+      document.getElementById('bgFlowSpeedValue')!.textContent = value.toFixed(1);
+      this.saveBackgroundSettings();
+    });
+
+    // 颜色蒙版控制事件
+    document.getElementById('bgColorMask')?.addEventListener('change', (e) => {
+      this.state.backgroundColorMask = (e.target as HTMLInputElement).checked;
+      this.updateBackground();
+      this.saveBackgroundSettings();
+    });
+
+    document.getElementById('bgMaskColor')?.addEventListener('input', (e) => {
+      this.state.backgroundMaskColor = (e.target as HTMLInputElement).value;
+      this.updateBackground();
+      this.saveBackgroundSettings();
+    });
+
+    document.getElementById('bgMaskOpacity')?.addEventListener('input', (e) => {
+      const value = parseInt((e.target as HTMLInputElement).value);
+      this.state.backgroundMaskOpacity = value;
+      this.updateBackground();
+      document.getElementById('bgMaskOpacityValue')!.textContent = value + '%';
+      this.saveBackgroundSettings();
+    });
+
+    // FPS显示控制
+    document.getElementById('showFPS')?.addEventListener('change', (e) => {
+      this.state.showFPS = (e.target as HTMLInputElement).checked;
+      this.updateFPSDisplay();
+      this.saveBackgroundSettings();
+    });
+
     // 按钮事件
     document.getElementById('loadFromUrl')?.addEventListener('click', () => {
       this.loadFromURLs();
@@ -157,6 +224,21 @@ class WebLyricsPlayer {
 
     document.getElementById('fullscreenBtn')?.addEventListener('click', () => {
       this.toggleFullscreen();
+    });
+
+    document.getElementById('volumeSlider')?.addEventListener('input', (e) => {
+      const volume = parseInt((e.target as HTMLInputElement).value) / 100;
+      this.audio.volume = volume;
+    });
+
+
+
+    document.getElementById('hidePlayControlsBtn')?.addEventListener('click', () => {
+      this.togglePlayControls();
+    });
+
+    document.getElementById('showPlayControlsBtn')?.addEventListener('click', () => {
+      this.togglePlayControls();
     });
 
     document.getElementById('toggleControls')?.addEventListener('click', () => {
@@ -181,13 +263,18 @@ class WebLyricsPlayer {
     this.background = BackgroundRender.new(MeshGradientRenderer);
     this.background.setFPS(60);
     this.background.setRenderScale(0.1); // 设置渲染倍率为0.1
-    this.background.setStaticMode(false); // 默认开启动态背景
-    this.background.setFlowSpeed(4); // 设置流动速度为4
+    this.background.setStaticMode(!this.state.backgroundDynamic); // 使用状态中的设置
+    this.background.setFlowSpeed(this.state.backgroundFlowSpeed); // 使用状态中的设置
     this.background.getElement().style.position = "absolute";
     this.background.getElement().style.top = "0";
     this.background.getElement().style.left = "0";
     this.background.getElement().style.width = "100%";
     this.background.getElement().style.height = "100%";
+    
+    // 为封面模糊背景添加CSS样式
+    this.background.getElement().style.backgroundSize = "cover";
+    this.background.getElement().style.backgroundPosition = "center";
+    this.background.getElement().style.backgroundRepeat = "no-repeat";
   }
 
   private setupAudioEvents() {
@@ -249,17 +336,15 @@ class WebLyricsPlayer {
     if (player) {
       player.appendChild(this.audio);
       player.appendChild(this.background.getElement());
+      player.appendChild(this.coverBlurBackground);
       player.appendChild(this.lyricPlayer.getElement());
     }
 
-    // 设置默认封面
-    this.background.setAlbum("./assets/Cover.jpg");
+    // 初始化封面模糊背景样式
+    this.initCoverBlurBackground();
     
-    // 调整歌词显示位置，避免与歌曲信息重叠
-    const lyricElement = this.lyricPlayer.getElement();
-    if (lyricElement) {
-      lyricElement.style.paddingTop = '120px'; // 为左上角歌曲信息留出空间
-    }
+    // 使用新的背景更新逻辑
+    this.updateBackground();
   }
 
   private async loadMusicFromFile(file: File) {
@@ -294,7 +379,7 @@ class WebLyricsPlayer {
     try {
       const url = URL.createObjectURL(file);
       this.state.coverUrl = url;
-      this.background.setAlbum(url);
+      this.updateBackground(); // 更新背景以使用新封面
       this.updateSongInfo();
       this.showStatus('封面图片加载成功');
     } catch (error) {
@@ -326,7 +411,7 @@ class WebLyricsPlayer {
 
     if (coverUrl) {
       this.state.coverUrl = coverUrl;
-      this.background.setAlbum(coverUrl);
+      this.updateBackground(); // 更新背景以使用新封面
     }
 
     // 更新歌曲信息
@@ -411,25 +496,72 @@ class WebLyricsPlayer {
 
   private updatePlayButton() {
     const btn = document.getElementById('playPauseBtn');
+    const landscapeBtn = document.getElementById('landscapePlay');
+    
     if (btn) {
-      btn.textContent = this.state.isPlaying ? '⏸️' : '▶️';
+      if (this.state.isPlaying) {
+        btn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        `;
+      } else {
+        btn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        `;
+      }
+    }
+
+    if (landscapeBtn) {
+      if (this.state.isPlaying) {
+        landscapeBtn.innerHTML = `
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        `;
+      } else {
+        landscapeBtn.innerHTML = `
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        `;
+      }
     }
   }
 
   private updateProgress() {
     const progressFill = document.getElementById('progressFill');
-    if (progressFill && this.state.duration > 0) {
+    const landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
+    
+    if (this.state.duration > 0) {
       const percentage = (this.state.currentTime / this.state.duration) * 100;
-      progressFill.style.width = `${percentage}%`;
+      
+      if (progressFill) {
+        progressFill.style.width = `${percentage}%`;
+      }
+      
+      if (landscapeProgressFill) {
+        landscapeProgressFill.style.width = `${percentage}%`;
+      }
     }
   }
 
   private updateTimeDisplay() {
     const timeDisplay = document.getElementById('timeDisplay');
+    const landscapeTimeDisplay = document.querySelector('.landscape-time') as HTMLElement;
+    
+    const currentTime = this.formatTime(this.state.currentTime);
+    const duration = this.formatTime(this.state.duration);
+    const timeText = `${currentTime} / ${duration}`;
+    
     if (timeDisplay) {
-      const currentTime = this.formatTime(this.state.currentTime);
-      const duration = this.formatTime(this.state.duration);
-      timeDisplay.textContent = `${currentTime} / ${duration}`;
+      timeDisplay.textContent = timeText;
+    }
+    
+    if (landscapeTimeDisplay) {
+      landscapeTimeDisplay.textContent = timeText;
     }
   }
 
@@ -507,8 +639,18 @@ class WebLyricsPlayer {
         
       if (tapCount >= 5) {
         tapCount = 0;
-          this.gui.domElement.style.display = this.gui.domElement.style.display === "none" ? "block" : "none";
-          this.stats.dom.style.display = this.stats.dom.style.display === "none" ? "block" : "none";
+        // 切换FPS显示状态并同步UI
+        this.state.showFPS = !this.state.showFPS;
+        this.updateFPSDisplay();
+        
+        // 同步复选框状态
+        const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
+        if (showFPSCheckbox) {
+          showFPSCheckbox.checked = this.state.showFPS;
+        }
+        
+        // 保存设置
+        this.saveBackgroundSettings();
       }
     } else {
       tapCount = 0;
@@ -530,6 +672,13 @@ class WebLyricsPlayer {
     if (loopPlayCheckbox) {
       loopPlayCheckbox.checked = true;
     }
+    
+    // 重置FPS显示开关
+    const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
+    if (showFPSCheckbox) {
+      showFPSCheckbox.checked = false;
+    }
+    
     inputs.forEach(id => {
       const input = document.getElementById(id) as HTMLInputElement;
       if (input) {
@@ -559,7 +708,14 @@ class WebLyricsPlayer {
       isPlaying: false,
       currentTime: 0,
       duration: 0,
-      loopPlay: true
+      loopPlay: true,
+      backgroundType: 'current',
+      backgroundDynamic: true,
+      backgroundFlowSpeed: 4,
+      backgroundColorMask: false,
+      backgroundMaskColor: '#000000',
+      backgroundMaskOpacity: 30,
+      showFPS: false
     };
 
     this.updatePlayButton();
@@ -573,13 +729,24 @@ class WebLyricsPlayer {
     const songCover = document.getElementById('songCoverTopLeft') as HTMLImageElement;
     const songTitle = document.getElementById('songTitleTopLeft');
     const songArtist = document.getElementById('songArtistTopLeft');
+    const landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
     
     if (songInfoTopLeft && songCover && songTitle && songArtist) {
       if (this.state.coverUrl) {
         songCover.src = this.state.coverUrl;
         songCover.style.display = 'block';
+        
+        // 更新横屏封面
+        if (landscapeCover) {
+          landscapeCover.style.backgroundImage = `url(${this.state.coverUrl})`;
+        }
       } else {
         songCover.style.display = 'none';
+        
+        // 清除横屏封面
+        if (landscapeCover) {
+          landscapeCover.style.backgroundImage = 'none';
+        }
       }
       
       songTitle.textContent = this.state.songTitle || '未知歌曲';
@@ -594,16 +761,7 @@ class WebLyricsPlayer {
   }
 
   private adjustLyricPosition() {
-    const lyricElement = this.lyricPlayer.getElement();
-    if (lyricElement) {
-      // 根据歌曲信息是否显示来调整歌词位置
-      const songInfoTopLeft = document.getElementById('songInfoTopLeft');
-      if (songInfoTopLeft && songInfoTopLeft.style.display !== 'none') {
-        lyricElement.style.paddingTop = '120px'; // 歌曲信息显示时
-      } else {
-        lyricElement.style.paddingTop = '20px'; // 歌曲信息隐藏时
-      }
-    }
+    // 歌词位置现在通过CSS控制，不需要JavaScript调整
   }
 
   private async parseAudioMetadata(file: File) {
@@ -897,6 +1055,152 @@ class WebLyricsPlayer {
   public getBackground(): BackgroundRender<PixiRenderer | MeshGradientRenderer> {
     return this.background;
   }
+
+  // 保存背景设置到本地存储
+  private saveBackgroundSettings() {
+    const settings = {
+      backgroundType: this.state.backgroundType,
+      backgroundDynamic: this.state.backgroundDynamic,
+      backgroundFlowSpeed: this.state.backgroundFlowSpeed,
+      backgroundColorMask: this.state.backgroundColorMask,
+      backgroundMaskColor: this.state.backgroundMaskColor,
+      backgroundMaskOpacity: this.state.backgroundMaskOpacity,
+      showFPS: this.state.showFPS
+    };
+    localStorage.setItem('amll_background_settings', JSON.stringify(settings));
+  }
+
+  // 从本地存储加载背景设置
+  private loadBackgroundSettings() {
+    try {
+      const saved = localStorage.getItem('amll_background_settings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        this.state.backgroundType = settings.backgroundType || 'current';
+        this.state.backgroundDynamic = settings.backgroundDynamic !== undefined ? settings.backgroundDynamic : true;
+        this.state.backgroundFlowSpeed = settings.backgroundFlowSpeed || 4;
+        this.state.backgroundColorMask = settings.backgroundColorMask !== undefined ? settings.backgroundColorMask : false;
+        this.state.backgroundMaskColor = settings.backgroundMaskColor || '#000000';
+        this.state.backgroundMaskOpacity = settings.backgroundMaskOpacity !== undefined ? settings.backgroundMaskOpacity : 30;
+        this.state.showFPS = settings.showFPS !== undefined ? settings.showFPS : false;
+        
+        // 更新UI
+        this.updateBackgroundUI();
+        this.updateBackground();
+        this.updateFPSDisplay();
+      }
+    } catch (error) {
+      console.log('加载背景设置失败:', error);
+    }
+  }
+
+  // 更新背景UI显示
+  private updateBackgroundUI() {
+    const bgCurrent = document.getElementById('bgCurrent') as HTMLInputElement;
+    const bgCover = document.getElementById('bgCover') as HTMLInputElement;
+    const bgDynamic = document.getElementById('bgDynamic') as HTMLInputElement;
+    const bgFlowSpeed = document.getElementById('bgFlowSpeed') as HTMLInputElement;
+    const bgFlowSpeedValue = document.getElementById('bgFlowSpeedValue');
+    const bgColorMask = document.getElementById('bgColorMask') as HTMLInputElement;
+    const bgMaskColor = document.getElementById('bgMaskColor') as HTMLInputElement;
+    const bgMaskOpacity = document.getElementById('bgMaskOpacity') as HTMLInputElement;
+    const bgMaskOpacityValue = document.getElementById('bgMaskOpacityValue');
+    const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
+
+    if (bgCurrent) bgCurrent.checked = this.state.backgroundType === 'current';
+    if (bgCover) bgCover.checked = this.state.backgroundType === 'cover';
+    if (bgDynamic) bgDynamic.checked = this.state.backgroundDynamic;
+    if (bgFlowSpeed) bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
+    if (bgFlowSpeedValue) bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
+    if (bgColorMask) bgColorMask.checked = this.state.backgroundColorMask;
+    if (bgMaskColor) bgMaskColor.value = this.state.backgroundMaskColor;
+    if (bgMaskOpacity) bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
+    if (bgMaskOpacityValue) bgMaskOpacityValue.textContent = this.state.backgroundMaskOpacity + '%';
+    if (showFPSCheckbox) showFPSCheckbox.checked = this.state.showFPS;
+
+    // 当选择封面模糊背景时，禁用动态背景和流动速度控制
+    if (bgDynamic && bgFlowSpeed) {
+      const isCoverMode = this.state.backgroundType === 'cover';
+      bgDynamic.disabled = isCoverMode;
+      bgFlowSpeed.disabled = isCoverMode;
+      
+      // 添加视觉提示
+      if (isCoverMode) {
+        bgDynamic.style.opacity = '0.5';
+        bgFlowSpeed.style.opacity = '0.5';
+      } else {
+        bgDynamic.style.opacity = '1';
+        bgFlowSpeed.style.opacity = '1';
+      }
+    }
+  }
+
+  // 初始化封面模糊背景样式
+  private initCoverBlurBackground() {
+    this.coverBlurBackground.style.position = "absolute";
+    this.coverBlurBackground.style.top = "0";
+    this.coverBlurBackground.style.left = "0";
+    this.coverBlurBackground.style.width = "100%";
+    this.coverBlurBackground.style.height = "100%";
+    this.coverBlurBackground.style.backgroundSize = "cover";
+    this.coverBlurBackground.style.backgroundPosition = "center";
+    this.coverBlurBackground.style.backgroundRepeat = "no-repeat";
+    this.coverBlurBackground.style.filter = "blur(20px)";
+    this.coverBlurBackground.style.transform = "scale(1.1)";
+    this.coverBlurBackground.style.zIndex = "0";
+    this.coverBlurBackground.style.display = "none"; // 默认隐藏
+  }
+
+  // 更新背景显示
+  private updateBackground() {
+    // 优先使用当前加载的封面，如果没有则使用默认封面
+    const currentCover = this.state.coverUrl || "./assets/Cover.jpg";
+    
+    if (this.state.backgroundType === 'cover') {
+      // 封面模糊背景：使用独立的CSS背景元素
+      this.background.getElement().style.display = "none"; // 隐藏AMLL背景
+      this.coverBlurBackground.style.display = "block"; // 显示封面模糊背景
+      this.coverBlurBackground.style.backgroundImage = `url(${currentCover})`;
+      
+      // 应用颜色蒙版
+      if (this.state.backgroundColorMask) {
+        const opacity = this.state.backgroundMaskOpacity / 100;
+        const color = this.state.backgroundMaskColor;
+        this.coverBlurBackground.style.backgroundColor = color;
+        this.coverBlurBackground.style.backgroundBlendMode = 'multiply';
+        this.coverBlurBackground.style.opacity = opacity.toString();
+      } else {
+        this.coverBlurBackground.style.backgroundColor = 'transparent';
+        this.coverBlurBackground.style.backgroundBlendMode = 'normal';
+        this.coverBlurBackground.style.opacity = '1';
+      }
+    } else {
+      // AMLL背景：使用当前封面，根据设置决定是否动态
+      this.background.getElement().style.display = "block"; // 显示AMLL背景
+      this.coverBlurBackground.style.display = "none"; // 隐藏封面模糊背景
+      this.background.setAlbum(currentCover);
+      this.background.setStaticMode(!this.state.backgroundDynamic);
+      this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
+    }
+  }
+
+  private togglePlayControls() {
+    const playControls = document.getElementById('playControls');
+    const showPlayControlsBtn = document.getElementById('showPlayControlsBtn');
+    
+    if (playControls && showPlayControlsBtn) {
+      const isHidden = playControls.style.display === 'none';
+      playControls.style.display = isHidden ? 'flex' : 'none';
+      showPlayControlsBtn.style.display = isHidden ? 'none' : 'block';
+    }
+  }
+
+  // 更新FPS显示
+  private updateFPSDisplay() {
+    if (this.stats) {
+      this.stats.dom.style.display = this.state.showFPS ? 'block' : 'none';
+    }
+  }
 }
 
 // 创建播放器实例
@@ -910,13 +1214,3 @@ const player = new WebLyricsPlayer();
 // 启动播放器
 player.start();
 
-// 调试快捷键
-document.addEventListener("keydown", (e) => {
-  if (e.shiftKey && e.key.toLowerCase() === "d") {
-    const gui = (window as any).player.gui;
-    const stats = (window as any).player.stats;
-    const isHidden = gui.domElement.style.display === "none";
-    gui.domElement.style.display = isHidden ? "block" : "none";
-    stats.dom.style.display = isHidden ? "block" : "none";
-  }
-});

@@ -1,6 +1,8 @@
- <img width="106" height="106" alt="logo" src="https://github.com/user-attachments/assets/d905bb3b-ad10-4e90-bb84-8f61d33ae5eb" />
- 
-# 一个AMLL歌词播放器
+# 
+一个AMLL歌词播放器
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
 
 
 ##  快速开始
@@ -8,33 +10,30 @@
 ### 环境要求
 
 - **Node.js**: 18.0+
-- **浏览器**: Chromium 120+ Firefox 100+ Safari 15.4+
+- **浏览器**: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
 
-## 安装和运行
+### 安装和运行
 
-### 安装依赖
-```
+```bash
+# 克隆项目
+
+# 安装依赖
 pnpm install
-```
 
-### 启动开发服务器
-```
+# 启动开发服务器
 pnpm dev
-```
 
-### 外部访问
-```
+# 外部访问（局域网）
 pnpm dev --host
 ```
-## 构建
 
-### 构建项目
+### 构建生产版本
+
 ```
+# 构建项目
 pnpm build
-```
 
-### 预览构建结果
-```
+# 预览构建结果
 pnpm preview
 ```
 
@@ -63,11 +62,12 @@ pnpm preview
 
 ### 静态部署
 
-构建项目
-```
+```bash
+# 构建项目
 pnpm build
-```
-将dist目录部署到Web服务器
+
+# 将dist目录部署到Web服务器
+
 
 ## 许可证
 
@@ -75,6 +75,7 @@ pnpm build
 
 ## 致谢
 
-- [Steve-xmh/applemusic-like-lyrics](https://github.com/Steve-xmh/applemusic-like-lyrics)
+- [@applemusic-like-lyrics/core](https://github.com/apple-music-like-lyrics/core) - 歌词渲染核心库
+- [jsmediatags](https://github.com/aadsm/jsmediatags) - 音频元数据解析
 
 ⭐ 如果这个项目对您有帮助，请给我一个星标！
