@@ -262,7 +262,7 @@ class WebLyricsPlayer {
   private initBackground() {
     this.background = BackgroundRender.new(MeshGradientRenderer);
     this.background.setFPS(60);
-    this.background.setRenderScale(0.1); // 设置渲染倍率为0.1
+    this.background.setRenderScale(1); // 设置渲染倍率为1
     this.background.setStaticMode(!this.state.backgroundDynamic); // 使用状态中的设置
     this.background.setFlowSpeed(this.state.backgroundFlowSpeed); // 使用状态中的设置
     this.background.getElement().style.position = "absolute";
