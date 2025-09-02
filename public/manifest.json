@@ -1,9 +1,9 @@
 {
   "name": "AMLL Web Player",
-  "short_name": "AMLL",
+  "short_name": "AMLL Play",
   "description": "Apple Music Like Lyrics Web Player",
   "start_url": "/",
-  "display": "standalone",
+  "display": "override",
   "background_color": "#222222",
   "theme_color": "#222222",
   "icons": [

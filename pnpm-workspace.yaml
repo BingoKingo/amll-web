@@ -1,3 +1,6 @@
+ignoredBuiltDependencies:
+  - ytdlp-nodejs
+
 onlyBuiltDependencies:
   - '@applemusic-like-lyrics/core'
   - '@applemusic-like-lyrics/lyric'

@@ -1,20 +1,15 @@
 export type Language = "en" | "zh";
 export interface Translations {
-  songTitle: string;
   artist: string;
-  unknownSong: string;
-  unknownArtist: string;
   songInfo: string;
   title: string;
   loopPlay: string;
   loadFromUrl: string;
   loadFiles: string;
   resetPlayer: string;
-  musicFile: string;
+  sourceFile: string;
   musicUrl: string;
-  lyricsFile: string;
   lyricsUrl: string;
-  coverImage: string;
   coverUrl: string;
   extractedFromFilename: string;
   extractedSongInfo: string;
@@ -46,26 +41,31 @@ export interface Translations {
   playbackRate: string;
   volume: string;
   playbackControl: string;
+  backgroundStyle: string;
+  amllBackground: string;
+  coverBackground: string;
+  solidBackground: string;
+  coverBlurLevel: string;
+  colorMask: string;
+  maskColor: string;
+  invertColors: string;
+  debugInfo: string;
+  showFPS: string;
 }
 
 export const translations: Record<Language, Translations> = {
   en: {
-    songTitle: "Song Title",
     artist: "Artist",
-    unknownSong: "Unknown Song",
-    unknownArtist: "Unknown Artist",
-    songInfo: "Song Information",
+    songInfo: "Metadata",
     title: "Title",
     loopPlay: "Loop Playback, Lyrics Delay:",
     loadFromUrl: "Load from URL",
     loadFiles: "Load Files",
     resetPlayer: "Reset Player",
-    musicFile: "Music File",
-    musicUrl: "or enter music URL",
-    lyricsFile: "Lyrics File",
-    lyricsUrl: "or enter lyrics URL",
-    coverImage: "Cover Image",
-    coverUrl: "or enter cover image URL",
+    sourceFile: "Source",
+    musicUrl: "Enter music URL",
+    lyricsUrl: "Enter lyrics URL",
+    coverUrl: "Enter cover image URL",
     extractedFromFilename: "Extracted song info from filename",
     extractedSongInfo: "Extracted song info successfully",
     usedFilenameAsTitle: "Used filename as song title",
@@ -97,24 +97,29 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "Playback Speed",
     volume: "Volume",
     playbackControl: "Playback Control",
+    backgroundStyle: "Background Style",
+    amllBackground: "AMLL Background",
+    coverBackground: "Cover Background",
+    solidBackground: "Solid Background",
+    coverBlurLevel: "Blur Level",
+    colorMask: "Color Mask",
+    maskColor: "Mask Color",
+    invertColors: "Invert Colors",
+    debugInfo: "Debug Information",
+    showFPS: "Show FPS",
   },
   zh: {
-    songTitle: "歌曲名",
-    artist: "歌手",
-    unknownSong: "未知歌曲",
-    unknownArtist: "未知作者",
-    songInfo: "歌曲信息",
+    artist: "艺术家",
+    songInfo: "元数据",
     title: "标题",
     loopPlay: "循环播放, 歌词延迟: ",
     loadFromUrl: "从URL加载",
     loadFiles: "加载文件",
     resetPlayer: "重置播放器",
-    musicFile: "音乐文件",
-    musicUrl: "或输入音乐文件URL",
-    lyricsFile: "歌词文件",
-    lyricsUrl: "或输入歌词文件URL",
-    coverImage: "封面图片",
-    coverUrl: "或输入封面图片URL",
+    sourceFile: "播放源",
+    musicUrl: "输入音乐文件URL",
+    lyricsUrl: "输入歌词文件URL",
+    coverUrl: "输入封面图片URL",
     extractedFromFilename: "从文件名解析歌曲信息",
     extractedSongInfo: "从文件名解析歌曲信息成功",
     usedFilenameAsTitle: "使用文件名作为歌曲标题",
@@ -146,6 +151,16 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "播放速度",
     volume: "音量",
     playbackControl: "播放控制",
+    backgroundStyle: "背景样式",
+    amllBackground: "AMLL 背景",
+    coverBackground: "封面背景",
+    solidBackground: "纯色背景",
+    coverBlurLevel: "模糊程度",
+    colorMask: "颜色蒙版",
+    maskColor: "蒙版颜色",
+    invertColors: "反转色",
+    debugInfo: "调试信息",
+    showFPS: "显示帧数",
   },
 };
 
