@@ -19,15 +19,17 @@
         Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
     }
 
-    .amll-lyric-player:hover ._lyricLine_1vq69_6,
-    .amll-lyric-player:hover ._lyricLine_1ygrf_6 {
+
+    .amll-lyric-player:hover ._lyricLine_1vq69_6 {
       filter: inherit !important;
     }
 
-    ._lyricLine_1vq69_6:has(> *):hover,
-    ._lyricLine_1vq69_6:has(> *):active,
-    ._lyricLine_1ygrf_6:has(> *):hover,
-    ._lyricLine_1ygrf_6:has(> *):active {
+    .amll-lyric-player ._interludeDots_1vq69_128 span {
+      background-color: var(--dominant-color-light) !important;
+    }
+
+    .amll-lyric-player ._lyricLine_1vq69_6 {
+      color: var(--dominant-color-light) !important;
       background-color: transparent !important;
     }
 
@@ -139,6 +141,7 @@
 
     .marquee {
       will-change: transform;
+      transform: translateZ(0);
       backface-visibility: hidden;
       perspective: 1000px;
     }
@@ -292,11 +295,15 @@
       position: relative;
     }
 
-    #songInfoTopLeft .song-title.marquee {
+    #songTitle.marquee,
+    #songArtist.marquee,
+    #songInfoTopLeft .song-title.marquee,
+    #songInfoTopLeft .song-artist.marquee {
       text-overflow: clip;
       color: transparent;
     }
 
+    #songTitle.marquee::before,
     #songInfoTopLeft .song-title.marquee::before {
       content: attr(data-text);
       position: absolute;
@@ -304,34 +311,15 @@
       left: 0;
       width: max-content;
       animation: marquee 30s linear infinite;
+      animation-play-state: var(--marquee-play-state, running);
       color: var(--dominant-color-light);
       opacity: 0.9;
     }
 
+    #songTitle.marquee:hover::before,
     #songInfoTopLeft .song-title.marquee:hover::before {
-      animation-play-state: paused;
+      animation-play-state: var(--marquee-play-state, running);
       opacity: 1;
-    }
-
-    #songInfoTopLeft .song-artist.marquee {
-      text-overflow: clip;
-      color: transparent;
-    }
-
-    #songInfoTopLeft .song-artist.marquee::before {
-      content: attr(data-text);
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: max-content;
-      animation: marquee 30s linear infinite;
-      color: var(--dominant-color-light);
-      opacity: 0.8;
-    }
-
-    #songInfoTopLeft .song-artist.marquee:hover::before {
-      animation-play-state: paused;
-      opacity: 0.9;
     }
 
     @media (min-width: 769px),
@@ -359,15 +347,16 @@
         width: 70%;
         max-width: 512px;
         aspect-ratio: 1/1;
-        border-radius: 12px;
+        border-radius: 24px;
         background: rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-        margin-bottom: 24px;
+        margin-bottom: 8%;
         object-fit: cover;
         cursor: pointer;
         position: relative;
+        transform: translateZ(0);
       }
 
       #albumInfo {
@@ -395,27 +384,6 @@
         opacity: 1;
       }
 
-      #songTitle.marquee {
-        text-overflow: clip;
-        color: transparent;
-      }
-
-      #songTitle.marquee::before {
-        content: attr(data-text);
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: max-content;
-        animation: marquee 30s linear infinite;
-        color: var(--dominant-color-light);
-        opacity: 0.9;
-      }
-
-      #songTitle.marquee:hover::before {
-        animation-play-state: paused;
-        opacity: 1;
-      }
-
       #songArtist {
         font-size: var(--amll-lp-font-size, max(max(4vh, 2vw), 12px));
         color: var(--dominant-color-light);
@@ -432,24 +400,22 @@
         opacity: 0.9;
       }
 
-      #songArtist.marquee {
-        text-overflow: clip;
-        color: transparent;
-      }
-
-      #songArtist.marquee::before {
+      #songArtist.marquee::before,
+      #songInfoTopLeft .song-artist.marquee::before {
         content: attr(data-text);
         position: absolute;
         top: 0;
         left: 0;
         width: max-content;
         animation: marquee 30s linear infinite;
+        animation-play-state: var(--marquee-play-state, running);
         color: var(--dominant-color-light);
         opacity: 0.8;
       }
 
-      #songArtist.marquee:hover::before {
-        animation-play-state: paused;
+      #songArtist.marquee:hover::before,
+      #songInfoTopLeft .song-artist.marquee:hover::before {
+        animation-play-state: var(--marquee-play-state, running);
         opacity: 0.9;
       }
 
@@ -547,60 +513,6 @@
     });
   </script>
   <script type="module" src="./src/main.ts" defer></script>
-  <script>
-    function setupMarquee() {
-      const songTitle = document.getElementById('songTitle');
-      const songArtist = document.getElementById('songArtist');
-      const songTitleTopLeft = document.getElementById('songTitleTopLeft');
-      const songArtistTopLeft = document.getElementById('songArtistTopLeft');
-      function checkTextOverflow(element) {
-        if (element) {
-          const originalText = element.textContent;
-          const repeats = Math.min(5, Math.ceil(600 / originalText.length));
-          const repeatedText = Array(repeats).fill(originalText).join('\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0');
-          element.setAttribute('data-text', repeatedText);
-          if (element.scrollWidth > element.clientWidth) {
-            element.classList.add('marquee');
-          } else {
-            element.classList.remove('marquee');
-          }
-        }
-      }
-      checkTextOverflow(songTitle);
-      checkTextOverflow(songArtist);
-      checkTextOverflow(songTitleTopLeft);
-      checkTextOverflow(songArtistTopLeft);
-      const observer = new MutationObserver(() => {
-        if (songTitle) {
-          songTitle.classList.remove('marquee');
-          checkTextOverflow(songTitle);
-        }
-        if (songArtist) {
-          songArtist.classList.remove('marquee');
-          checkTextOverflow(songArtist);
-        }
-        if (songTitleTopLeft) {
-          songTitleTopLeft.classList.remove('marquee');
-          checkTextOverflow(songTitleTopLeft);
-        }
-        if (songArtistTopLeft) {
-          songArtistTopLeft.classList.remove('marquee');
-          checkTextOverflow(songArtistTopLeft);
-        }
-      });
-      if (songTitle) observer.observe(songTitle, { childList: true, subtree: true, characterData: true });
-      if (songArtist) observer.observe(songArtist, { childList: true, subtree: true, characterData: true });
-      if (songTitleTopLeft) observer.observe(songTitleTopLeft, { childList: true, subtree: true, characterData: true });
-      if (songArtistTopLeft) observer.observe(songArtistTopLeft, { childList: true, subtree: true, characterData: true });
-      window.addEventListener('resize', () => {
-        checkTextOverflow(songTitle);
-        checkTextOverflow(songArtist);
-        checkTextOverflow(songTitleTopLeft);
-        checkTextOverflow(songArtistTopLeft);
-      });
-    }
-    document.addEventListener('DOMContentLoaded', setupMarquee);
-  </script>
 </head>
 
 <body>
@@ -779,7 +691,7 @@
             <span class="control-value">4.00x</span>
           </div>
         </div>
-        <div style="flex: 1; text-align: center">
+        <div style="flex: 1; text-align: center;">
           <div id="volume-icons" style="display: inline-block; width: 1.25em; height: 1.25em;">
             <svg class="volume-off" width="1.25em" height="1.25em" xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 512 512" fill="var(--dominant-color-light)" style="display: none;">
@@ -823,33 +735,47 @@
       </div>
     </div>
     <div class="control-group">
-      <label data-i18n="backgroundStyle">Background Style</label>
-      <select id="backgroundStyle" style="width: 100%; margin: 8px 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; background: rgba(255, 255, 255, 0.1); color: var(--dominant-color-light); font-size: 0.875em; box-sizing: border-box;height: 2.5em; padding: 8px 12px;">
+      <label data-i18n="backgroundStyle">Style Settings</label>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="enableMarquee" checked>
+        <span class="control-value" data-i18n="enableMarquee">Marquee Title Effect</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span class="control-value" data-i18n="roundedCover">Cover Rounded Corners</span>
+        <input type="range" id="roundedCover" min="0" max="100" step="1" value="8" style="flex: 1;">
+        <span class="control-value" id="roundedCoverValue">8%</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span class="control-value" data-i18n="coverRotation">Cover Rotation Speed</span>
+        <input type="range" id="coverRotation" min="0" max="60" step="1" value="0" style="flex: 1;">
+        <span class="control-value" id="coverRotationValue">0rpm</span>
+      </div>
+      <select id="backgroundStyle"
+        style="width: 100%; margin: 8px 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; background: rgba(255, 255, 255, 0.1); color: var(--dominant-color-light); font-size: 0.875em; box-sizing: border-box;height: 2.5em; padding: 8px 12px;">
         <option value="fluid" selected data-i18n="amllBackground">AMLL Background</option>
         <option value="cover" data-i18n="coverBackground">Cover Background</option>
         <option value="solid" data-i18n="solidBackground">Solid Background</option>
       </select>
-      <div id="fluid-desc" class="bg-desc"><div style="display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="bgDynamic" checked>
-          <span class="control-value" data-i18n="dynamicBackground">Dynamic Background</span>
-      </div><span class="control-value" data-i18n="flowSpeed">Flow Speed</span>
-        <input type="range" id="bgFlowSpeed" min="0" max="10" step="0.1" value="4" style="width: 60%;">
-        <span class="control-value" id="bgFlowSpeedValue">4.0</span>
+      <div id="fluid-desc" class="bg-desc">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span class="control-value" data-i18n="flowSpeed">Flow Speed</span>
+          <input type="range" id="bgFlowSpeed" min="0" max="10" step="0.1" value="4" style="flex: 1;">
+          <span class="control-value" id="bgFlowSpeedValue">4.0</span>
+        </div>
       </div>
-      <div id="cover-desc" class="bg-desc" style="display:none"><div
-          style="display: flex; align-items: center; gap: 8px;">
+      <div id="cover-desc" class="bg-desc" style="display:none">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span class="control-value" data-i18n="coverBlurLevel">Blur Level</span>
-          <input type="range" id="coverBlurLevel" min="0" max="100" step="1" value="0" style="width: 60%;">
+          <input type="range" id="coverBlurLevel" min="0" max="100" step="1" value="0" style="flex: 1;">
           <span class="control-value" id="coverBlurLevelValue">0%</span>
-      </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <input type="checkbox" id="bgColorMask">
           <span class="control-value" data-i18n="colorMask">Color Mask</span>
+          <input type="color" id="bgMaskColor" value="#000000" style="width: 3em; height: 1em;">
+          <input type="range" id="bgMaskOpacity" min="0" max="100" step="5" value="30" style="flex: 1;">
+          <span class="control-value" id="bgMaskOpacityValue">30%</span>
         </div>
-        <span class="control-value" class="control-value" data-i18n="maskColor">Mask Color</span>
-        <input type="color" id="bgMaskColor" value="#000000" style="width: 3.5em; height: 3.5em;">
-        <input type="range" id="bgMaskOpacity" min="0" max="100" step="5" value="30" style="width: 50%;">
-        <span class="control-value" id="bgMaskOpacityValue">30%</span>
       </div>
       <div id="solid-desc" class="bg-desc" style="display:none">
         <div>

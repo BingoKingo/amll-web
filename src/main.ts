@@ -36,14 +36,6 @@ import {
   type LyricLineMouseEvent,
 } from "@applemusic-like-lyrics/core";
 
-class DomLyricPlayer extends BaseDomLyricPlayer {
-  updateColors() {
-    const element = this.getElement();
-    if (element) {
-      element.style.color = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color-light');
-    }
-  }
-}
 import type { spring } from "@applemusic-like-lyrics/core";
 type SpringParams = spring.SpringParams;
 
@@ -71,24 +63,31 @@ interface PlayerState {
   coverBlurLevel: number;
   backgroundMaskOpacity: number;
   showFPS: boolean;
+  marqueeEnabled: boolean;
+  roundedCover: number;
+  coverRotationSpeed: number;
 }
 
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
-  private lyricPlayer: DomLyricPlayer;
+  private lyricPlayer: BaseDomLyricPlayer;
   private background: BackgroundRender<PixiRenderer | MeshGradientRenderer>;
   private coverBlurBackground: HTMLDivElement;
   private stats: Stats;
   private state: PlayerState;
   private isInitialized = false;
   private hasLyrics = false;
+  private gui: GUI;
+  private colorThief: ColorThief;
+  private dominantColor: string = '#222222';
+  private marqueeObserver: MutationObserver | null = null;
+  private handleResizeBound: (() => void) | null = null;
+  private titleMarqueeInterval: number | null = null;
+  private originalTitle: string = '';
 
-  // 初始化多语言支持
   private initI18n() {
-    // 设置HTML的lang属性
     document.documentElement.lang = getCurrentLanguage();
 
-    // 应用翻译到所有带data-i18n属性的元素
     const i18nElements = document.querySelectorAll("[data-i18n]");
     i18nElements.forEach((el) => {
       const key = el.getAttribute("data-i18n") as any;
@@ -97,7 +96,6 @@ class WebLyricsPlayer {
       }
     });
 
-    // 应用翻译到所有带data-i18n-placeholder属性的元素
     const placeholderElements = document.querySelectorAll(
       "[data-i18n-placeholder]"
     );
@@ -115,9 +113,13 @@ class WebLyricsPlayer {
     const coverFile = document.getElementById('coverFile') as HTMLInputElement;
 
     musicFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.length > 0;
-      const uploadIcon = document.getElementById('musicFileBtn')?.querySelector('.upload-icon') as HTMLElement;
-      const uploadedIcon = document.getElementById('musicFileBtn')?.querySelector('.uploaded-icon') as HTMLElement;
+      const hasFile = (e.target as HTMLInputElement).files?.[0];
+      const musicFileBtn = document.getElementById('musicFileBtn');
+      if (!musicFileBtn) return;
+
+      const uploadIcon = musicFileBtn.querySelector('.upload-icon') as HTMLElement;
+      const uploadedIcon = musicFileBtn.querySelector('.uploaded-icon') as HTMLElement;
+
       if (uploadIcon && uploadedIcon) {
         uploadIcon.style.display = hasFile ? 'none' : 'block';
         uploadedIcon.style.display = hasFile ? 'block' : 'none';
@@ -125,7 +127,7 @@ class WebLyricsPlayer {
     });
 
     lyricFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.length > 0;
+      const hasFile = (e.target as HTMLInputElement).files?.[0];
       const uploadIcon = document.getElementById('lyricFileBtn')?.querySelector('.upload-icon') as HTMLElement;
       const uploadedIcon = document.getElementById('lyricFileBtn')?.querySelector('.uploaded-icon') as HTMLElement;
       if (uploadIcon && uploadedIcon) {
@@ -135,7 +137,7 @@ class WebLyricsPlayer {
     });
 
     coverFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.length > 0;
+      const hasFile = (e.target as HTMLInputElement).files?.[0];
       const uploadIcon = document.getElementById('coverFileBtn')?.querySelector('.upload-icon') as HTMLElement;
       const uploadedIcon = document.getElementById('coverFileBtn')?.querySelector('.uploaded-icon') as HTMLElement;
       if (uploadIcon && uploadedIcon) {
@@ -145,8 +147,202 @@ class WebLyricsPlayer {
     });
   }
 
+  private updateRoundedCover() {
+    const albumCoverLarge = document.getElementById('albumCoverLarge') as HTMLImageElement;
+    const roundedCoverSlider = document.getElementById('roundedCover') as HTMLInputElement;
+    const roundedCoverValue = document.getElementById('roundedCoverValue') as HTMLElement;
+
+    if (albumCoverLarge) {
+      // 将0-100%映射到0-50%的border-radius
+      const borderRadius = (this.state.roundedCover / 100) * 50;
+      albumCoverLarge.style.borderRadius = `${borderRadius}%`;
+    }
+
+    if (roundedCoverSlider) {
+      roundedCoverSlider.value = this.state.roundedCover.toString();
+    }
+
+    if (roundedCoverValue) {
+      roundedCoverValue.textContent = `${this.state.roundedCover}%`;
+    }
+  }
+
+  private updateCoverRotation() {
+    const albumCoverLarge = document.getElementById('albumCoverLarge') as HTMLImageElement;
+    const coverRotationSlider = document.getElementById('coverRotation') as HTMLInputElement;
+    const coverRotationValue = document.getElementById('coverRotationValue') as HTMLElement;
+
+    if (albumCoverLarge) {
+      albumCoverLarge.style.animation = 'none';
+
+      if (this.state.coverRotationSpeed > 0) {
+        const duration = 60 / this.state.coverRotationSpeed; // 转换rpm为秒
+        albumCoverLarge.style.animation = `spin ${duration}s linear infinite`;
+
+        if (this.audio.paused || albumCoverLarge.matches(':hover')) {
+          albumCoverLarge.style.animationPlayState = 'paused';
+        } else {
+          albumCoverLarge.style.animationPlayState = 'running';
+        }
+      }
+    }
+
+    if (coverRotationSlider) {
+      coverRotationSlider.value = this.state.coverRotationSpeed.toString();
+    }
+
+    if (coverRotationValue) {
+      coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
+    }
+  }
+
+  private updateMarqueeSettings() {
+    const songTitle = document.getElementById('songTitle');
+    const songArtist = document.getElementById('songArtist');
+    const songTitleTopLeft = document.getElementById('songTitleTopLeft');
+    const songArtistTopLeft = document.getElementById('songArtistTopLeft');
+
+    const updateTitleMarquee = () => {
+      if (this.titleMarqueeInterval) {
+        clearInterval(this.titleMarqueeInterval);
+        this.titleMarqueeInterval = null;
+      }
+
+      if (!this.originalTitle) {
+        this.originalTitle = document.title;
+      }
+
+      if (this.state.marqueeEnabled && (this.state.songTitle || this.state.songArtist)) {
+        const songInfo = `${this.state.songArtist ? this.state.songArtist + ' - ' : ''}${this.state.songTitle}`;
+        const fullTitle = `${songInfo} | AMLL Web Player`;
+
+        if (fullTitle.length > 50) { // 假设50字符为阈值
+          let position = 0;
+          const scrollTitle = () => {
+            if (!this.state.marqueeEnabled || this.audio.paused) {
+              document.title = fullTitle;
+              return;
+            }
+
+            const visibleLength = 50;
+            let displayText = fullTitle;
+
+            if (fullTitle.length > visibleLength) {
+              const startPos = position % fullTitle.length;
+              displayText = fullTitle.substring(startPos) + ' ' + fullTitle.substring(0, Math.min(startPos, visibleLength));
+              displayText = displayText.substring(0, visibleLength);
+            }
+
+            document.title = displayText;
+            position++;
+          };
+
+          scrollTitle();
+
+          if (!this.audio.paused) {
+            this.titleMarqueeInterval = window.setInterval(scrollTitle, 300);
+          }
+        } else {
+          document.title = fullTitle;
+        }
+      } else {
+        if (this.state.songTitle || this.state.songArtist) {
+          const songInfo = `${this.state.songArtist ? this.state.songArtist + ' - ' : ''}${this.state.songTitle}`;
+          document.title = `${songInfo} | AMLL Web Player`;
+        } else {
+          document.title = this.originalTitle || 'AMLL Web Player';
+        }
+      }
+    };
+
+    const checkAndUpdateMarquee = (element: HTMLElement | null) => {
+      if (!element) return;
+
+      requestAnimationFrame(() => {
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+
+        if (isOverflowing && !element.classList.contains('marquee')) {
+          element.classList.add('marquee');
+        } else if (!isOverflowing && element.classList.contains('marquee')) {
+          element.classList.remove('marquee');
+        }
+      });
+
+      const originalText = element.textContent || '';
+      const repeats = Math.min(5, Math.ceil(600 / originalText.length));
+      const repeatedText = Array(repeats).fill(originalText).join('\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0');
+      element.setAttribute('data-text', repeatedText);
+
+      const isOverflowing = element.scrollWidth > element.clientWidth;
+
+      if (isOverflowing) {
+        if (!element.classList.contains('marquee')) {
+          element.classList.remove('marquee');
+          void element.offsetWidth;
+          element.classList.add('marquee');
+        }
+        if (this.audio.paused) {
+          element.style.setProperty('--marquee-play-state', 'paused');
+        } else {
+          element.style.setProperty('--marquee-play-state', 'running');
+        }
+      } else {
+        element.classList.remove('marquee');
+      }
+    };
+
+    updateTitleMarquee();
+
+    if (this.marqueeObserver) {
+      this.marqueeObserver.disconnect();
+    }
+
+    this.marqueeObserver = new MutationObserver(() => {
+      if (songTitle) {
+        songTitle.classList.remove('marquee');
+        checkAndUpdateMarquee(songTitle);
+      }
+      if (songArtist) {
+        songArtist.classList.remove('marquee');
+        checkAndUpdateMarquee(songArtist);
+      }
+      if (songTitleTopLeft) {
+        songTitleTopLeft.classList.remove('marquee');
+        checkAndUpdateMarquee(songTitleTopLeft);
+      }
+      if (songArtistTopLeft) {
+        songArtistTopLeft.classList.remove('marquee');
+        checkAndUpdateMarquee(songArtistTopLeft);
+      }
+      updateTitleMarquee();
+    });
+
+    if (songTitle) this.marqueeObserver.observe(songTitle, { childList: true, subtree: true, characterData: true });
+    if (songArtist) this.marqueeObserver.observe(songArtist, { childList: true, subtree: true, characterData: true });
+    if (songTitleTopLeft) this.marqueeObserver.observe(songTitleTopLeft, { childList: true, subtree: true, characterData: true });
+    if (songArtistTopLeft) this.marqueeObserver.observe(songArtistTopLeft, { childList: true, subtree: true, characterData: true });
+
+    checkAndUpdateMarquee(songTitle);
+    checkAndUpdateMarquee(songArtist);
+    checkAndUpdateMarquee(songTitleTopLeft);
+    checkAndUpdateMarquee(songArtistTopLeft);
+
+    const handleResize = () => {
+      checkAndUpdateMarquee(songTitle);
+      checkAndUpdateMarquee(songArtist);
+      checkAndUpdateMarquee(songTitleTopLeft);
+      checkAndUpdateMarquee(songArtistTopLeft);
+    };
+
+    if (this.handleResizeBound) {
+      window.removeEventListener('resize', this.handleResizeBound);
+    }
+
+    this.handleResizeBound = handleResize.bind(this);
+    window.addEventListener('resize', this.handleResizeBound);
+  }
+
   private resetUploadButtons() {
-    // 重置上传按钮状态
     const uploadIcons = document.querySelectorAll('.upload-icon') as NodeListOf<HTMLElement>;
     const uploadedIcons = document.querySelectorAll('.uploaded-icon') as NodeListOf<HTMLElement>;
 
@@ -158,8 +354,6 @@ class WebLyricsPlayer {
       icon.style.display = 'none';
     });
   }
-  private colorThief: ColorThief;
-  private dominantColor: string = '#222222';
 
   constructor() {
     this.initI18n();
@@ -168,15 +362,14 @@ class WebLyricsPlayer {
     this.audio.preload = "auto";
     this.colorThief = new ColorThief();
 
-    this.lyricPlayer = new DomLyricPlayer();
-    if (this.lyricPlayer.element) {
-      this.lyricPlayer.element.style.width = "100%";
-      this.lyricPlayer.element.style.height = "100%";
-      this.lyricPlayer.element.style.zIndex = "3";
-      this.lyricPlayer.element.style.position = "relative";
+    this.lyricPlayer = new BaseDomLyricPlayer();
+    const element = this.lyricPlayer.getElement();
+    if (element) {
+      element.style.width = "100%";
+      element.style.height = "100%";
+      element.style.zIndex = "3";
+      element.style.position = "relative";
     }
-
-
 
     this.state = {
       musicUrl: "",
@@ -194,11 +387,14 @@ class WebLyricsPlayer {
       backgroundDynamic: true,
       backgroundFlowSpeed: 4,
       backgroundColorMask: false,
-      backgroundMaskColor: '#000000',
+      backgroundMaskColor: '#FFFFFF',
       backgroundMaskOpacity: 30,
       showFPS: false,
       coverBlurLevel: 40,
-      invertColors: false
+      invertColors: false,
+      marqueeEnabled: true,
+      roundedCover: 8,
+      coverRotationSpeed: 0
     };
     this.hasLyrics = false;
 
@@ -214,15 +410,9 @@ class WebLyricsPlayer {
     this.setupLyricEvents();
     this.initStats();
     this.initUI();
+    this.updateMarqueeSettings();
   }
 
-  private setDefaultColors(): void {
-    document.documentElement.style.setProperty('--dominant-color', 'rgb(253 156 155)');
-    document.documentElement.style.setProperty('--dominant-color-light', 'rgb(255 207 206)');
-    document.documentElement.style.setProperty('--dominant-color-dark', 'rgb(100 3 2)');
-  }
-
-  // 为进度条添加滚轮调节功能
   private setupWheelControl(inputId: string, valueId: string, step: number) {
     const input = document.getElementById(inputId) as HTMLInputElement;
     if (!input) return;
@@ -246,7 +436,6 @@ class WebLyricsPlayer {
     this.gui.hide();
     this.gui.close();
 
-    // 添加背景控制选项
     const bgControls = {
       dynamicBackground: true,
       flowSpeed: 4,
@@ -260,16 +449,15 @@ class WebLyricsPlayer {
 
     const bgFolder = this.gui.addFolder(t("backgroundControl"));
     bgFolder
-      .add(bgControls, "dynamicBackground")
-      .name(t("dynamicBackground"))
-      .onChange((value: boolean) => {
-        (window as any).player.getBackground().setStaticMode(!value);
-      });
-    bgFolder
       .add(bgControls, "flowSpeed", 0, 10, 0.1)
       .name(t("flowSpeed"))
       .onChange((value: number) => {
-        (window as any).player.getBackground().setFlowSpeed(value);
+        if (value === 0) {
+          (window as any).player.getBackground().setStaticMode(true);
+        } else {
+          (window as any).player.getBackground().setStaticMode(false);
+          (window as any).player.getBackground().setFlowSpeed(value);
+        }
       });
     bgFolder
       .add(bgControls, "toggleBackground")
@@ -277,15 +465,30 @@ class WebLyricsPlayer {
   }
 
   private initEventListeners() {
-    this.loadBackgroundSettings();
     this.setupDragAndDropEvents();
 
+    document.getElementById('roundedCover')?.addEventListener('input', (e) => {
+      const roundedValue = parseInt((e.target as HTMLInputElement).value);
+      this.state.roundedCover = roundedValue;
+      this.updateRoundedCover();
+      document.getElementById('roundedCoverValue')!.textContent = `${roundedValue}%`;
+      this.saveBackgroundSettings();
+    });
+
+    document.getElementById('coverRotation')?.addEventListener('input', (e) => {
+      const speedValue = parseInt((e.target as HTMLInputElement).value);
+      this.state.coverRotationSpeed = speedValue;
+      this.updateCoverRotation();
+      document.getElementById('coverRotationValue')!.textContent = `${speedValue}rpm`;
+      this.saveBackgroundSettings();
+    });
+
     document.getElementById('coverBlurLevel')?.addEventListener('input', (e) => {
-      const blurLevel = (e.target as HTMLInputElement).value;
+      const blurLevel = parseFloat((e.target as HTMLInputElement).value);
       const mappedBlurLevel = (blurLevel / 100) * 50; // 映射0~100%到0px~50px
       this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
       document.getElementById('coverBlurLevelValue')!.textContent = `${blurLevel}%`;
-      this.state.coverBlurLevel = parseFloat(blurLevel);
+      this.state.coverBlurLevel = blurLevel;
       this.saveBackgroundSettings();
     });
 
@@ -294,10 +497,18 @@ class WebLyricsPlayer {
     this.setupWheelControl('bgMaskOpacity', 'bgMaskOpacityValue', 5);
     this.setupWheelControl('volume', 'volumeValue', 0.05);
     this.setupWheelControl('playbackRate', 'playbackRateValue', 0.1);
+    this.setupWheelControl('roundedCover', 'roundedCoverValue', 1);
+    this.setupWheelControl('coverRotation', 'coverRotationValue', 0.5);
 
     document.getElementById('invertColors')?.addEventListener('change', (e) => {
       this.invertColors((e.target as HTMLInputElement).checked);
       this.state.invertColors = (e.target as HTMLInputElement).checked;
+      this.saveBackgroundSettings();
+    });
+
+    document.getElementById('enableMarquee')?.addEventListener('change', (e) => {
+      this.state.marqueeEnabled = (e.target as HTMLInputElement).checked;
+      this.updateMarqueeSettings();
       this.saveBackgroundSettings();
     });
 
@@ -433,8 +644,8 @@ class WebLyricsPlayer {
       }
     });
 
-    // 文件上传事件
     document.getElementById("musicFile")?.addEventListener("change", (e) => {
+      if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         this.loadMusicFromFile(file);
@@ -442,6 +653,7 @@ class WebLyricsPlayer {
     });
 
     document.getElementById("lyricFile")?.addEventListener("change", (e) => {
+      if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         this.loadLyricFromFile(file);
@@ -449,13 +661,13 @@ class WebLyricsPlayer {
     });
 
     document.getElementById("coverFile")?.addEventListener("change", (e) => {
+      if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         this.loadCoverFromFile(file);
       }
     });
 
-    // 歌曲信息输入事件
     document
       .getElementById("songTitleInput")
       ?.addEventListener("input", (e) => {
@@ -470,7 +682,6 @@ class WebLyricsPlayer {
         this.updateSongInfo();
       });
 
-    // 循环播放开关
     document.getElementById("loopPlay")?.addEventListener("change", (e) => {
       this.state.loopPlay = (e.target as HTMLInputElement).checked;
     });
@@ -532,7 +743,6 @@ class WebLyricsPlayer {
       }, { passive: false });
     }
 
-    // 歌词延迟调整
     const lyricDelayInput = document.getElementById(
       "lyricDelayInput"
     ) as HTMLInputElement;
@@ -567,20 +777,17 @@ class WebLyricsPlayer {
       });
     }
 
-    document.getElementById('bgDynamic')?.addEventListener('change', (e) => {
-      this.state.backgroundDynamic = (e.target as HTMLInputElement).checked;
-      if (this.state.backgroundType === 'fluid') {
-        this.background.setStaticMode(!this.state.backgroundDynamic);
-      }
-      this.saveBackgroundSettings();
-    });
-
     document.getElementById('bgFlowSpeed')?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundFlowSpeed = value;
       // 只有在AMLL背景模式下才应用流动速度
       if (this.state.backgroundType === 'fluid') {
-        this.background.setFlowSpeed(value);
+        if (value === 0) {
+          this.background.setStaticMode(true);
+        } else {
+          this.background.setStaticMode(false);
+          this.background.setFlowSpeed(value);
+        }
       }
       document.getElementById('bgFlowSpeedValue')!.textContent = value.toFixed(1);
       this.saveBackgroundSettings();
@@ -614,7 +821,6 @@ class WebLyricsPlayer {
       this.saveBackgroundSettings();
     });
 
-    // 按钮事件
     document.getElementById("loadFromUrl")?.addEventListener("click", () => {
       this.loadFromURLs();
     });
@@ -643,14 +849,6 @@ class WebLyricsPlayer {
 
     document.getElementById("resetPlayer")?.addEventListener("click", () => {
       this.resetPlayer();
-    });
-
-    document.getElementById("playPauseBtn")?.addEventListener("click", () => {
-      if (this.audio.src) {
-        this.togglePlayPause();
-      } else {
-        this.openFilePicker();
-      }
     });
 
     const fullscreenButton = document.getElementById("fullscreenBtn");
@@ -707,7 +905,6 @@ class WebLyricsPlayer {
         clearTimeout(fullscreenButtonLongPressTimer);
       }, { passive: true });
     }
-
     document.getElementById("toggleControls")?.addEventListener("click", () => {
       this.toggleControlPanel();
     });
@@ -740,7 +937,6 @@ class WebLyricsPlayer {
     window.addEventListener("resize", () => {
       this.adjustLyricPosition();
     });
-
     document.addEventListener("fullscreenchange", () => {
       const enterIcon = document.querySelector('.fullscreen-enter') as HTMLElement;
       const exitIcon = document.querySelector('.fullscreen-exit') as HTMLElement;
@@ -796,7 +992,6 @@ class WebLyricsPlayer {
           this.switchBackgroundStyle(backgroundStyleSelect.value);
         }
       });
-
       backgroundStyleSelect.addEventListener("wheel", (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? 1 : -1;
@@ -826,7 +1021,23 @@ class WebLyricsPlayer {
     this.isColorsInitialized = true;
   }
 
-  private invertColors(checked: boolean) {
+  private setDefaultColors(): void {
+    document.documentElement.style.setProperty('--dominant-color', 'rgb(253, 156, 155)');
+    document.documentElement.style.setProperty('--dominant-color-light', 'rgb(255, 207, 206)');
+    document.documentElement.style.setProperty('--dominant-color-dark', 'rgb(100, 3, 2)');
+
+    this.originalDominant = 'rgb(253, 156, 155)';
+    this.originalLight = 'rgb(255, 207, 206)';
+    this.originalDark = 'rgb(100, 3, 2)';
+    this.isColorsInitialized = true;
+
+    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
+    if (invertCheckbox) {
+      this.invertColors(invertCheckbox.checked);
+    }
+  }
+
+  private invertColors(checked: boolean): void {
     const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
     if (!invertCheckbox) return;
 
@@ -835,16 +1046,30 @@ class WebLyricsPlayer {
     }
 
     if (checked) {
-      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDominant);
-      document.documentElement.style.setProperty('--dominant-color-light', this.originalDark);
       document.documentElement.style.setProperty('--dominant-color', this.originalLight);
+      document.documentElement.style.setProperty('--dominant-color-light', this.originalDark);
+      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDominant);
     } else {
-      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
-      document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
       document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
+      document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
+      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
     }
-    if (this.lyricPlayer) this.lyricPlayer.updateColors();
-    this.applyDominantColorAsCSSVariable();
+
+    this.state.invertColors = checked;
+    this.saveBackgroundSettings();
+  }
+
+  private applyDominantColorAsCSSVariable(): void {
+    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
+    const isInverted = invertCheckbox?.checked;
+
+    if (this.dominantColor) {
+      this.originalDominant = this.dominantColor;
+      this.originalLight = this.lightenColor(this.dominantColor, 0.2);
+      this.originalDark = this.darkenColor(this.dominantColor, 0.5);
+      this.isColorsInitialized = true;
+      this.invertColors(isInverted);
+    }
   }
 
   private switchBackgroundStyle(style: string) {
@@ -886,10 +1111,10 @@ class WebLyricsPlayer {
         const solidInvertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
         if (solidInvertCheckbox) {
           solidInvertCheckbox.onchange = () => {
-            this.applyDominantColorAsCSSVariable();
+            this.invertColors(solidInvertCheckbox.checked);
           };
           if (solidInvertCheckbox.checked) {
-            this.applyDominantColorAsCSSVariable();
+            this.invertColors(solidInvertCheckbox.checked);
           }
         }
         break;
@@ -904,7 +1129,7 @@ class WebLyricsPlayer {
       this.updateTimeDisplay();
       this.updateMediaSessionMetadata();
 
-      if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream) {
         setTimeout(() => {
           this.updateMediaSessionMetadata();
         }, 100);
@@ -925,6 +1150,8 @@ class WebLyricsPlayer {
       this.state.isPlaying = true;
       this.updatePlayButton();
       this.lyricPlayer.resume();
+      this.updateMarqueeSettings();
+      this.updateCoverRotation();
 
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "playing";
@@ -935,6 +1162,8 @@ class WebLyricsPlayer {
       this.state.isPlaying = false;
       this.updatePlayButton();
       this.lyricPlayer.pause();
+      this.updateMarqueeSettings();
+      this.updateCoverRotation();
 
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "paused";
@@ -1139,8 +1368,8 @@ class WebLyricsPlayer {
     const player = document.getElementById("player");
     const lyricsPanel = document.getElementById("lyricsPanel");
 
-    if (lyricsPanel && this.lyricPlayer.element) {
-      lyricsPanel.appendChild(this.lyricPlayer.element);
+    if (lyricsPanel && this.lyricPlayer.getElement()) {
+      lyricsPanel.appendChild(this.lyricPlayer.getElement());
     }
 
     this.updateLyricAreaHint();
@@ -1148,8 +1377,14 @@ class WebLyricsPlayer {
     const playButton = document.getElementById("playPauseBtn");
     if (playButton) {
       let playButtonLongPressTimer: number;
+      let isLongPressTriggered = false;
 
       playButton.addEventListener("click", (e) => {
+        if (isLongPressTriggered) {
+          isLongPressTriggered = false;
+          return;
+        }
+
         if (!this.state.musicUrl && !this.audio.src) {
           e.preventDefault();
           const musicFileInput = document.getElementById(
@@ -1158,12 +1393,17 @@ class WebLyricsPlayer {
           if (musicFileInput) musicFileInput.click();
           return;
         }
+        if (this.audio.src) {
+          this.togglePlayPause();
+        }
       });
 
       let isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
       playButton.addEventListener("mousedown", () => {
+        isLongPressTriggered = false;
         playButtonLongPressTimer = window.setTimeout(() => {
+          isLongPressTriggered = true;
           const musicFileInput = document.getElementById(
             "musicFile"
           ) as HTMLInputElement;
@@ -1237,18 +1477,15 @@ class WebLyricsPlayer {
           }
         }, { passive: false });
       } else {
-        // 如果找不到歌词面板，则添加到播放器容器
         player.appendChild(this.lyricPlayer.getElement());
       }
     }
 
     this.initCoverBlurBackground();
     this.updateBackground();
-    // 设置默认封面
     this.background.setAlbum("./assets/icon-512x512.png");
     this.setDefaultColors();
 
-    // 确保控制面板默认隐藏
     const controlPanel = document.getElementById("controlPanel");
     if (controlPanel) {
       controlPanel.style.display = "none";
@@ -1265,7 +1502,7 @@ class WebLyricsPlayer {
       const isValidExtension = /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
 
       if (!isAudioType && !isValidExtension) {
-        this.showStatus(t("invalidMusicFile"), true);
+        this.showStatus(t("musicLoadFailed"), true);
         return;
       }
 
@@ -1298,7 +1535,7 @@ class WebLyricsPlayer {
       const isTextPlain = file.type === "text/plain" || file.type === "";
 
       if (!isValidExtension && !isTextPlain) {
-        this.showStatus(t("invalidLyricFile"), true);
+        this.showStatus(t("lyricsLoadFailed"), true);
         return;
       }
 
@@ -1318,7 +1555,7 @@ class WebLyricsPlayer {
       const url = URL.createObjectURL(file);
       this.state.coverUrl = url;
       this.updateBackground();
-      this.background.setAlbum(url);
+      this.background.setAlbum(url || "./assets/icon-512x512.png");
       await this.extractAndProcessCoverColor(url);
       this.applyDominantColorAsCSSVariable();
       this.updateBackground();
@@ -1496,17 +1733,13 @@ class WebLyricsPlayer {
         const isESFormat = isESLyRiCFormat(text);
         const isA2Format = isLyRiCA2Format(text);
 
-        // 根据 URL 后缀或内容格式决定如何处理
         if (lyricUrl.endsWith(".lrc")) {
           if (isESFormat || isA2Format) {
-            // 对于特殊格式的 .lrc 文件，使用对应的解析器
             await this.loadLyricContent(text, lyricUrl);
           } else {
-            // 标准 LRC 格式
             await this.loadLyricContent(text, lyricUrl);
           }
         } else {
-          // 对于其他扩展名，尝试检测格式
           await this.loadLyricContent(text, lyricUrl);
         }
         this.updateFileInputDisplay("lyricFile", lyricUrl);
@@ -1518,7 +1751,7 @@ class WebLyricsPlayer {
     if (coverUrl) {
       this.state.coverUrl = coverUrl;
       this.updateBackground();
-      this.background.setAlbum(coverUrl);
+      this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
       await this.extractAndProcessCoverColor(coverUrl);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", coverUrl);
@@ -1535,7 +1768,7 @@ class WebLyricsPlayer {
       if (artist) {
         document.title = `${artist} - ${title} | AMLL Web Player`;
       } else {
-        document.title = `${ title } | AMLL Web Player`;
+        document.title = `${title} | AMLL Web Player`;
       }
     }
 
@@ -1580,28 +1813,18 @@ class WebLyricsPlayer {
       if (filename.endsWith(".ttml")) {
         lines = parseTTML(content).lines.map(this.mapTTMLLyric);
       } else if (filename.endsWith(".ass")) {
-        // 解析 ASS 格式
         const ttmlContent = assToTTML(content);
-        // 使用 TTML 解析器解析
         lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
       } else if (filename.endsWith(".lrc")) {
-        // 如果是 .lrc 文件，先检查是否为特殊格式
         if (isESFormat) {
-          // 解析 ESLyRiC 格式
           const rawLines = parseESLyRiC(content);
-          // 转换为 TTML 格式
           const ttmlContent = convertToTTML(rawLines);
-          // 使用 TTML 解析器解析
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isA2Format) {
-          // 解析 LyRiC A2 格式
           const rawLines = parseLyRiCA2(content);
-          // 转换为 TTML 格式
           const ttmlContent = convertToTTML(rawLines);
-          // 使用 TTML 解析器解析
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else {
-          // 标准 LRC 格式
           lines = parseLrc(content).map(this.mapLyric);
         }
       } else if (filename.endsWith(".yrc")) {
@@ -1611,26 +1834,19 @@ class WebLyricsPlayer {
       } else if (filename.endsWith(".qrc")) {
         lines = parseQrc(content).map(this.mapLyric);
       } else if (filename.endsWith(".lqe")) {
-        // 检查是否为 Lyricify Syllable 格式
         if (content.includes('[lyrics: format@Lyricify Syllable]')) {
           lines = parseLys(content).map(this.mapLyric);
         } else {
-          // 解析 LQE 格式
           const ttmlContent = lqeToTTML(content);
-          // 使用 TTML 解析器解析
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         }
       } else if (filename.endsWith(".srt")) {
-        // 解析 SRT 格式（先转 TTML）
         const ttmlContent = srtToTTML(content);
         lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
       } else if (filename.endsWith(".lyl")) {
-        // 解析 LYL 格式
         const ttmlContent = lylToTTML(content);
-        // 使用 TTML 解析器解析
         lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
       } else {
-        // 对于未知扩展名的文件，尝试检测格式
         if (isESFormat) {
           const rawLines = parseESLyRiC(content);
           const ttmlContent = convertToTTML(rawLines);
@@ -1640,23 +1856,18 @@ class WebLyricsPlayer {
           const ttmlContent = convertToTTML(rawLines);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isSrtFormat(content)) {
-          // 内容检测为 SRT
           const ttmlContent = srtToTTML(content);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isLqeFormat(content)) {
-          // 尝试作为 LQE 格式解析
           const ttmlContent = lqeToTTML(content);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isAssFormat(content)) {
-          // 尝试作为 ASS 格式解析
           const ttmlContent = assToTTML(content);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isLylFormat(content)) {
-          // 尝试作为 LYL 格式解析
           const ttmlContent = lylToTTML(content);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else {
-          // 尝试作为标准 LRC 解析
           lines = parseLrc(content).map(this.mapLyric);
         }
       }
@@ -1723,8 +1934,6 @@ class WebLyricsPlayer {
       const percentage = (this.state.currentTime / this.state.duration) * 100;
       if (progressFill) {
         progressFill.style.width = `${percentage}%`;
-      } else {
-        progressFill.style.width = "0%";
       }
       if (landscapeProgressFill) {
         landscapeProgressFill.style.width = `${percentage}%`;
@@ -1878,6 +2087,10 @@ class WebLyricsPlayer {
 
     this.background.setAlbum("./assets/icon-512x512.png");
     this.setDefaultColors();
+    this.isColorsInitialized = false;
+    this.initColors();
+    this.state.roundedCover = 8;
+    this.updateRoundedCover();
 
     this.state.lyricUrl = "";
     this.state.songTitle = "";
@@ -2001,6 +2214,7 @@ class WebLyricsPlayer {
     const songInfoTopLeft = document.getElementById("songInfoTopLeft");
     if (songInfoTopLeft) {
       songInfoTopLeft.style.display = "none";
+      this.updateMarqueeSettings();
     }
 
     this.adjustLyricPosition();
@@ -2021,20 +2235,32 @@ class WebLyricsPlayer {
       backgroundDynamic: true,
       backgroundFlowSpeed: 4,
       backgroundColorMask: false,
-      backgroundMaskColor: '#000000',
+      backgroundMaskColor: '#FFFFFF',
       backgroundMaskOpacity: 30,
       showFPS: false,
-      coverBlurLevel: 0,
-      invertColors: false
+      coverBlurLevel: 40,
+      invertColors: false,
+      marqueeEnabled: true,
+      roundedCover: 8,
+      coverRotationSpeed: 0
     };
 
     // 清除localStorage中的BackgroundSettings
     localStorage.removeItem('amll_background_settings');
-    
+
     // 更新背景UI和显示
     this.updateBackgroundUI();
     this.updateBackground();
     this.updateFPSDisplay();
+
+    const progressFill = document.getElementById("progressFill");
+    const landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
+    if (progressFill) {
+      progressFill.style.width = "0%";
+    }
+    if (landscapeProgressFill) {
+      landscapeProgressFill.style.width = "0%";
+    }
 
     this.updatePlayButton();
     this.updateProgress();
@@ -2127,6 +2353,7 @@ class WebLyricsPlayer {
       songTitle.textContent = this.state.songTitle || t("title");
       songArtist.textContent = this.state.songArtist || t("artist");
       songInfoTopLeft.style.display = "block";
+      this.updateMarqueeSettings();
     }
 
     this.updateAlbumSidePanel();
@@ -2237,7 +2464,7 @@ class WebLyricsPlayer {
                 base64String
               )}`;
               this.state.coverUrl = base64;
-              this.background.setAlbum(base64);
+              this.background.setAlbum(base64 || "./assets/icon-512x512.png");
               this.extractAndProcessCoverColor(base64);
               this.applyDominantColorAsCSSVariable();
               this.updateBackground();
@@ -2438,7 +2665,6 @@ class WebLyricsPlayer {
   }
 
   private showAutoPlayHint() {
-    // 创建自动播放提示
     const hint = document.createElement("div");
     hint.style.cssText = `
       position: fixed;
@@ -2469,7 +2695,6 @@ class WebLyricsPlayer {
     `;
     document.body.appendChild(hint);
 
-    // 5秒后自动消失
     setTimeout(() => {
       if (hint.parentElement) {
         hint.remove();
@@ -2477,7 +2702,6 @@ class WebLyricsPlayer {
     }, 3000);
   }
 
-  // 从URL参数加载
   public loadFromURLParams() {
     const urlParams = new URLSearchParams(window.location.search);
     const music = urlParams.get("music");
@@ -2488,7 +2712,7 @@ class WebLyricsPlayer {
     const hasAutoParam = urlParams.has("auto");
     const autoPlay = hasAutoParam
       ? urlParams.get("auto") === "1" || urlParams.get("auto") === "true"
-      : true; // 未提供时默认开启自动播放
+      : true;
 
     const playbackSpeed = urlParams.get("x");
     const lyricDelayMs = urlParams.get("ms");
@@ -2496,10 +2720,8 @@ class WebLyricsPlayer {
     const hasLoopParam = urlParams.has("loop");
     const loopPlay = hasLoopParam
       ? urlParams.get("loop") === "1" || urlParams.get("loop") === "true"
-      : true; // 未提供时默认勾选循环
+      : true;
     const currentTime = urlParams.get("t");
-
-    // 如果没有音乐URL，显示控制面板
     if (!music) {
       const controlPanel = document.getElementById("controlPanel");
       if (controlPanel) controlPanel.style.display = "block";
@@ -2519,7 +2741,6 @@ class WebLyricsPlayer {
         title;
       this.state.songTitle = title;
 
-      // 更新页面标题为"艺术家 - 标题"格式
       if (artist) {
         document.title = `${artist} - ${title} | AMLL Web Player`;
       } else {
@@ -2602,7 +2823,6 @@ class WebLyricsPlayer {
       }
     }
 
-    // 如果有URL参数，自动加载
     if (music || lyric || cover) {
       this.loadFromURLs().then(() => {
         if (currentTime && this.audio) {
@@ -2612,12 +2832,10 @@ class WebLyricsPlayer {
           }
         }
 
-        // 如果启用自动播放（默认开启，除非显式关闭），则开始播放
         if (autoPlay && this.audio) {
           console.log("Auto-playing music");
           this.audio.play().catch((error) => {
             console.log("Auto-play failed, requires user interaction:", error);
-            // 显示提示信息
             this.showAutoPlayHint();
           });
         }
@@ -2625,11 +2843,10 @@ class WebLyricsPlayer {
     }
   }
 
-  // 启动播放器
   public start() {
     this.loadFromURLParams();
+    this.loadBackgroundSettings();
     this.startAnimationLoop();
-    // 确保背景开始播放
     this.background.resume();
     this.isInitialized = true;
   }
@@ -2659,7 +2876,7 @@ class WebLyricsPlayer {
     return this.audio;
   }
 
-  public getLyricPlayer(): DomLyricPlayer {
+  public getLyricPlayer(): BaseDomLyricPlayer {
     return this.lyricPlayer;
   }
 
@@ -2692,7 +2909,7 @@ class WebLyricsPlayer {
       console.log('封面取色:', this.dominantColor);
     } catch (error) {
       console.error('封面取色失败:', error);
-      this.dominantColor = '#808080';
+      this.setDefaultColors();
       this.applyDominantColorAsCSSVariable();
     }
   }
@@ -2759,22 +2976,6 @@ class WebLyricsPlayer {
     }).join('');
   }
 
-  private applyDominantColorAsCSSVariable(): void {
-    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
-    const isInverted = invertCheckbox?.checked;
-
-    if (isInverted) {
-      document.documentElement.style.setProperty('--dominant-color', this.lightenColor(this.dominantColor, 0.2));
-      document.documentElement.style.setProperty('--dominant-color-light', this.darkenColor(this.dominantColor, 0.6));
-      document.documentElement.style.setProperty('--dominant-color-dark', this.dominantColor);
-    } else {
-      document.documentElement.style.setProperty('--dominant-color', this.dominantColor);
-      document.documentElement.style.setProperty('--dominant-color-light', this.lightenColor(this.dominantColor, 0.2));
-      document.documentElement.style.setProperty('--dominant-color-dark', this.darkenColor(this.dominantColor, 0.6));
-    }
-    if (this.lyricPlayer) this.lyricPlayer.updateColors();
-  }
-
   private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? {
@@ -2816,7 +3017,10 @@ class WebLyricsPlayer {
       backgroundMaskOpacity: this.state.backgroundMaskOpacity,
       showFPS: this.state.showFPS,
       coverBlurLevel: this.state.coverBlurLevel,
-      invertColors: this.state.invertColors
+      invertColors: this.state.invertColors,
+      marqueeEnabled: this.state.marqueeEnabled,
+      roundedCover: this.state.roundedCover,
+      coverRotationSpeed: this.state.coverRotationSpeed
     };
     localStorage.setItem('amll_background_settings', JSON.stringify(settings));
   }
@@ -2830,15 +3034,19 @@ class WebLyricsPlayer {
         this.state.backgroundDynamic = settings.backgroundDynamic !== undefined ? settings.backgroundDynamic : true;
         this.state.backgroundFlowSpeed = settings.backgroundFlowSpeed || 4;
         this.state.backgroundColorMask = settings.backgroundColorMask !== undefined ? settings.backgroundColorMask : false;
-        this.state.backgroundMaskColor = settings.backgroundMaskColor || '#000000';
+        this.state.backgroundMaskColor = settings.backgroundMaskColor || '#FFFFFF';
         this.state.backgroundMaskOpacity = settings.backgroundMaskOpacity !== undefined ? settings.backgroundMaskOpacity : 30;
         this.state.showFPS = settings.showFPS !== undefined ? settings.showFPS : false;
         this.state.coverBlurLevel = settings.coverBlurLevel !== undefined ? settings.coverBlurLevel : 40;
         this.state.invertColors = settings.invertColors !== undefined ? settings.invertColors : false;
-
+        this.state.roundedCover = settings.roundedCover !== undefined ? settings.roundedCover : 8;
+        this.state.marqueeEnabled = settings.marqueeEnabled !== undefined ? settings.marqueeEnabled : true;
+        this.state.coverRotationSpeed = settings.coverRotationSpeed !== undefined ? settings.coverRotationSpeed : 0;
         this.updateBackgroundUI();
         this.updateBackground();
         this.updateFPSDisplay();
+        this.updateRoundedCover();
+        this.updateMarqueeSettings();
       }
     } catch (error) {
       console.log('加载背景设置失败:', error);
@@ -2846,7 +3054,6 @@ class WebLyricsPlayer {
   }
 
   private updateBackgroundUI() {
-    const bgDynamic = document.getElementById('bgDynamic') as HTMLInputElement;
     const bgFlowSpeed = document.getElementById('bgFlowSpeed') as HTMLInputElement;
     const bgFlowSpeedValue = document.getElementById('bgFlowSpeedValue');
     const bgColorMask = document.getElementById('bgColorMask') as HTMLInputElement;
@@ -2858,22 +3065,31 @@ class WebLyricsPlayer {
     const coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
     const coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
     const invertColorsCheckbox = document.getElementById('invertColors') as HTMLInputElement;
+    const roundedCoverSlider = document.getElementById('roundedCover') as HTMLInputElement;
+    const roundedCoverValue = document.getElementById('roundedCoverValue') as HTMLElement;
+    const coverRotationSlider = document.getElementById('coverRotation') as HTMLInputElement;
+    const coverRotationValue = document.getElementById('coverRotationValue') as HTMLElement;
+    const enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
     const fluidDesc = document.getElementById('fluid-desc');
     const coverDesc = document.getElementById('cover-desc');
     const solidDesc = document.getElementById('solid-desc');
 
-    if (bgDynamic) bgDynamic.checked = this.state.backgroundDynamic;
     if (bgFlowSpeed) bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
     if (bgFlowSpeedValue) bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
     if (bgColorMask) bgColorMask.checked = this.state.backgroundColorMask;
     if (bgMaskColor) bgMaskColor.value = this.state.backgroundMaskColor;
     if (bgMaskOpacity) bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
-    if (bgMaskOpacityValue) bgMaskOpacityValue.textContent = this.state.backgroundMaskOpacity + '%';
+    if (bgMaskOpacityValue) bgMaskOpacityValue.textContent = `${this.state.backgroundMaskOpacity}%`;
     if (showFPSCheckbox) showFPSCheckbox.checked = this.state.showFPS;
     if (backgroundStyleSelect) backgroundStyleSelect.value = this.state.backgroundType;
     if (coverBlurLevel) coverBlurLevel.value = this.state.coverBlurLevel.toString();
-    if (coverBlurLevelValue) coverBlurLevelValue.textContent = this.state.coverBlurLevel + '%';
+    if (coverBlurLevelValue) coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
     if (invertColorsCheckbox) invertColorsCheckbox.checked = this.state.invertColors;
+    if (roundedCoverSlider) roundedCoverSlider.value = this.state.roundedCover.toString();
+    if (roundedCoverValue) roundedCoverValue.textContent = `${this.state.roundedCover}%`;
+    if (coverRotationSlider) coverRotationSlider.value = this.state.coverRotationSpeed.toString();
+    if (coverRotationValue) coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
+    if (enableMarqueeCheckbox) enableMarqueeCheckbox.checked = this.state.marqueeEnabled;
     if (fluidDesc) fluidDesc.style.display = this.state.backgroundType === 'fluid' ? 'block' : 'none';
     if (coverDesc) coverDesc.style.display = this.state.backgroundType === 'cover' ? 'block' : 'none';
     if (solidDesc) solidDesc.style.display = this.state.backgroundType === 'solid' ? 'block' : 'none';
@@ -2922,7 +3138,7 @@ class WebLyricsPlayer {
     } else {
       this.background.getElement().style.display = "block";
       this.coverBlurBackground.style.display = "none";
-      this.background.setAlbum(currentCover);
+      this.background.setAlbum(currentCover || "./assets/icon-512x512.png");
       this.background.setStaticMode(!this.state.backgroundDynamic);
       this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
     }
@@ -2984,3 +3200,15 @@ const player = new WebLyricsPlayer();
 (window as any).globalLyricPlayer = player.getLyricPlayer();
 (window as any).globalBackground = player.getBackground();
 player.start();
+
+const style = document.createElement('style');
+style.textContent = `
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}`;
+document.head.appendChild(style);

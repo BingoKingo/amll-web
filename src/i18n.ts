@@ -35,7 +35,6 @@ export interface Translations {
   metadataParseError: string;
   cannotParseAudioInfo: string;
   backgroundControl: string;
-  dynamicBackground: string;
   flowSpeed: string;
   toggleBackgroundMode: string;
   playbackRate: string;
@@ -47,10 +46,12 @@ export interface Translations {
   solidBackground: string;
   coverBlurLevel: string;
   colorMask: string;
-  maskColor: string;
   invertColors: string;
   debugInfo: string;
   showFPS: string;
+  enableMarquee: string;
+  roundedCover: string;
+  coverRotation: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -58,7 +59,7 @@ export const translations: Record<Language, Translations> = {
     artist: "Artist",
     songInfo: "Metadata",
     title: "Title",
-    loopPlay: "Loop Playback, Lyrics Delay:",
+    loopPlay: "Loop Playback, Lyrics Delay",
     loadFromUrl: "Load from URL",
     loadFiles: "Load Files",
     resetPlayer: "Reset Player",
@@ -91,28 +92,29 @@ export const translations: Record<Language, Translations> = {
     metadataParseError: "Error parsing audio metadata, using fallback",
     cannotParseAudioInfo: "Cannot parse audio file information",
     backgroundControl: "Background Control",
-    dynamicBackground: "Dynamic Background",
     flowSpeed: "Flow Speed",
     toggleBackgroundMode: "Toggle Background Mode",
     playbackRate: "Playback Speed",
     volume: "Volume",
     playbackControl: "Playback Control",
-    backgroundStyle: "Background Style",
+    backgroundStyle: "Style Settings",
     amllBackground: "AMLL Background",
     coverBackground: "Cover Background",
     solidBackground: "Solid Background",
     coverBlurLevel: "Blur Level",
     colorMask: "Color Mask",
-    maskColor: "Mask Color",
     invertColors: "Invert Colors",
     debugInfo: "Debug Information",
     showFPS: "Show FPS",
+    enableMarquee: "Marquee Title Effect",
+    roundedCover: "Cover Rounded Corners",
+    coverRotation: "Cover Rotation Speed",
   },
   zh: {
     artist: "艺术家",
     songInfo: "元数据",
     title: "标题",
-    loopPlay: "循环播放, 歌词延迟: ",
+    loopPlay: "循环播放, 歌词延迟",
     loadFromUrl: "从URL加载",
     loadFiles: "加载文件",
     resetPlayer: "重置播放器",
@@ -145,22 +147,23 @@ export const translations: Record<Language, Translations> = {
     metadataParseError: "音频元数据解析出错，使用备用方案",
     cannotParseAudioInfo: "无法解析音频文件信息",
     backgroundControl: "背景控制",
-    dynamicBackground: "动态背景",
     flowSpeed: "流动速度",
     toggleBackgroundMode: "切换背景模式",
     playbackRate: "播放速度",
     volume: "音量",
     playbackControl: "播放控制",
-    backgroundStyle: "背景样式",
+    backgroundStyle: "样式设置",
     amllBackground: "AMLL 背景",
     coverBackground: "封面背景",
     solidBackground: "纯色背景",
     coverBlurLevel: "模糊程度",
     colorMask: "颜色蒙版",
-    maskColor: "蒙版颜色",
     invertColors: "反转色",
     debugInfo: "调试信息",
     showFPS: "显示帧数",
+    enableMarquee: "标题跑马灯效果",
+    roundedCover: "封面圆角",
+    coverRotation: "封面旋转速度",
   },
 };
 
