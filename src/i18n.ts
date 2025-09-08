@@ -65,6 +65,11 @@ export interface Translations {
   alignBottom: string;
   lyricAlignFocus: string;
   backgroundStyle: string;
+  showTranslatedLyric: string;
+  showRomanLyric: string;
+  swapLyricPositions: string;
+  showbgLyric: string;
+  swapDuetsPositions: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -135,6 +140,11 @@ export const translations: Record<Language, Translations> = {
     alignBottom: "Bottom",
     lyricAlignFocus: "Lyrics Align Focus",
     backgroundStyle: "Background Style",
+    showTranslatedLyric: "Show Translated",
+    showRomanLyric: "Show Romanized",
+    swapLyricPositions: "Swap Translated & Romanized",
+    showbgLyric: "Show Background Lyrics",
+    swapDuetsPositions: "Swap Left & Right",
   },
   zh: {
     artist: "艺术家",
@@ -203,6 +213,11 @@ export const translations: Record<Language, Translations> = {
     alignBottom: "底部",
     lyricAlignFocus: "歌词对齐焦点",
     backgroundStyle: "背景样式",
+    showTranslatedLyric: "显示翻译",
+    showRomanLyric: "显示音译",
+    swapLyricPositions: "交换译文位置",
+    showbgLyric: "显示背景词",
+    swapDuetsPositions: "交换左右对齐",
   },
 };
 

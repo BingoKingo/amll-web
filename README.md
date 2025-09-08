@@ -2,8 +2,6 @@
 
 # AMLL Web Player
 
-![Horizonal Layout](./public/screenshots/amll-web-player-horizonal-layout.png)
-![Vertical Layout](./public/screenshots/amll-web-player-vertical-layout.png)
 ## Quick Start
 
 ### Requirements
