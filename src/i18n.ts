@@ -40,7 +40,7 @@ export interface Translations {
   playbackRate: string;
   volume: string;
   playbackControl: string;
-  backgroundStyle: string;
+  Styles: string;
   amllBackground: string;
   coverBackground: string;
   solidBackground: string;
@@ -52,6 +52,19 @@ export interface Translations {
   enableMarquee: string;
   roundedCover: string;
   coverRotation: string;
+  renderScale: string;
+  lyricAlignPosition: string;
+  hidePassedLyrics: string;
+  lyricDelay: string;
+  enableLyricBlur: string;
+  enableLyricScale: string;
+  enableLyricSpring: string;
+  wordFadeWidth: string;
+  alignTop: string;
+  alignCenter: string;
+  alignBottom: string;
+  lyricAlignFocus: string;
+  backgroundStyle: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -59,7 +72,7 @@ export const translations: Record<Language, Translations> = {
     artist: "Artist",
     songInfo: "Metadata",
     title: "Title",
-    loopPlay: "Loop Playback, Lyrics Delay",
+    loopPlay: "Loop Playback",
     loadFromUrl: "Load from URL",
     loadFiles: "Load Files",
     resetPlayer: "Reset Player",
@@ -97,7 +110,7 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "Playback Speed",
     volume: "Volume",
     playbackControl: "Playback Control",
-    backgroundStyle: "Style Settings",
+    Styles: "Styles",
     amllBackground: "AMLL Background",
     coverBackground: "Cover Background",
     solidBackground: "Solid Background",
@@ -106,15 +119,28 @@ export const translations: Record<Language, Translations> = {
     invertColors: "Invert Colors",
     debugInfo: "Debug Information",
     showFPS: "Show FPS",
-    enableMarquee: "Marquee Title Effect",
+    enableMarquee: "Title Marquee Effect",
     roundedCover: "Cover Rounded Corners",
     coverRotation: "Cover Rotation Speed",
+    renderScale: "Render Scale",
+    lyricAlignPosition: "Lyrics Vertical Align",
+    hidePassedLyrics: "Hide Passed Lyrics",
+    lyricDelay: "Lyrics Delay",
+    enableLyricBlur: "Lyrics Blur Effect",
+    enableLyricScale: "Lyrics Scaling Effect",
+    enableLyricSpring: "Lyrics Spring Effect",
+    wordFadeWidth: "Word Fade Width",
+    alignTop: "Top",
+    alignCenter: "Center",
+    alignBottom: "Bottom",
+    lyricAlignFocus: "Lyrics Align Focus",
+    backgroundStyle: "Background Style",
   },
   zh: {
     artist: "艺术家",
     songInfo: "元数据",
     title: "标题",
-    loopPlay: "循环播放, 歌词延迟",
+    loopPlay: "循环播放",
     loadFromUrl: "从URL加载",
     loadFiles: "加载文件",
     resetPlayer: "重置播放器",
@@ -152,7 +178,7 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "播放速度",
     volume: "音量",
     playbackControl: "播放控制",
-    backgroundStyle: "样式设置",
+    Styles: "样式",
     amllBackground: "AMLL 背景",
     coverBackground: "封面背景",
     solidBackground: "纯色背景",
@@ -164,6 +190,19 @@ export const translations: Record<Language, Translations> = {
     enableMarquee: "标题跑马灯效果",
     roundedCover: "封面圆角",
     coverRotation: "封面旋转速度",
+    renderScale: "渲染比例",
+    lyricAlignPosition: "歌词垂直位置",
+    hidePassedLyrics: "隐藏已播歌词",
+    lyricDelay: "歌词延迟",
+    enableLyricBlur: "歌词模糊效果",
+    enableLyricScale: "歌词缩放效果",
+    enableLyricSpring: "歌词弹簧效果",
+    wordFadeWidth: "歌词渐变宽度",
+    alignTop: "顶部",
+    alignCenter: "居中",
+    alignBottom: "底部",
+    lyricAlignFocus: "歌词对齐焦点",
+    backgroundStyle: "背景样式",
   },
 };
 

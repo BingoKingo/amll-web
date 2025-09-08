@@ -14,6 +14,10 @@ export default {
           src: "./public/icons/*",
           dest: "assets",
         },
+        {
+          src: "./public/*",
+          dest: "public",
+        },
       ],
     }),
   ],
