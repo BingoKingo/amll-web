@@ -1,5 +1,6 @@
 import wasm from "vite-plugin-wasm";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import compression from 'vite-plugin-compression';
 
 export default {
   // base: "/haruhikage", // Toggle or change this when build
@@ -20,5 +21,11 @@ export default {
         },
       ],
     }),
+    compression({
+      algorithm: 'gzip',
+      ext: '.gz',
+      threshold: 1024,
+      deleteOriginFile: false,
+    })
   ],
 };

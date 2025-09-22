@@ -60,7 +60,7 @@ export function parseLyl(content: string): RawLyricLine[] {
 
       // 创建一个单词，包含整行文本
       const words = [{
-        text,
+        word: text,
         startTime: startMs,
         endTime: endMs
       }];
@@ -68,7 +68,11 @@ export function parseLyl(content: string): RawLyricLine[] {
       result.push({
         words,
         startTime: startMs,
-        endTime: endMs
+        endTime: endMs,
+        translatedLyric: '',
+        romanLyric: '',
+        isBG: false,
+        isDuet: false
       });
     } else {
       warnings.push(`第 ${i + 1} 行: 未能识别的行格式。`);
@@ -76,7 +80,6 @@ export function parseLyl(content: string): RawLyricLine[] {
   }
 
   if (warnings.length > 0) {
-    console.warn("LYL 解析警告:", warnings);
   }
 
   return result;
@@ -114,7 +117,7 @@ export function lylToTTML(content: string): string {
     const spans = [];
     for (const word of line.words) {
       spans.push(
-        `<span>${escapeXml(word.text)}</span>`
+        `<span>${escapeXml(word.word)}</span>`
       );
     }
     ttml += `${spans.join("")}`;

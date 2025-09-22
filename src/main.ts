@@ -11,8 +11,12 @@ import {
 import {
   isESLyRiCFormat,
   isLyRiCA2Format,
+  isSPLFormat,
+  isWalaokeFormat,
   parseESLyRiC,
   parseLyRiCA2,
+  parseSPL,
+  parseWalaoke,
   convertToTTML,
 } from "./lyric-parsers";
 import { isAssFormat, parseAss, assToTTML } from "./ass-parser";
@@ -66,6 +70,7 @@ interface PlayerState {
   roundedCover: number;
   coverRotationSpeed: number;
   backgroundRenderScale: number;
+  backgroundFPS: number;
   lyricAlignPosition: number;
   hidePassedLyrics: boolean;
   enableLyricBlur: boolean;
@@ -79,6 +84,20 @@ interface PlayerState {
   swapLyricPositions: boolean;
   showbgLyric: boolean;
   swapDuetsPositions: boolean;
+  advanceLyricTiming: boolean;
+  singleLyrics: boolean;
+  backgroundLowFreqVolume: number;
+  coverStyle: 'normal' | 'innerShadow' | 'threeDShadow' | 'longShadow' | 'neumorphismA' | 'neumorphismB' | 'reflection' | 'cd' | 'vinyl' | 'colored';
+  fftDataRangeMin: number;
+  fftDataRangeMax: number;
+  posYSpringMass: number;
+  posYSpringDamping: number;
+  posYSpringStiffness: number;
+  posYSpringSoft: boolean;
+  scaleSpringMass: number;
+  scaleSpringDamping: number;
+  scaleSpringStiffness: number;
+  scaleSpringSoft: boolean;
 }
 
 class WebLyricsPlayer {
@@ -90,8 +109,23 @@ class WebLyricsPlayer {
   private state: PlayerState;
   private isInitialized = false;
   private hasLyrics = false;
-  private gui: GUI;
+  private gui: GUI | null = null;
   private colorThief: ColorThief;
+  private static debounce(func: Function, wait: number) {
+    let timeout: number | null = null;
+    return function executedFunction(...args: any[]) {
+      const later = () => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        func(...args);
+      };
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      timeout = window.setTimeout(later, wait);
+    };
+  }
   private dominantColor: string = 'rgb(253, 156, 155)';
   private marqueeObserver: MutationObserver | null = null;
   private handleResizeBound: (() => void) | null = null;
@@ -99,6 +133,128 @@ class WebLyricsPlayer {
   private originalTitle: string = '';
   private originalLyricLines: any[] = [];
   private processedLyricLines: LyricLine[] = [];
+  private musicFile: HTMLInputElement | null = null;
+  private lyricFile: HTMLInputElement | null = null;
+  private coverFile: HTMLInputElement | null = null;
+  private musicFileBtn: HTMLElement | null = null;
+  private lyricFileBtn: HTMLElement | null = null;
+  private coverFileBtn: HTMLElement | null = null;
+  private songTitleInput: HTMLInputElement | null = null;
+  private songArtistInput: HTMLInputElement | null = null;
+  private albumCoverLarge: HTMLImageElement | null = null;
+  private albumCoverContainer: HTMLElement | null = null;
+  private roundedCoverSlider: HTMLInputElement | null = null;
+  private roundedCoverValue: HTMLElement | null = null;
+  private coverRotationSlider: HTMLInputElement | null = null;
+  private coverRotationValue: HTMLElement | null = null;
+  private coverStyleSelect: HTMLSelectElement | null = null;
+  private songTitle: HTMLElement | null = null;
+  private songArtist: HTMLElement | null = null;
+  private albumInfo: HTMLElement | null = null;
+  private timeDisplay: HTMLElement | null = null;
+  private progressBar: HTMLElement | null = null;
+  private progressFill: HTMLElement | null = null;
+  private lyricsPanel: HTMLElement | null = null;
+  private player: HTMLElement | null = null;
+  private playButton: HTMLElement | null = null;
+  private landscapePlayBtn: HTMLElement | null = null;
+  private controlPanel: HTMLElement | null = null;
+  private fullscreenButton: HTMLElement | null = null;
+  private fullscreenEnterIcon: HTMLElement | null = null;
+  private fullscreenExitIcon: HTMLElement | null = null;
+  private status: HTMLElement | null = null;
+  private statusText: HTMLElement | null = null;
+  private bgFlowSpeed: HTMLInputElement | null = null;
+  private bgFlowSpeedValue: HTMLElement | null = null;
+  private bgColorMask: HTMLInputElement | null = null;
+  private bgMaskColor: HTMLInputElement | null = null;
+  private bgMaskOpacity: HTMLInputElement | null = null;
+  private bgMaskOpacityValue: HTMLElement | null = null;
+  private showFPSCheckbox: HTMLInputElement | null = null;
+  private backgroundStyleSelect: HTMLSelectElement | null = null;
+  private coverBlurLevel: HTMLInputElement | null = null;
+  private coverBlurLevelValue: HTMLElement | null = null;
+  private invertColorsCheckbox: HTMLInputElement | null = null;
+  private enableMarqueeCheckbox: HTMLInputElement | null = null;
+  private bgRenderScale: HTMLInputElement | null = null;
+  private fluidDesc: HTMLElement | null = null;
+  private coverDesc: HTMLElement | null = null;
+  private solidDesc: HTMLElement | null = null;
+  private solidOptions: NodeListOf<HTMLElement> | null = null;
+  private bgRenderScaleValue: HTMLElement | null = null;
+  private bgFPS: HTMLInputElement | null = null;
+  private bgFPSValue: HTMLElement | null = null;
+  private lyricAlignPosition: HTMLInputElement | null = null;
+  private lyricAlignPositionValue: HTMLElement | null = null;
+  private hidePassedLyricsCheckbox: HTMLInputElement | null = null;
+  private bgLowFreqVolume: HTMLInputElement | null = null;
+  private bgLowFreqVolumeValue: HTMLElement | null = null;
+  private fftDataRangeMin: HTMLInputElement | null = null;
+  private fftDataRangeMinValue: HTMLElement | null = null;
+  private fftDataRangeMax: HTMLInputElement | null = null;
+  private fftDataRangeMaxValue: HTMLElement | null = null;
+  private enableLyricBlur: HTMLInputElement | null = null;
+  private enableLyricScale: HTMLInputElement | null = null;
+  private enableLyricSpring: HTMLInputElement | null = null;
+  private wordFadeWidthInput: HTMLInputElement | null = null;
+  private wordFadeWidthValue: HTMLElement | null = null;
+  private showbgLyricCheckbox: HTMLInputElement | null = null;
+  private swapDuetsPositionsCheckbox: HTMLInputElement | null = null;
+  private advanceLyricTimingCheckbox: HTMLInputElement | null = null;
+  private singleLyricsCheckbox: HTMLInputElement | null = null;
+  private playbackRateValue: HTMLElement | null = null;
+  private playbackRateControl: HTMLInputElement | null = null;
+  private volumeControl: HTMLInputElement | null = null;
+  private volumeValue: HTMLElement | null = null;
+  private speedLowIcon: HTMLElement | null = null;
+  private speedMediumIcon: HTMLElement | null = null;
+  private speedHighIcon: HTMLElement | null = null;
+  private volumeOffIcon: HTMLElement | null = null;
+  private volumeLowIcon: HTMLElement | null = null;
+  private volumeMediumIcon: HTMLElement | null = null;
+  private volumeHighIcon: HTMLElement | null = null;
+  private loopPlayCheckbox: HTMLInputElement | null = null;
+  private musicUrl: HTMLInputElement | null = null;
+  private lyricUrl: HTMLInputElement | null = null;
+  private coverUrl: HTMLInputElement | null = null;
+  private albumSidePanel: HTMLElement | null = null;
+  private loadFromUrlBtn: HTMLElement | null = null;
+  private loadFilesBtn: HTMLElement | null = null;
+  private resetPlayerBtn: HTMLElement | null = null;
+  private toggleControlsBtn: HTMLElement | null = null;
+  private lyricAlignAnchorSelect: HTMLSelectElement | null = null;
+  private lyricDelayInput: HTMLInputElement | null = null;
+  private amllLyricPlayer: HTMLElement | null = null;
+  private lyricAreaHint: HTMLElement | null = null;
+  private coverStyleDynamic: HTMLElement | null = null;
+  private songTitleDisplay: HTMLElement | null = null;
+  private songArtistDisplay: HTMLElement | null = null;
+  private landscapeTimeDisplay: HTMLElement | null = null;
+  private landscapeProgressFill: HTMLElement | null = null;
+  private landscapeCover: HTMLElement | null = null;
+  private playControls: HTMLElement | null = null;
+  private showTranslatedLyricCheckbox: HTMLInputElement | null = null;
+  private showRomanLyricCheckbox: HTMLInputElement | null = null;
+  private swapLyricPositionsCheckbox: HTMLInputElement | null = null;
+  private waveformCanvas: HTMLCanvasElement | null = null;
+  private waveformContext: CanvasRenderingContext2D | null = null;
+  private cachedWaveform: Float32Array | null = null;
+  private audioBuffer: AudioBuffer | null = null;
+  private touchExitTimeout: number | null = null;
+  private posYSpringMassInput: HTMLInputElement | null = null;
+  private posYSpringDampingInput: HTMLInputElement | null = null;
+  private posYSpringStiffnessInput: HTMLInputElement | null = null;
+  private posYSpringSoftCheckbox: HTMLInputElement | null = null;
+  private scaleSpringMassInput: HTMLInputElement | null = null;
+  private scaleSpringDampingInput: HTMLInputElement | null = null;
+  private scaleSpringStiffnessInput: HTMLInputElement | null = null;
+  private scaleSpringSoftCheckbox: HTMLInputElement | null = null;
+  private springPosYMassValue: HTMLElement | null = null;
+  private springPosYDampingValue: HTMLElement | null = null;
+  private springPosYStiffnessValue: HTMLElement | null = null;
+  private springScaleMassValue: HTMLElement | null = null;
+  private springScaleDampingValue: HTMLElement | null = null;
+  private springScaleStiffnessValue: HTMLElement | null = null;
 
   private initI18n() {
     document.documentElement.lang = getCurrentLanguage();
@@ -123,95 +279,103 @@ class WebLyricsPlayer {
   }
 
   private initUploadButtons() {
-    const musicFile = document.getElementById('musicFile') as HTMLInputElement;
-    const lyricFile = document.getElementById('lyricFile') as HTMLInputElement;
-    const coverFile = document.getElementById('coverFile') as HTMLInputElement;
+    if (this.musicFile) {
+      this.musicFile.addEventListener('change', (e: Event) => {
+        const hasFile = (e.target as HTMLInputElement).files?.[0];
+        if (!this.musicFileBtn) return;
 
-    musicFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.[0];
-      const musicFileBtn = document.getElementById('musicFileBtn');
-      if (!musicFileBtn) return;
+        const uploadIcon = this.musicFileBtn.querySelector('.upload-icon') as HTMLElement;
+        const uploadedIcon = this.musicFileBtn.querySelector('.uploaded-icon') as HTMLElement;
 
-      const uploadIcon = musicFileBtn.querySelector('.upload-icon') as HTMLElement;
-      const uploadedIcon = musicFileBtn.querySelector('.uploaded-icon') as HTMLElement;
+        if (uploadIcon && uploadedIcon) {
+          uploadIcon.style.display = hasFile ? 'none' : 'block';
+          uploadedIcon.style.display = hasFile ? 'block' : 'none';
+        }
+      });
+    }
 
-      if (uploadIcon && uploadedIcon) {
-        uploadIcon.style.display = hasFile ? 'none' : 'block';
-        uploadedIcon.style.display = hasFile ? 'block' : 'none';
-      }
-    });
+    if (this.lyricFile) {
+      this.lyricFile.addEventListener('change', (e: Event) => {
+        const hasFile = (e.target as HTMLInputElement).files?.[0];
+        const uploadIcon = this.lyricFileBtn?.querySelector('.upload-icon') as HTMLElement;
+        const uploadedIcon = this.lyricFileBtn?.querySelector('.uploaded-icon') as HTMLElement;
+        if (uploadIcon && uploadedIcon) {
+          uploadIcon.style.display = hasFile ? 'none' : 'block';
+          uploadedIcon.style.display = hasFile ? 'block' : 'none';
+        }
+      });
+    }
 
-    lyricFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.[0];
-      const uploadIcon = document.getElementById('lyricFileBtn')?.querySelector('.upload-icon') as HTMLElement;
-      const uploadedIcon = document.getElementById('lyricFileBtn')?.querySelector('.uploaded-icon') as HTMLElement;
-      if (uploadIcon && uploadedIcon) {
-        uploadIcon.style.display = hasFile ? 'none' : 'block';
-        uploadedIcon.style.display = hasFile ? 'block' : 'none';
-      }
-    });
-
-    coverFile.addEventListener('change', (e) => {
-      const hasFile = (e.target as HTMLInputElement).files?.[0];
-      const uploadIcon = document.getElementById('coverFileBtn')?.querySelector('.upload-icon') as HTMLElement;
-      const uploadedIcon = document.getElementById('coverFileBtn')?.querySelector('.uploaded-icon') as HTMLElement;
-      if (uploadIcon && uploadedIcon) {
-        uploadIcon.style.display = hasFile ? 'none' : 'block';
-        uploadedIcon.style.display = hasFile ? 'block' : 'none';
-      }
-    });
+    if (this.coverFile) {
+      this.coverFile.addEventListener('change', (e: Event) => {
+        const hasFile = (e.target as HTMLInputElement).files?.[0];
+        const uploadIcon = this.coverFileBtn?.querySelector('.upload-icon') as HTMLElement;
+        const uploadedIcon = this.coverFileBtn?.querySelector('.uploaded-icon') as HTMLElement;
+        if (uploadIcon && uploadedIcon) {
+          uploadIcon.style.display = hasFile ? 'none' : 'block';
+          uploadedIcon.style.display = hasFile ? 'block' : 'none';
+        }
+      });
+    }
   }
 
   private updateRoundedCover() {
-    const albumCoverLarge = document.getElementById('albumCoverLarge') as HTMLImageElement;
-    const albumCoverContainer = document.getElementById('albumCoverContainer');
-    const roundedCoverSlider = document.getElementById('roundedCover') as HTMLInputElement;
-    const roundedCoverValue = document.getElementById('roundedCoverValue') as HTMLElement;
-
-    if (albumCoverLarge && albumCoverContainer) {
+    if (this.albumCoverLarge && this.albumCoverContainer) {
       // 将0-100%映射到0-50%的border-radius
       const borderRadius = (this.state.roundedCover / 100) * 50;
-      albumCoverLarge.style.borderRadius = `${borderRadius}%`;
-      albumCoverContainer.style.borderRadius = `${borderRadius}%`;
+      this.albumCoverLarge.style.borderRadius = `${borderRadius}%`;
+      this.albumCoverContainer.style.borderRadius = `${borderRadius}%`;
     }
 
-    if (roundedCoverSlider) {
-      roundedCoverSlider.value = this.state.roundedCover.toString();
+    if (this.roundedCoverSlider) {
+      this.roundedCoverSlider.value = this.state.roundedCover.toString();
     }
 
-    if (roundedCoverValue) {
-      roundedCoverValue.textContent = `${this.state.roundedCover}%`;
+    if (this.roundedCoverValue) {
+      this.roundedCoverValue.textContent = `${this.state.roundedCover}%`;
     }
+
+    const recordOptions = document.querySelectorAll('.record-option');
+
+    if (this.state.roundedCover === 100) {
+      recordOptions.forEach(option => {
+        (option as HTMLOptionElement).style.display = 'block';
+      });
+    } else {
+      recordOptions.forEach(option => {
+        (option as HTMLOptionElement).style.display = 'none';
+      });
+      if (this.coverStyleSelect && ['cd', 'vinyl', 'colored'].includes(this.coverStyleSelect.value)) {
+        this.coverStyleSelect.value = 'normal';
+        this.state.coverStyle = 'normal';
+      }
+    }
+    this.applyCoverStyle();
   }
 
   private updateCoverRotation() {
-    const albumCoverLarge = document.getElementById('albumCoverLarge') as HTMLImageElement;
-    const albumCoverContainer = document.getElementById('albumCoverContainer');
-    const coverRotationSlider = document.getElementById('coverRotation') as HTMLInputElement;
-    const coverRotationValue = document.getElementById('coverRotationValue') as HTMLElement;
-
-    if (albumCoverLarge && albumCoverContainer) {
-      albumCoverLarge.style.animation = 'none';
+    if (this.albumCoverLarge && this.albumCoverContainer) {
+      this.albumCoverLarge.style.animation = 'none';
 
       if (this.state.coverRotationSpeed !== 0) {
-        this.applyCoverRotation(albumCoverLarge, albumCoverContainer);
+        this.applyCoverRotation(this.albumCoverLarge, this.albumCoverContainer);
       } else {
         if (this.audio.paused) {
-          albumCoverContainer.style.transform = 'scale(0.96)';
-          albumCoverLarge.style.transform = 'scale(1)';
+          this.albumCoverContainer.style.transform = 'scale(0.96)';
+          this.albumCoverLarge.style.transform = 'scale(1)';
         } else {
-          albumCoverContainer.style.transform = 'scale(1)';
-          albumCoverLarge.style.transform = 'scale(1)';
+          this.albumCoverContainer.style.transform = 'scale(1)';
+          this.albumCoverLarge.style.transform = 'scale(1)';
         }
       }
     }
 
-    if (coverRotationSlider) {
-      coverRotationSlider.value = this.state.coverRotationSpeed.toString();
+    if (this.coverRotationSlider) {
+      this.coverRotationSlider.value = this.state.coverRotationSpeed.toString();
     }
 
-    if (coverRotationValue) {
-      coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
+    if (this.coverRotationValue) {
+      this.coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
     }
   }
 
@@ -280,10 +444,8 @@ class WebLyricsPlayer {
   }
 
   private updateMarqueeSettings() {
-    const songTitle = document.getElementById('songTitle');
-    const songArtist = document.getElementById('songArtist');
-    const songTitleTopLeft = document.getElementById('songTitleTopLeft');
-    const songArtistTopLeft = document.getElementById('songArtistTopLeft');
+    const songTitle = this.songTitle;
+    const songArtist = this.songArtist;
 
     const updateTitleMarquee = () => {
       if (this.titleMarqueeInterval) {
@@ -353,42 +515,82 @@ class WebLyricsPlayer {
         songArtist.classList.remove('marquee');
         this.checkAndUpdateMarquee(songArtist);
       }
-      if (songTitleTopLeft) {
-        songTitleTopLeft.classList.remove('marquee');
-        this.checkAndUpdateMarquee(songTitleTopLeft);
-      }
-      if (songArtistTopLeft) {
-        songArtistTopLeft.classList.remove('marquee');
-        this.checkAndUpdateMarquee(songArtistTopLeft);
-      }
       updateTitleMarquee();
     });
 
     if (songTitle) this.marqueeObserver.observe(songTitle, { childList: true, subtree: true, characterData: true });
     if (songArtist) this.marqueeObserver.observe(songArtist, { childList: true, subtree: true, characterData: true });
-    if (songTitleTopLeft) this.marqueeObserver.observe(songTitleTopLeft, { childList: true, subtree: true, characterData: true });
-    if (songArtistTopLeft) this.marqueeObserver.observe(songArtistTopLeft, { childList: true, subtree: true, characterData: true });
 
     this.checkAndUpdateMarquee(songTitle);
     this.checkAndUpdateMarquee(songArtist);
-    this.checkAndUpdateMarquee(songTitleTopLeft);
-    this.checkAndUpdateMarquee(songArtistTopLeft);
-
-    const handleResize = () => {
-      this.checkAndUpdateMarquee(songTitle);
-      this.checkAndUpdateMarquee(songArtist);
-      this.checkAndUpdateMarquee(songTitleTopLeft);
-      this.checkAndUpdateMarquee(songArtistTopLeft);
-    };
 
     if (this.handleResizeBound) {
       window.removeEventListener('resize', this.handleResizeBound);
     }
 
+    const handleResize = WebLyricsPlayer.debounce(() => {
+      if (songTitle) {
+        songTitle.classList.remove('marquee');
+        void songTitle.offsetWidth;
+        this.checkAndUpdateMarquee(songTitle);
+      }
+      if (songArtist) {
+        songArtist.classList.remove('marquee');
+        void songArtist.offsetWidth;
+        this.checkAndUpdateMarquee(songArtist);
+      }
+      this.updateWaveformCanvasSize();
+    }, 100);
+
     this.handleResizeBound = handleResize.bind(this);
     window.addEventListener('resize', this.handleResizeBound);
   }
 
+  private updateFFTDataRange() {
+    // 这里可以添加实际的FFT数据范围更新逻辑
+    if (this.background && typeof (this.background as any).setFrequencyRange === 'function') {
+      (this.background as any).setFrequencyRange(this.state.fftDataRangeMin, this.state.fftDataRangeMax);
+    }
+  }
+
+  private updateLayoutByOrientation() {
+    const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    const songInfoContainer = this.albumSidePanel?.querySelector('.song-info-container');
+
+    if (isPortrait) {
+      if (this.state.swapDuetsPositions) {
+        if (songInfoContainer && this.albumInfo && this.albumCoverContainer) {
+          songInfoContainer.insertBefore(this.albumInfo, this.albumCoverContainer);
+          this.albumCoverContainer.style.marginRight = '0';
+          this.albumCoverContainer.style.marginLeft = '15px';
+          this.albumInfo.style.textAlign = 'right';
+        }
+      } else {
+        if (songInfoContainer && this.albumInfo && this.albumCoverContainer) {
+          songInfoContainer.insertBefore(this.albumCoverContainer, this.albumInfo);
+          this.albumCoverContainer.style.marginLeft = '0';
+          this.albumCoverContainer.style.marginRight = '15px';
+          this.albumInfo.style.textAlign = 'left';
+        }
+      }
+    } else {
+      if (songInfoContainer && this.albumInfo && this.albumCoverContainer) {
+        songInfoContainer.insertBefore(this.albumCoverContainer, this.albumInfo);
+        this.albumCoverContainer.style.marginLeft = '0';
+        this.albumCoverContainer.style.marginRight = '15px';
+        this.albumInfo.style.textAlign = 'center';
+      }
+
+      if (this.albumSidePanel && this.lyricsPanel && this.player) {
+        if (this.state.swapDuetsPositions) {
+          this.player.insertBefore(this.lyricsPanel, this.albumSidePanel);
+        } else {
+          this.player.insertBefore(this.albumSidePanel, this.lyricsPanel);
+        }
+      }
+    }
+    this.updateLyricsDisplay();
+  }
 
   private resetUploadButtons() {
     const uploadIcons = document.querySelectorAll('.upload-icon') as NodeListOf<HTMLElement>;
@@ -401,6 +603,127 @@ class WebLyricsPlayer {
     uploadedIcons.forEach((icon) => {
       icon.style.display = 'none';
     });
+  }
+
+  private initDOMCache() {
+    this.musicFile = document.getElementById('musicFile') as HTMLInputElement;
+    this.lyricFile = document.getElementById('lyricFile') as HTMLInputElement;
+    this.coverFile = document.getElementById('coverFile') as HTMLInputElement;
+    this.musicFileBtn = document.getElementById('musicFileBtn');
+    this.lyricFileBtn = document.getElementById('lyricFileBtn');
+    this.coverFileBtn = document.getElementById('coverFileBtn');
+    this.songTitleInput = document.getElementById('songTitleInput') as HTMLInputElement;
+    this.songArtistInput = document.getElementById('songArtistInput') as HTMLInputElement;
+    this.albumCoverLarge = document.getElementById('albumCoverLarge') as HTMLImageElement;
+    this.albumCoverContainer = document.getElementById('albumCoverContainer');
+    this.albumInfo = document.getElementById('albumInfo');
+    this.roundedCoverSlider = document.getElementById('roundedCover') as HTMLInputElement;
+    this.roundedCoverValue = document.getElementById('roundedCoverValue') as HTMLElement;
+    this.coverRotationSlider = document.getElementById('coverRotation') as HTMLInputElement;
+    this.coverRotationValue = document.getElementById('coverRotationValue') as HTMLElement;
+    this.coverStyleSelect = document.getElementById('coverStyle') as HTMLSelectElement;
+    this.songTitle = document.getElementById('songTitle');
+    this.songArtist = document.getElementById('songArtist');
+    this.timeDisplay = document.getElementById('timeDisplay');
+    this.progressBar = document.getElementById('progressBar');
+    this.progressFill = document.getElementById('progressFill');
+    this.waveformCanvas = document.getElementById('waveformCanvas') as HTMLCanvasElement;
+    this.lyricsPanel = document.getElementById('lyricsPanel');
+    this.player = document.getElementById('player');
+    this.playButton = document.getElementById('playPauseBtn');
+    this.landscapePlayBtn = document.getElementById('landscapePlayBtn');
+    this.controlPanel = document.getElementById('controlPanel');
+    this.fullscreenButton = document.getElementById('fullscreenBtn');
+    this.fullscreenEnterIcon = document.querySelector('.fullscreen-enter') as HTMLElement;
+    this.fullscreenExitIcon = document.querySelector('.fullscreen-exit') as HTMLElement;
+    this.status = document.getElementById('status');
+    this.statusText = document.getElementById('statusText');
+    this.bgFlowSpeed = document.getElementById('bgFlowSpeed') as HTMLInputElement;
+    this.bgFlowSpeedValue = document.getElementById('bgFlowSpeedValue');
+    this.bgColorMask = document.getElementById('bgColorMask') as HTMLInputElement;
+    this.bgMaskColor = document.getElementById('bgMaskColor') as HTMLInputElement;
+    this.bgMaskOpacity = document.getElementById('bgMaskOpacity') as HTMLInputElement;
+    this.bgMaskOpacityValue = document.getElementById('bgMaskOpacityValue');
+    this.showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
+    this.bgFPS = document.getElementById('bgFPS') as HTMLInputElement;
+    this.bgFPSValue = document.getElementById('bgFPSValue') as HTMLElement;
+    this.backgroundStyleSelect = document.getElementById('backgroundStyle') as HTMLSelectElement;
+    this.albumSidePanel = document.getElementById('albumSidePanel');
+    this.coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
+    this.coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
+    this.invertColorsCheckbox = document.getElementById('invertColors') as HTMLInputElement;
+    this.enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
+    this.bgRenderScale = document.getElementById('bgRenderScale') as HTMLInputElement;
+    this.bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
+    this.lyricAlignPosition = document.getElementById('lyricAlignPosition') as HTMLInputElement;
+    this.lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
+    this.hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
+    this.bgLowFreqVolume = document.getElementById('bgLowFreqVolume') as HTMLInputElement;
+    this.bgLowFreqVolumeValue = document.getElementById('bgLowFreqVolumeValue');
+    this.fftDataRangeMin = document.getElementById('fftDataRangeMin') as HTMLInputElement;
+    this.fftDataRangeMinValue = document.getElementById('fftDataRangeMinValue');
+    this.fftDataRangeMax = document.getElementById('fftDataRangeMax') as HTMLInputElement;
+    this.fftDataRangeMaxValue = document.getElementById('fftDataRangeMaxValue');
+    this.enableLyricBlur = document.getElementById('enableLyricBlur') as HTMLInputElement;
+    this.enableLyricScale = document.getElementById('enableLyricScale') as HTMLInputElement;
+    this.enableLyricSpring = document.getElementById('enableLyricSpring') as HTMLInputElement;
+    this.wordFadeWidthInput = document.getElementById('wordFadeWidth') as HTMLInputElement;
+    this.wordFadeWidthValue = document.getElementById('wordFadeWidthValue');
+    this.showbgLyricCheckbox = document.getElementById('showbgLyric') as HTMLInputElement;
+    this.swapDuetsPositionsCheckbox = document.getElementById('swapDuetsPositions') as HTMLInputElement;
+    this.advanceLyricTimingCheckbox = document.getElementById('advanceLyricTiming') as HTMLInputElement;
+    this.singleLyricsCheckbox = document.getElementById('singleLyrics') as HTMLInputElement;
+    this.playbackRateValue = document.getElementById('playbackRateValue');
+    this.playbackRateControl = document.getElementById('playbackRate') as HTMLInputElement;
+    this.volumeControl = document.getElementById('volumeControl') as HTMLInputElement;
+    this.volumeValue = document.getElementById('volumeValue');
+    this.speedLowIcon = document.querySelector('.speed-low') as HTMLElement;
+    this.speedMediumIcon = document.querySelector('.speed-medium') as HTMLElement;
+    this.speedHighIcon = document.querySelector('.speed-high') as HTMLElement;
+    this.volumeOffIcon = document.querySelector('.volume-off') as HTMLElement;
+    this.volumeLowIcon = document.querySelector('.volume-low') as HTMLElement;
+    this.volumeMediumIcon = document.querySelector('.volume-medium') as HTMLElement;
+    this.volumeHighIcon = document.querySelector('.volume-high') as HTMLElement;
+    this.loopPlayCheckbox = document.getElementById('loopPlay') as HTMLInputElement;
+    this.showTranslatedLyricCheckbox = document.getElementById('showTranslatedLyric') as HTMLInputElement;
+    this.showRomanLyricCheckbox = document.getElementById('showRomanLyric') as HTMLInputElement;
+    this.swapLyricPositionsCheckbox = document.getElementById('swapLyricPositions') as HTMLInputElement;
+    this.musicUrl = document.getElementById('musicUrl') as HTMLInputElement;
+    this.lyricUrl = document.getElementById('lyricUrl') as HTMLInputElement;
+    this.coverUrl = document.getElementById('coverUrl') as HTMLInputElement;
+    this.loadFromUrlBtn = document.getElementById('loadFromUrl');
+    this.loadFilesBtn = document.getElementById('loadFiles');
+    this.resetPlayerBtn = document.getElementById('resetPlayer');
+    this.toggleControlsBtn = document.getElementById('toggleControls');
+    this.lyricAlignAnchorSelect = document.getElementById('lyricAlignAnchor') as HTMLSelectElement;
+    this.lyricDelayInput = document.getElementById('lyricDelay') as HTMLInputElement;
+    this.posYSpringMassInput = document.getElementById('springPosYMass') as HTMLInputElement;
+    this.posYSpringDampingInput = document.getElementById('springPosYDamping') as HTMLInputElement;
+    this.posYSpringStiffnessInput = document.getElementById('springPosYStiffness') as HTMLInputElement;
+    this.scaleSpringMassInput = document.getElementById('springScaleMass') as HTMLInputElement;
+    this.scaleSpringDampingInput = document.getElementById('springScaleDamping') as HTMLInputElement;
+    this.scaleSpringStiffnessInput = document.getElementById('springScaleStiffness') as HTMLInputElement;
+    this.springPosYMassValue = document.getElementById('springPosYMassValue') as HTMLElement;
+    this.springPosYDampingValue = document.getElementById('springPosYDampingValue') as HTMLElement;
+    this.springPosYStiffnessValue = document.getElementById('springPosYStiffnessValue') as HTMLElement;
+    this.springScaleMassValue = document.getElementById('springScaleMassValue') as HTMLElement;
+    this.springScaleDampingValue = document.getElementById('springScaleDampingValue') as HTMLElement;
+    this.springScaleStiffnessValue = document.getElementById('springScaleStiffnessValue') as HTMLElement;
+    this.posYSpringSoftCheckbox = document.getElementById('posYSpringSoft') as HTMLInputElement;
+    this.scaleSpringSoftCheckbox = document.getElementById('scaleSpringSoft') as HTMLInputElement;
+    this.amllLyricPlayer = document.getElementById('amll-lyric-player');
+    this.lyricAreaHint = document.getElementById('lyricAreaHint');
+    this.coverStyleDynamic = document.getElementById('coverStyleDynamic');
+    this.songTitleDisplay = document.getElementById('songTitleDisplay');
+    this.songArtistDisplay = document.getElementById('songArtistDisplay');
+    this.fluidDesc = document.getElementById('fluid-desc');
+    this.coverDesc = document.getElementById('cover-desc');
+    this.solidDesc = document.getElementById('solid-desc');
+    this.solidOptions = document.querySelectorAll('.solid-option') as NodeListOf<HTMLElement>;
+    this.landscapeTimeDisplay = document.querySelector('.landscape-time') as HTMLElement;
+    this.landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
+    this.landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
+    this.playControls = document.getElementById('playControls');
   }
 
   constructor() {
@@ -444,6 +767,7 @@ class WebLyricsPlayer {
       roundedCover: 16,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
+      backgroundFPS: 60,
       lyricAlignPosition: 0.5,
       hidePassedLyrics: false,
       enableLyricBlur: true,
@@ -457,6 +781,20 @@ class WebLyricsPlayer {
       swapLyricPositions: false,
       showbgLyric: true,
       swapDuetsPositions: false,
+      advanceLyricTiming: false,
+      singleLyrics: false,
+      backgroundLowFreqVolume: 1,
+      coverStyle: 'normal',
+      fftDataRangeMin: 1,
+      fftDataRangeMax: 22050,
+      posYSpringMass: 1,
+      posYSpringDamping: 15,
+      posYSpringStiffness: 100,
+      posYSpringSoft: false,
+      scaleSpringMass: 1,
+      scaleSpringDamping: 20,
+      scaleSpringStiffness: 100,
+      scaleSpringSoft: false,
     };
     this.hasLyrics = false;
 
@@ -465,20 +803,48 @@ class WebLyricsPlayer {
     this.background = BackgroundRender.new(MeshGradientRenderer);
     this.coverBlurBackground = document.createElement('div');
     this.stats = new Stats();
-
+    this.initDOMCache();
+    if (this.waveformCanvas) {
+      this.waveformContext = this.waveformCanvas.getContext('2d');
+    }
     this.initEventListeners();
     this.initBackground();
     this.setupAudioEvents();
     this.setupLyricEvents();
+    this.setupWaveformEvents();
     this.initStats();
     this.initUI();
     this.initLyricDisplayControls();
     this.updateMarqueeSettings();
+    // 初始化系统暗色模式支持
+    this.initSystemDarkMode();
   }
 
   private setupWheelControl(inputId: string, valueId: string, step: number) {
-    const input = document.getElementById(inputId) as HTMLInputElement;
-    if (!input) return;
+    let input: HTMLInputElement | null = null;
+    let valueElement: HTMLElement | null = null;
+
+    switch (inputId) {
+      case 'coverBlurLevel': input = this.coverBlurLevel; valueElement = this.coverBlurLevelValue; break;
+      case 'bgFlowSpeed': input = this.bgFlowSpeed; valueElement = this.bgFlowSpeedValue; break;
+      case 'bgMaskOpacity': input = this.bgMaskOpacity; valueElement = this.bgMaskOpacityValue; break;
+      case 'volume': input = this.volumeControl; valueElement = this.volumeValue; break;
+      case 'playbackRate': input = this.playbackRateControl; valueElement = this.playbackRateValue; break;
+      case 'roundedCover': input = this.roundedCoverSlider; valueElement = this.roundedCoverValue; break;
+      case 'coverRotation': input = this.coverRotationSlider; valueElement = this.coverRotationValue; break;
+      case 'bgRenderScale': input = this.bgRenderScale; valueElement = this.bgRenderScaleValue; break;
+      case 'bgFPS': input = this.bgFPS; valueElement = this.bgFPSValue; break;
+      case 'lyricAlignPosition': input = this.lyricAlignPosition; valueElement = this.lyricAlignPositionValue; break;
+      case 'springPosYMass': input = this.posYSpringMassInput; valueElement = document.getElementById('springPosYMassValue'); break;
+      case 'springPosYDamping': input = this.posYSpringDampingInput; valueElement = document.getElementById('springPosYDampingValue'); break;
+      case 'springPosYStiffness': input = this.posYSpringStiffnessInput; valueElement = document.getElementById('springPosYStiffnessValue'); break;
+      case 'springScaleMass': input = this.scaleSpringMassInput; valueElement = document.getElementById('springScaleMassValue'); break;
+      case 'springScaleDamping': input = this.scaleSpringDampingInput; valueElement = document.getElementById('springScaleDampingValue'); break;
+      case 'springScaleStiffness': input = this.scaleSpringStiffnessInput; valueElement = document.getElementById('springScaleStiffnessValue'); break;
+      default: return; // 不支持的id
+    }
+
+    if (!input || !valueElement) return;
 
     input.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -489,10 +855,14 @@ class WebLyricsPlayer {
       const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
 
       input.value = newValue.toString();
-      document.getElementById(valueId)!.textContent = `${newValue}${inputId === 'bgFlowSpeed' ? '' : '%'}`;
+      if (inputId.startsWith('spring')) {
+        valueElement.textContent = newValue.toString();
+      } else {
+        valueElement.textContent = `${newValue}${inputId === 'bgFlowSpeed' ? '' : '%'}`;
+      }
 
       input.dispatchEvent(new Event('input'));
-    });
+    }, { passive: false });
   }
 
   private initGUI() {
@@ -531,160 +901,335 @@ class WebLyricsPlayer {
   private initEventListeners() {
     this.setupDragAndDropEvents();
 
-    const timeDisplay = document.getElementById("timeDisplay");
-    const landscapeTimeDisplay = document.querySelector(".landscape-time") as HTMLElement;
+    const orientationMediaQuery = window.matchMedia('(orientation: portrait)');
+    const handleOrientationChange = WebLyricsPlayer.debounce(() => {
+      this.updateLayoutByOrientation();
+    }, 100);
 
-    if (timeDisplay) {
-      timeDisplay.addEventListener("click", () => {
+    orientationMediaQuery.addEventListener('change', handleOrientationChange);
+
+    if (this.timeDisplay) {
+      this.timeDisplay.addEventListener("click", () => {
         this.state.showRemainingTime = !this.state.showRemainingTime;
         this.updateTimeDisplay();
       });
-      timeDisplay.style.cursor = "pointer";
+      this.timeDisplay.style.cursor = "pointer";
     }
 
-    if (landscapeTimeDisplay) {
-      landscapeTimeDisplay.addEventListener("click", () => {
+    if (this.landscapeTimeDisplay) {
+      this.landscapeTimeDisplay.addEventListener("click", () => {
         this.state.showRemainingTime = !this.state.showRemainingTime;
         this.updateTimeDisplay();
       });
-      landscapeTimeDisplay.style.cursor = "pointer";
+      this.landscapeTimeDisplay.style.cursor = "pointer";
     }
 
-    document.getElementById('roundedCover')?.addEventListener('input', (e) => {
+    this.roundedCoverSlider?.addEventListener('input', (e) => {
       const roundedValue = parseInt((e.target as HTMLInputElement).value);
       this.state.roundedCover = roundedValue;
 
       if (roundedValue !== 100 && this.state.coverRotationSpeed !== 0) {
         this.state.coverRotationSpeed = 0;
         this.updateCoverRotation();
-        document.getElementById('coverRotationValue')!.textContent = '0rpm';
+        if (this.coverRotationValue) {
+          this.coverRotationValue.textContent = '0rpm';
+        }
       }
 
       this.updateRoundedCover();
-      document.getElementById('roundedCoverValue')!.textContent = `${roundedValue}%`;
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('coverRotation')?.addEventListener('input', (e) => {
-      if (this.state.roundedCover === 100) {
-        const speedValue = parseInt((e.target as HTMLInputElement).value);
-        this.state.coverRotationSpeed = speedValue;
-        this.updateCoverRotation();
-        document.getElementById('coverRotationValue')!.textContent = `${speedValue}rpm`;
-        this.saveBackgroundSettings();
-      } else {
-        this.state.coverRotationSpeed = 0;
-        this.updateCoverRotation();
-        document.getElementById('coverRotationValue')!.textContent = '0rpm';
-        (e.target as HTMLInputElement).value = '0';
-      }
-    });
+    if (this.coverRotationSlider) {
+      this.coverRotationSlider.addEventListener('input', (e: Event) => {
+        if (this.state.roundedCover === 100) {
+          const speedValue = parseInt((e.target as HTMLInputElement).value);
+          this.state.coverRotationSpeed = speedValue;
+          this.updateCoverRotation();
+          if (this.coverRotationValue) {
+            this.coverRotationValue.textContent = `${speedValue}rpm`;
+          }
+          this.saveBackgroundSettings();
+        } else {
+          this.state.coverRotationSpeed = 0;
+          this.updateCoverRotation();
+          if (this.coverRotationValue) {
+            this.coverRotationValue.textContent = '0rpm';
+          }
+          (e.target as HTMLInputElement).value = '0';
+        }
+      });
+    }
 
-    document.getElementById('coverBlurLevel')?.addEventListener('input', (e) => {
+    this.coverBlurLevel?.addEventListener('input', (e: Event) => {
       const blurLevel = parseFloat((e.target as HTMLInputElement).value);
-      const mappedBlurLevel = (blurLevel / 100) * 50; // 映射0~100%到0px~50px
+      const mappedBlurLevel = (blurLevel / 100) * 100;
       this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
-      document.getElementById('coverBlurLevelValue')!.textContent = `${blurLevel}%`;
+      if (this.coverBlurLevelValue) {
+        this.coverBlurLevelValue.textContent = `${blurLevel}%`;
+      }
       this.state.coverBlurLevel = blurLevel;
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('bgRenderScale')?.addEventListener('input', (e) => {
+    this.coverStyleSelect?.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      this.state.coverStyle = target.value as 'normal' | 'innerShadow' | 'threeDShadow' | 'longShadow' | 'neumorphismA' | 'neumorphismB' | 'reflection' | 'cd' | 'vinyl' | 'colored';
+      ;
+      this.applyCoverStyle();
+      this.saveBackgroundSettings();
+    });
+
+    this.coverStyleSelect?.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const selectElement = e.target as HTMLSelectElement;
+      const options = selectElement.options;
+      const currentIndex = selectElement.selectedIndex;
+      const direction = Math.sign((e as WheelEvent).deltaY);
+      let nextIndex = currentIndex + (direction > 0 ? 1 : -1);
+      const restrictedStyles = ['cd', 'vinyl', 'colored', 'neumorphismA', 'neumorphismB'];
+      const canAccessRestrictedStyles = this.state.roundedCover === 100;
+      let attempts = 0;
+      const maxAttempts = options.length;
+
+      while (attempts < maxAttempts) {
+        if (nextIndex < 0) nextIndex = options.length - 1;
+        if (nextIndex >= options.length) nextIndex = 0;
+        const nextOptionValue = options[nextIndex].value;
+        if (restrictedStyles.includes(nextOptionValue) && !canAccessRestrictedStyles) {
+          nextIndex += (direction > 0 ? 1 : -1);
+          attempts++;
+          continue;
+        }
+        break;
+      }
+      if (nextIndex < 0) nextIndex = options.length - 1;
+      if (nextIndex >= options.length) nextIndex = 0;
+
+      selectElement.selectedIndex = nextIndex;
+      selectElement.dispatchEvent(new Event('change'));
+    }, { passive: false });
+
+    this.bgRenderScale?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundRenderScale = value;
       this.background.setRenderScale(value);
-      const renderScaleValue = document.getElementById('bgRenderScaleValue');
-      if (renderScaleValue) {
-        renderScaleValue.textContent = value.toFixed(1);
+      if (this.bgRenderScaleValue) {
+        this.bgRenderScaleValue.textContent = value.toFixed(2);
       }
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('lyricAlignPosition')?.addEventListener('input', (e) => {
+    this.bgFPS?.addEventListener('input', (e) => {
+      const value = parseInt((e.target as HTMLInputElement).value);
+      this.state.backgroundFPS = value;
+      this.background.setFPS(value);
+      if (this.bgFPSValue) {
+        this.bgFPSValue.textContent = `${value}fps`;
+      }
+      this.saveBackgroundSettings();
+    });
+
+    this.lyricAlignPosition?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.lyricAlignPosition = value;
       this.lyricPlayer.setAlignPosition(value);
-      const lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
-      if (lyricAlignPositionValue) {
-        lyricAlignPositionValue.textContent = value.toFixed(1);
+      if (this.lyricAlignPositionValue) {
+        this.lyricAlignPositionValue.textContent = value.toFixed(1);
       }
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('hidePassedLyrics')?.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      this.state.hidePassedLyrics = checked;
-      this.lyricPlayer.setHidePassedLines(checked);
-      this.updateLyricsDisplay();
-      this.saveBackgroundSettings();
-    });
+    this.hidePassedLyricsCheckbox
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.hidePassedLyrics = checked;
+        this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('enableLyricBlur')?.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      this.state.enableLyricBlur = checked;
-      this.lyricPlayer.setEnableBlur(checked);
-      this.saveBackgroundSettings();
-    });
+    this.enableLyricBlur
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.enableLyricBlur = checked;
+        this.lyricPlayer.setEnableBlur(checked);
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('enableLyricScale')?.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      this.state.enableLyricScale = checked;
-      this.lyricPlayer.setEnableScale(checked);
-      this.saveBackgroundSettings();
-    });
+    this.enableLyricScale
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.enableLyricScale = checked;
+        this.lyricPlayer.setEnableScale(checked);
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('enableLyricSpring')?.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      this.state.enableLyricSpring = checked;
-      this.lyricPlayer.setEnableSpring(checked);
-      this.saveBackgroundSettings();
-    });
+    this.enableLyricSpring
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.enableLyricSpring = checked;
+        this.lyricPlayer.setEnableSpring(checked);
+        const springDesc = document.getElementById('spring-desc');
+        if (springDesc) {
+          springDesc.style.display = checked ? 'block' : 'none';
+        }
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('wordFadeWidth')?.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.state.wordFadeWidth = value;
-      this.lyricPlayer.setWordFadeWidth(value);
-      this.saveBackgroundSettings();
-    });
+    this.posYSpringMassInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.posYSpringMass = value;
+        this.lyricPlayer.setLinePosYSpringParams({ mass: value, damping: this.state.posYSpringDamping, stiffness: this.state.posYSpringStiffness, soft: this.state.posYSpringSoft });
+        const valueElement = document.getElementById('springPosYMassValue');
+        if (valueElement) {
+          valueElement.textContent = value.toFixed(1);
+        }
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('wordFadeWidth')?.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const step = 0.10;
-      const currentValue = parseFloat((e.target as HTMLInputElement).value);
-      let newValue = currentValue;
+    this.posYSpringDampingInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.posYSpringDamping = value;
+        this.lyricPlayer.setLinePosYSpringParams({ mass: this.state.posYSpringMass, damping: value, stiffness: this.state.posYSpringStiffness, soft: this.state.posYSpringSoft });
+        const valueElement = document.getElementById('springPosYDampingValue');
+        if (valueElement) {
+          valueElement.textContent = value.toFixed(1);
+        }
+        const springPosYSoftDiv = document.getElementById('springPosYSoft')?.parentElement;
+        if (springPosYSoftDiv) {
+          springPosYSoftDiv.style.display = value < 1 ? 'flex' : 'none';
+        }
+        this.saveBackgroundSettings();
+      });
 
-      if (e.deltaY < 0) {
-        newValue = Math.max(0, currentValue + step);
-      } else {
-        newValue = Math.max(0, currentValue - step);
-      }
+    this.posYSpringStiffnessInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.posYSpringStiffness = value;
+        this.lyricPlayer.setLinePosYSpringParams({ mass: this.state.posYSpringMass, damping: this.state.posYSpringDamping, stiffness: value, soft: this.state.posYSpringSoft });
+        const valueElement = document.getElementById('springPosYStiffnessValue');
+        if (valueElement) {
+          valueElement.textContent = value.toString();
+        }
+        this.saveBackgroundSettings();
+      });
 
-      (e.target as HTMLInputElement).value = newValue.toFixed(2);
-      this.state.wordFadeWidth = newValue;
-      this.lyricPlayer.setWordFadeWidth(newValue);
-      this.saveBackgroundSettings();
-    });
+    this.posYSpringSoftCheckbox
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.posYSpringSoft = checked;
+        this.lyricPlayer.setLinePosYSpringParams({ mass: this.state.posYSpringMass, damping: this.state.posYSpringDamping, stiffness: this.state.posYSpringStiffness, soft: checked });
+        this.saveBackgroundSettings();
+      });
 
-    document.getElementById('wordFadeWidth')?.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    this.scaleSpringMassInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.scaleSpringMass = value;
+        this.lyricPlayer.setLineScaleSpringParams({ mass: value, damping: this.state.scaleSpringDamping, stiffness: this.state.scaleSpringStiffness, soft: this.state.scaleSpringSoft });
+        const valueElement = document.getElementById('springScaleMassValue');
+        if (valueElement) {
+          valueElement.textContent = value.toFixed(1);
+        }
+        this.saveBackgroundSettings();
+      });
+
+    this.scaleSpringDampingInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.scaleSpringDamping = value;
+        this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: value, stiffness: this.state.scaleSpringStiffness, soft: this.state.scaleSpringSoft });
+        const valueElement = document.getElementById('springScaleDampingValue');
+        if (valueElement) {
+          valueElement.textContent = value.toFixed(1);
+        }
+        const springScaleSoftDiv = document.getElementById('springScaleSoft')?.parentElement;
+        if (springScaleSoftDiv) {
+          springScaleSoftDiv.style.display = value < 1 ? 'flex' : 'none';
+        }
+        this.saveBackgroundSettings();
+      });
+
+    this.scaleSpringStiffnessInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.scaleSpringStiffness = value;
+        this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: this.state.scaleSpringDamping, stiffness: value, soft: this.state.scaleSpringSoft });
+        const valueElement = document.getElementById('springScaleStiffnessValue');
+        if (valueElement) {
+          valueElement.textContent = value.toString();
+        }
+        this.saveBackgroundSettings();
+      });
+
+    this.scaleSpringSoftCheckbox
+      ?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        this.state.scaleSpringSoft = checked;
+        this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: this.state.scaleSpringDamping, stiffness: this.state.scaleSpringStiffness, soft: checked });
+        this.saveBackgroundSettings();
+      });
+
+    this.wordFadeWidthInput
+      ?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.wordFadeWidth = value;
+        this.lyricPlayer.setWordFadeWidth(value);
+        this.saveBackgroundSettings();
+        if (this.wordFadeWidthValue) {
+          this.wordFadeWidthValue.textContent = value.toFixed(2);
+        }
+      });
+
+    this.wordFadeWidthInput
+      ?.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const delta = e.key === 'ArrowUp' ? 0.10 : -0.10;
-        const newValue = Math.max(0, parseFloat((e.target as HTMLInputElement).value || '0') + delta);
-        (e.target as HTMLInputElement).value = newValue.toFixed(2);
+        const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
+        const currentValue = parseFloat(this.wordFadeWidthInput!.value);
+        const min = parseFloat(this.wordFadeWidthInput!.min);
+        const max = parseFloat(this.wordFadeWidthInput!.max);
+        const step = parseFloat(this.wordFadeWidthInput!.step);
+
+        const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
         this.state.wordFadeWidth = newValue;
+        this.wordFadeWidthInput!.value = newValue.toString();
         this.lyricPlayer.setWordFadeWidth(newValue);
         this.saveBackgroundSettings();
-      }
-    });
+        if (this.wordFadeWidthValue) {
+          this.wordFadeWidthValue.textContent = newValue.toFixed(2);
+        }
+      }, { passive: false });
 
-    document.getElementById('lyricAlignAnchor')?.addEventListener('change', (e) => {
+    this.wordFadeWidthInput
+      ?.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const step = parseFloat(this.wordFadeWidthInput!.step) || 0.01;
+          const delta = e.key === 'ArrowUp' ? step : -step;
+          const currentValue = parseFloat(this.wordFadeWidthInput!.value);
+          const min = parseFloat(this.wordFadeWidthInput!.min);
+          const max = parseFloat(this.wordFadeWidthInput!.max);
+          const newValue = Math.min(max, Math.max(min, currentValue + delta));
+          this.wordFadeWidthInput!.value = newValue.toString();
+          this.state.wordFadeWidth = newValue;
+          this.lyricPlayer.setWordFadeWidth(newValue);
+          this.saveBackgroundSettings();
+          if (this.wordFadeWidthValue) {
+            this.wordFadeWidthValue.textContent = newValue.toFixed(2);
+          }
+        }
+      });
+
+    this.lyricAlignAnchorSelect?.addEventListener('change', (e) => {
       const value = (e.target as HTMLInputElement).value as 'center' | 'top' | 'bottom';
       this.state.lyricAlignAnchor = value;
       this.lyricPlayer.setAlignAnchor(value);
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('lyricAlignAnchor')?.addEventListener('wheel', (e) => {
+    this.lyricAlignAnchorSelect?.addEventListener('wheel', (e) => {
       e.preventDefault();
       const selectElement = e.target as HTMLSelectElement;
       const options = selectElement.options;
@@ -699,17 +1244,167 @@ class WebLyricsPlayer {
       selectElement.dispatchEvent(new Event('change'));
     }, { passive: false });
 
-    document.getElementById('invertColors')?.addEventListener('change', (e) => {
+    this.invertColorsCheckbox?.addEventListener('change', (e) => {
       this.invertColors((e.target as HTMLInputElement).checked);
-      this.state.invertColors = (e.target as HTMLInputElement).checked;
-      this.saveBackgroundSettings();
     });
 
-    document.getElementById('enableMarquee')?.addEventListener('change', (e) => {
+    this.enableMarqueeCheckbox?.addEventListener('change', (e) => {
       this.state.marqueeEnabled = (e.target as HTMLInputElement).checked;
       this.updateMarqueeSettings();
       this.saveBackgroundSettings();
     });
+
+    // FFT Data Range Min
+    const fftDataRangeMin = this.fftDataRangeMin;
+    const fftDataRangeMinValue = this.fftDataRangeMinValue;
+
+    if (fftDataRangeMin && fftDataRangeMinValue) {
+      fftDataRangeMinValue.textContent = `${fftDataRangeMin.value}Hz`;
+
+      fftDataRangeMin.addEventListener('input', (e) => {
+        const value = parseInt((e.target as HTMLInputElement).value);
+        const maxRange = this.fftDataRangeMax;
+        const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
+        let maxValue = 0;
+        if (maxRange) {
+          maxValue = parseInt(maxRange.value);
+        }
+
+        // 如果min > max，则max跟随min移动
+        if (value > maxValue) {
+          this.state.fftDataRangeMin = value;
+          fftDataRangeMin.value = value.toString();
+          this.state.fftDataRangeMax = value;
+          if (maxRange) {
+            maxRange.value = value.toString();
+          }
+          if (fftDataRangeMaxValue) {
+            fftDataRangeMaxValue.textContent = `${value}Hz`;
+          }
+        } else {
+          this.state.fftDataRangeMin = value;
+        }
+
+        fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
+        this.updateFFTDataRange();
+        this.saveBackgroundSettings();
+      });
+
+      fftDataRangeMin.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
+        const currentValue = parseInt(fftDataRangeMin.value);
+        const min = parseInt(fftDataRangeMin.min);
+        const max = parseInt(fftDataRangeMin.max);
+        const step = 1;
+        const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
+
+        const maxRange = this.fftDataRangeMax;
+        const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
+        let maxValue = 0;
+        if (maxRange) {
+          maxValue = parseInt(maxRange.value);
+        }
+
+        if (newValue > maxValue) {
+          fftDataRangeMin.value = newValue.toString();
+          this.state.fftDataRangeMin = newValue;
+          if (maxRange) {
+            maxRange.value = newValue.toString();
+          }
+          this.state.fftDataRangeMax = newValue;
+          if (fftDataRangeMaxValue) {
+            fftDataRangeMaxValue.textContent = `${newValue}Hz`;
+          }
+        } else {
+          fftDataRangeMin.value = newValue.toString();
+          this.state.fftDataRangeMin = newValue;
+        }
+
+        fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
+        this.updateFFTDataRange();
+        this.saveBackgroundSettings();
+      }, { passive: false });
+
+      // FFT Data Range Max
+      const fftDataRangeMax = this.fftDataRangeMax;
+      const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
+
+      if (fftDataRangeMin && fftDataRangeMinValue) {
+        fftDataRangeMinValue.textContent = `${fftDataRangeMin.value}Hz`;
+      }
+      if (fftDataRangeMax) {
+        fftDataRangeMax.addEventListener('input', (e) => {
+          const value = parseInt((e.target as HTMLInputElement).value);
+          const minRange = this.fftDataRangeMin;
+          let minValue = 0;
+
+          if (minRange) {
+            minValue = parseInt(minRange.value);
+          }
+
+          // 如果max < min，则min跟随max移动
+          if (value < minValue) {
+            this.state.fftDataRangeMax = value;
+            fftDataRangeMax.value = value.toString();
+            this.state.fftDataRangeMin = value;
+            if (minRange) {
+              minRange.value = value.toString();
+              if (fftDataRangeMinValue) {
+                fftDataRangeMinValue.textContent = `${value}Hz`;
+              }
+            }
+          } else {
+            this.state.fftDataRangeMax = value;
+          }
+
+          if (fftDataRangeMaxValue) {
+            fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
+          }
+          this.updateFFTDataRange();
+          this.saveBackgroundSettings();
+        });
+
+        fftDataRangeMax.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
+          const currentValue = parseInt(fftDataRangeMax.value);
+          const min = parseInt(fftDataRangeMax.min);
+          const max = parseInt(fftDataRangeMax.max);
+          const step = 1;
+          const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
+
+          const minRange = this.fftDataRangeMin;
+          let minValue = 0;
+
+          if (minRange) {
+            minValue = parseInt(minRange.value);
+          }
+
+          // 如果max < min，则min跟随max移动
+          if (newValue < minValue) {
+            fftDataRangeMax.value = newValue.toString();
+            this.state.fftDataRangeMax = newValue;
+            if (minRange) {
+              minRange.value = newValue.toString();
+              this.state.fftDataRangeMin = newValue;
+              if (fftDataRangeMinValue) {
+                fftDataRangeMinValue.textContent = `${newValue}Hz`;
+              }
+            }
+          } else {
+            fftDataRangeMax.value = newValue.toString();
+            this.state.fftDataRangeMax = newValue;
+          }
+
+          if (fftDataRangeMaxValue) {
+            fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
+          }
+          this.updateFFTDataRange();
+          this.saveBackgroundSettings();
+        }, { passive: false });
+      }
+    }
 
     this.setupWheelControl('coverBlurLevel', 'coverBlurLevelValue', 5);
     this.setupWheelControl('bgFlowSpeed', 'bgFlowSpeedValue', 0.1);
@@ -719,27 +1414,55 @@ class WebLyricsPlayer {
     this.setupWheelControl('roundedCover', 'roundedCoverValue', 5);
     this.setupWheelControl('coverRotation', 'coverRotationValue', 5);
     this.setupWheelControl('bgRenderScale', 'bgRenderScaleValue', 0.1);
+    this.setupWheelControl('bgFPS', 'bgFPSValue', 1);
     this.setupWheelControl('lyricAlignPosition', 'lyricAlignPositionValue', 0.1);
+    this.setupWheelControl('springPosYMass', 'springPosYMassValue', 0.1);
+    this.setupWheelControl('springPosYDamping', 'springPosYDampingValue', 0.1);
+    this.setupWheelControl('springPosYStiffness', 'springPosYStiffnessValue', 1);
+    this.setupWheelControl('springScaleMass', 'springScaleMassValue', 0.1);
+    this.setupWheelControl('springScaleDamping', 'springScaleDampingValue', 0.1);
+    this.setupWheelControl('springScaleStiffness', 'springScaleStiffnessValue', 1);
 
-    document
-      .getElementById("albumCoverLarge")
+    this.bgLowFreqVolume?.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
+      const currentValue = parseFloat(this.bgLowFreqVolume!.value);
+      const min = parseFloat(this.bgLowFreqVolume!.min);
+      const max = parseFloat(this.bgLowFreqVolume!.max);
+      const newValue = Math.min(max, Math.max(min, currentValue + delta * 0.1)); // 步长0.1
+      this.bgLowFreqVolume!.value = newValue.toString();
+      if (this.bgLowFreqVolumeValue) {
+        const mapToFrequency = (value: number): string => {
+          const frequency = 80 + (value * 40); // 0->80, 1->120
+          return `${frequency.toFixed(0)}hz`;
+        };
+        this.bgLowFreqVolumeValue.textContent = mapToFrequency(newValue);
+      }
+      this.bgLowFreqVolume!.dispatchEvent(new Event('input'));
+    }, { passive: false });
+
+    this.albumCoverLarge
       ?.addEventListener("click", () => {
-        const coverFileInput = document.getElementById(
-          "coverFile"
-        ) as HTMLInputElement;
-        if (coverFileInput) {
-          coverFileInput.click();
+        if (!this.state.coverUrl && this.coverFile) {
+          this.coverFile.click();
         }
       });
 
-    document.getElementById("songTitle")?.addEventListener("click", (e) => {
-      const titleElement = e.target as HTMLElement;
-      const currentTitle = titleElement.textContent || "";
+    if (this.albumCoverLarge && this.coverFile) {
+      this.addLongPressAndRightClickHandler(this.albumCoverLarge, () => {
+        if (this.coverFile) {
+          this.coverFile.click();
+        }
+      }, 3000);
+    }
 
+    const handleTitleEdit = (titleElement: HTMLElement) => {
       titleElement.classList.remove('marquee');
       const input = document.createElement("input");
       input.type = "text";
-      input.value = currentTitle;
+      input.value = titleElement.textContent || "";
+      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+      const textAlign = isPortrait && this.state.swapDuetsPositions ? 'right' : (isPortrait ? 'left' : 'center');
       input.style.cssText = `
         width: 100%;
         background: transparent;
@@ -747,7 +1470,7 @@ class WebLyricsPlayer {
         color: var(--dominant-color-light);
         font-size: inherit;
         font-weight: inherit;
-        text-align: center;
+        text-align: ${textAlign};
         outline: none;
       `;
 
@@ -757,9 +1480,8 @@ class WebLyricsPlayer {
       input.addEventListener("blur", () => {
         this.state.songTitle = input.value;
         titleElement.textContent = input.value;
-        const songTitleInput = document.getElementById("songTitleInput") as HTMLInputElement;
-        if (songTitleInput) {
-          songTitleInput.value = input.value;
+        if (this.songTitleInput) {
+          this.songTitleInput.value = input.value;
         }
         this.updateSongInfo();
       });
@@ -768,24 +1490,40 @@ class WebLyricsPlayer {
         if (e.key === "Enter") {
           this.state.songTitle = input.value;
           titleElement.textContent = input.value;
-          const songTitleInput = document.getElementById("songTitleInput") as HTMLInputElement;
-          if (songTitleInput) {
-            songTitleInput.value = input.value;
+          if (this.songTitleInput) {
+            this.songTitleInput.value = input.value;
           }
           this.updateSongInfo();
         }
       });
+    };
+
+    this.songTitle?.addEventListener("click", (e) => {
+      const titleElement = e.target as HTMLElement;
+      const currentTitle = titleElement.textContent || "";
+
+      if (currentTitle === "" || currentTitle === t("title")) {
+        handleTitleEdit(titleElement);
+      }
     });
 
-    document.getElementById("songArtist")?.addEventListener("click", (e) => {
-      const artistElement = e.target as HTMLElement;
-      const currentArtist = artistElement.textContent || "";
+    if (this.songTitle) {
+      this.addLongPressAndRightClickHandler(this.songTitle, () => {
+        if (this.songTitle) {
+          handleTitleEdit(this.songTitle as HTMLElement);
+        }
+      }, 3000);
+    }
 
+    const handleArtistEdit = (artistElement: HTMLElement) => {
       artistElement.classList.remove('marquee');
 
       const input = document.createElement("input");
       input.type = "text";
-      input.value = currentArtist;
+      input.value = artistElement.textContent || "";
+      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+      const textAlign = isPortrait && this.state.swapDuetsPositions ? 'right' : (isPortrait ? 'left' : 'center');
+
       input.style.cssText = `
         width: 100%;
         background: transparent;
@@ -793,7 +1531,7 @@ class WebLyricsPlayer {
         color: var(--dominant-color-light);
         opacity: 0.8;
         font-size: inherit;
-        text-align: center;
+        text-align: ${textAlign};
         outline: none;
       `;
 
@@ -804,9 +1542,8 @@ class WebLyricsPlayer {
       input.addEventListener("blur", () => {
         this.state.songArtist = input.value;
         artistElement.textContent = input.value;
-        const songArtistInput = document.getElementById("songArtistInput") as HTMLInputElement;
-        if (songArtistInput) {
-          songArtistInput.value = input.value;
+        if (this.songArtistInput) {
+          this.songArtistInput.value = input.value;
         }
         this.updateSongInfo();
       });
@@ -815,43 +1552,50 @@ class WebLyricsPlayer {
         if (e.key === "Enter") {
           this.state.songArtist = input.value;
           artistElement.textContent = input.value;
-          const songArtistInput = document.getElementById("songArtistInput") as HTMLInputElement;
-          if (songArtistInput) {
-            songArtistInput.value = input.value;
+          if (this.songArtistInput) {
+            this.songArtistInput.value = input.value;
           }
           this.updateSongInfo();
         }
       });
-    });
+    };
 
-    document
-      .getElementById("songInfoTopLeft")
-      ?.addEventListener("click", () => {
-        this.toggleControlPanel();
-      });
+    this.songArtist?.addEventListener("click", (e) => {
+      const artistElement = e.target as HTMLElement;
+      const currentArtist = artistElement.textContent || "";
 
-    document.getElementById("musicFileBtn")?.addEventListener("click", () => {
-      const musicFileInput = document.getElementById("musicFile") as HTMLInputElement;
-      if (musicFileInput) {
-        musicFileInput.click();
+      if (currentArtist === "" || currentArtist === t("artist")) {
+        handleArtistEdit(artistElement);
       }
     });
 
-    document.getElementById("lyricFileBtn")?.addEventListener("click", () => {
-      const lyricFileInput = document.getElementById("lyricFile") as HTMLInputElement;
-      if (lyricFileInput) {
-        lyricFileInput.click();
+    if (this.songArtist) {
+      this.addLongPressAndRightClickHandler(this.songArtist, () => {
+        if (this.songArtist) {
+          handleArtistEdit(this.songArtist as HTMLElement);
+        }
+      }, 3000);
+    }
+
+    this.musicFileBtn?.addEventListener("click", () => {
+      if (this.musicFile) {
+        this.musicFile.click();
       }
     });
 
-    document.getElementById("coverFileBtn")?.addEventListener("click", () => {
-      const coverFileInput = document.getElementById("coverFile") as HTMLInputElement;
-      if (coverFileInput) {
-        coverFileInput.click();
+    this.lyricFileBtn?.addEventListener("click", () => {
+      if (this.lyricFile) {
+        this.lyricFile.click();
       }
     });
 
-    document.getElementById("musicFile")?.addEventListener("change", (e) => {
+    this.coverFileBtn?.addEventListener("click", () => {
+      if (this.coverFile) {
+        this.coverFile.click();
+      }
+    });
+
+    this.musicFile?.addEventListener("change", (e) => {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
@@ -859,7 +1603,7 @@ class WebLyricsPlayer {
       }
     });
 
-    document.getElementById("lyricFile")?.addEventListener("change", (e) => {
+    this.lyricFile?.addEventListener("change", (e) => {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
@@ -867,7 +1611,7 @@ class WebLyricsPlayer {
       }
     });
 
-    document.getElementById("coverFile")?.addEventListener("change", (e) => {
+    this.coverFile?.addEventListener("change", (e) => {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
@@ -875,110 +1619,88 @@ class WebLyricsPlayer {
       }
     });
 
-    document
-      .getElementById("songTitleInput")
+    this.songTitleInput
       ?.addEventListener("input", (e) => {
         this.state.songTitle = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
       });
 
-    document
-      .getElementById("songArtistInput")
+    this.songArtistInput
       ?.addEventListener("input", (e) => {
         this.state.songArtist = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
       });
 
-    document
-      .getElementById("songTitleInput")
+    this.songTitleInput
       ?.addEventListener("blur", (e) => {
         this.state.songTitle = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
-        const songTitleElement = document.getElementById('songTitle');
-        const songTitleTopLeftElement = document.getElementById('songTitleTopLeft');
-        if (songTitleElement) {
-          this.checkAndUpdateMarquee(songTitleElement);
-        }
-        if (songTitleTopLeftElement) {
-          this.checkAndUpdateMarquee(songTitleTopLeftElement);
+        if (this.songTitle) {
+          this.checkAndUpdateMarquee(this.songTitle);
         }
       });
 
-    document
-      .getElementById("songTitleInput")
+    this.songTitleInput
       ?.addEventListener("keydown", (e) => {
         if (e.key === 'Enter') {
           (e.target as HTMLInputElement).blur();
         }
       });
 
-    document
-      .getElementById("songArtistInput")
+    this.songArtistInput
       ?.addEventListener("blur", (e) => {
         this.state.songArtist = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
-        const songArtistElement = document.getElementById('songArtist');
-        const songArtistTopLeftElement = document.getElementById('songArtistTopLeft');
-        if (songArtistElement) {
-          this.checkAndUpdateMarquee(songArtistElement);
-        }
-        if (songArtistTopLeftElement) {
-          this.checkAndUpdateMarquee(songArtistTopLeftElement);
+        if (this.songArtist) {
+          this.checkAndUpdateMarquee(this.songArtist);
         }
       });
 
-    document
-      .getElementById("songArtistInput")
+    this.songArtistInput
       ?.addEventListener("keydown", (e) => {
         if (e.key === 'Enter') {
           (e.target as HTMLInputElement).blur();
         }
       });
 
-    document.getElementById("loopPlay")?.addEventListener("change", (e) => {
-      this.state.loopPlay = (e.target as HTMLInputElement).checked;
-    });
+    this.loopPlayCheckbox
+      ?.addEventListener("change", (e) => {
+        this.state.loopPlay = (e.target as HTMLInputElement).checked;
+      });
 
-    const playbackRateControl = document.getElementById(
-      "playbackRate"
-    ) as HTMLInputElement;
-    const playbackRateValue = document.getElementById("playbackRateValue");
-
-    if (playbackRateControl && playbackRateValue) {
-      playbackRateControl.addEventListener("input", (e) => {
+    if (this.playbackRateControl && this.playbackRateValue) {
+      this.playbackRateControl.addEventListener("input", (e) => {
         const rate = parseFloat((e.target as HTMLInputElement).value);
         if (!isNaN(rate)) {
           this.audio.playbackRate = rate;
-          playbackRateValue.textContent = rate.toFixed(2) + "x";
+          if (this.playbackRateValue) {
+            this.playbackRateValue.textContent = rate.toFixed(2) + "x";
+          }
           this.updatePlaybackRateIcon(rate);
         }
       });
-      const initialRate = parseFloat(playbackRateControl.value);
+      const initialRate = parseFloat(this.playbackRateControl.value);
       this.updatePlaybackRateIcon(initialRate);
     }
 
-    const volumeControl = document.getElementById(
-      "volumeControl"
-    ) as HTMLInputElement;
-    const volumeValue = document.getElementById("volumeValue");
-
-    if (volumeControl && volumeValue) {
-      volumeControl.value = (this.audio.volume * 100).toString();
-      volumeValue.textContent = Math.round(this.audio.volume * 100) + "%";
+    if (this.volumeControl && this.volumeValue) {
+      this.volumeControl.value = (this.audio.volume * 100).toString();
+      this.volumeValue.textContent = Math.round(this.audio.volume * 100) + "%";
       this.updateVolumeIcon(Math.round(this.audio.volume * 100));
 
-      volumeControl.addEventListener("input", (e) => {
+      this.volumeControl.addEventListener("input", (e) => {
         const volume = parseInt((e.target as HTMLInputElement).value);
-        if (!isNaN(volume)) {
+        if (!isNaN(volume) && this.volumeValue) {
           this.audio.volume = volume / 100;
-          volumeValue.textContent = volume + "%";
+          this.volumeValue.textContent = volume + "%";
           this.updateVolumeIcon(volume);
         }
       });
-      volumeControl.addEventListener("wheel", (e) => {
+      this.volumeControl.addEventListener("wheel", (e) => {
         e.preventDefault();
         const step = 5;
-        const currentValue = parseInt(volumeControl.value);
+        if (!this.volumeControl) return;
+        const currentValue = parseInt(this.volumeControl.value);
         let newValue = currentValue;
 
         if (e.deltaY < 0) {
@@ -987,50 +1709,50 @@ class WebLyricsPlayer {
           newValue = Math.max(0, currentValue - step);
         }
 
-        if (newValue !== currentValue) {
-          volumeControl.value = newValue.toString();
+        if (newValue !== currentValue && this.volumeControl && this.volumeValue) {
+          this.volumeControl.value = newValue.toString();
           this.audio.volume = newValue / 100;
-          volumeValue.textContent = newValue + "%";
+          this.volumeValue.textContent = newValue + "%";
           this.updateVolumeIcon(newValue);
         }
       }, { passive: false });
     }
 
-    const lyricDelayInput = document.getElementById(
-      "lyricDelayInput"
-    ) as HTMLInputElement;
-    if (lyricDelayInput) {
-      lyricDelayInput.addEventListener("input", (e) => {
+    if (this.lyricDelayInput) {
+      this.lyricDelayInput.addEventListener("input", (e) => {
         const value = parseInt((e.target as HTMLInputElement).value);
         if (!isNaN(value)) {
           this.state.lyricDelay = value;
         }
       });
 
-      lyricDelayInput.addEventListener(
-        "wheel",
-        (e) => {
-          e.preventDefault();
-          const delta = e.deltaY < 0 ? 50 : -50;
-          const newValue = parseInt(lyricDelayInput.value || "0") + delta;
-          lyricDelayInput.value = newValue.toString();
-          this.state.lyricDelay = newValue;
-        },
-        { passive: false }
-      );
+      if (this.lyricDelayInput) {
+        const lyricDelayInput = this.lyricDelayInput; // 存储在变量中，避免TypeScript的控制流分析问题
+        lyricDelayInput.addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 50 : -50;
+            const newValue = parseInt(lyricDelayInput.value || "0") + delta;
+            lyricDelayInput.value = newValue.toString();
+            this.state.lyricDelay = newValue;
+          },
+          { passive: false }
+        );
 
-      lyricDelayInput.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-          e.preventDefault();
-          const delta = e.key === "ArrowUp" ? 50 : -50;
-          const newValue = parseInt(lyricDelayInput.value || "0") + delta;
-          lyricDelayInput.value = newValue.toString();
-          this.state.lyricDelay = newValue;
-        }
-      });
+        lyricDelayInput.addEventListener("keydown", (e) => {
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const delta = e.key === "ArrowUp" ? 50 : -50;
+            const newValue = parseInt(lyricDelayInput.value || "0") + delta;
+            lyricDelayInput.value = newValue.toString();
+            this.state.lyricDelay = newValue;
+          }
+        });
+      }
     }
 
-    document.getElementById('bgFlowSpeed')?.addEventListener('input', (e) => {
+    this.bgFlowSpeed?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundFlowSpeed = value;
       // 只有在AMLL背景模式下才应用流动速度
@@ -1042,131 +1764,129 @@ class WebLyricsPlayer {
           this.background.setFlowSpeed(value);
         }
       }
-      document.getElementById('bgFlowSpeedValue')!.textContent = value.toFixed(1);
+      this.bgFlowSpeedValue!.textContent = value.toFixed(1);
       this.saveBackgroundSettings();
     });
 
     // 颜色蒙版控制事件
-    document.getElementById('bgColorMask')?.addEventListener('change', (e) => {
+    this.bgColorMask?.addEventListener('change', (e) => {
       this.state.backgroundColorMask = (e.target as HTMLInputElement).checked;
       this.updateBackground();
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('bgMaskColor')?.addEventListener('input', (e) => {
+    this.bgMaskColor?.addEventListener('input', (e) => {
       this.state.backgroundMaskColor = (e.target as HTMLInputElement).value;
       this.updateBackground();
       this.saveBackgroundSettings();
     });
 
-    document.getElementById('bgMaskOpacity')?.addEventListener('input', (e) => {
+    this.bgMaskOpacity?.addEventListener('input', (e) => {
       const value = parseInt((e.target as HTMLInputElement).value);
       this.state.backgroundMaskOpacity = value;
       this.updateBackground();
-      document.getElementById('bgMaskOpacityValue')!.textContent = value + '%';
+      this.bgMaskOpacityValue!.textContent = value + '%';
       this.saveBackgroundSettings();
     });
 
     // FPS显示控制
-    document.getElementById('showFPS')?.addEventListener('change', (e) => {
+    this.showFPSCheckbox?.addEventListener('change', (e) => {
       this.state.showFPS = (e.target as HTMLInputElement).checked;
       this.updateFPSDisplay();
       this.saveBackgroundSettings();
     });
 
-    document.getElementById("loadFromUrl")?.addEventListener("click", () => {
+    this.loadFromUrlBtn?.addEventListener("click", () => {
       this.loadFromURLs();
     });
 
-    document.getElementById("musicUrl")?.addEventListener("keydown", (e) => {
+    this.musicUrl?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         this.loadFromURLs();
       }
     });
 
-    document.getElementById("lyricUrl")?.addEventListener("keydown", (e) => {
+    this.lyricUrl?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         this.loadFromURLs();
       }
     });
 
-    document.getElementById("coverUrl")?.addEventListener("keydown", (e) => {
+    this.coverUrl?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         this.loadFromURLs();
       }
     });
 
-    document.getElementById("loadFiles")?.addEventListener("click", () => {
+    this.loadFilesBtn?.addEventListener("click", () => {
       this.loadFromFiles();
     });
 
-    document.getElementById("resetPlayer")?.addEventListener("click", () => {
+    this.resetPlayerBtn?.addEventListener("click", () => {
       this.resetPlayer();
     });
 
-    const fullscreenButton = document.getElementById("fullscreenBtn");
-    if (fullscreenButton) {
+    if (this.fullscreenButton) {
       let fullscreenButtonLongPressTimer: number;
       let isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-      fullscreenButton.addEventListener("click", () => {
+      this.fullscreenButton.addEventListener("click", () => {
         this.toggleFullscreen();
       });
 
-      fullscreenButton.addEventListener("mousedown", () => {
+      this.fullscreenButton.addEventListener("mousedown", () => {
         fullscreenButtonLongPressTimer = window.setTimeout(() => {
-          const lyricFileInput = document.getElementById(
-            "lyricFile"
-          ) as HTMLInputElement;
-          if (lyricFileInput) lyricFileInput.click();
+          if (this.lyricFile) this.lyricFile.click();
         }, 3000);
       });
 
-      fullscreenButton.addEventListener("mouseup", () => {
+      this.fullscreenButton.addEventListener("mouseup", () => {
         clearTimeout(fullscreenButtonLongPressTimer);
       });
 
-      fullscreenButton.addEventListener("mouseleave", () => {
+      this.fullscreenButton.addEventListener("mouseleave", () => {
         clearTimeout(fullscreenButtonLongPressTimer);
       });
 
-      fullscreenButton.addEventListener("contextmenu", (e) => {
+      this.fullscreenButton.addEventListener("contextmenu", (e) => {
         e.preventDefault(); // 阻止默认右键菜单
-        const lyricFileInput = document.getElementById(
-          "lyricFile"
-        ) as HTMLInputElement;
-        if (lyricFileInput) lyricFileInput.click();
+        if (this.lyricFile) this.lyricFile.click();
         return false; // 为Safari返回false
       });
 
-      fullscreenButton.addEventListener("touchstart", (e) => {
-        let isLongPress = false;
-        fullscreenButtonLongPressTimer = window.setTimeout(() => {
-          isLongPress = true;
-          const lyricFileInput = document.getElementById(
-            "lyricFile"
-          ) as HTMLInputElement;
-          if (lyricFileInput) lyricFileInput.click();
-        }, 3000);
-      }, { passive: true });
+      if (this.fullscreenButton) {
+        this.fullscreenButton.addEventListener("touchstart", (e: TouchEvent) => {
+          let isLongPress = false;
+          fullscreenButtonLongPressTimer = window.setTimeout(() => {
+            isLongPress = true;
+            if (this.lyricFile) this.lyricFile.click();
+          }, 3000);
+        }, { passive: true });
 
-      fullscreenButton.addEventListener("touchend", () => {
-        clearTimeout(fullscreenButtonLongPressTimer);
-      }, { passive: true });
+        this.fullscreenButton.addEventListener("touchend", () => {
+          clearTimeout(fullscreenButtonLongPressTimer);
+        }, { passive: true });
 
-      fullscreenButton.addEventListener("touchcancel", () => {
-        clearTimeout(fullscreenButtonLongPressTimer);
-      }, { passive: true });
+        this.fullscreenButton.addEventListener("touchcancel", () => {
+          clearTimeout(fullscreenButtonLongPressTimer);
+        }, { passive: true });
+      }
     }
-    document.getElementById("toggleControls")?.addEventListener("click", () => {
+    this.toggleControlsBtn?.addEventListener("click", () => {
       this.toggleControlPanel();
     });
 
-    document.getElementById("progressBar")?.addEventListener("click", (e) => {
+    if (this.albumSidePanel) {
+      this.albumSidePanel.addEventListener("click", () => {
+        this.toggleControlPanel();
+      });
+    }
+
+    this.progressBar?.addEventListener("click", (e) => {
       this.seekToPosition(e);
     });
 
-    document.getElementById("progressBar")?.addEventListener("wheel", (e) => {
+    this.progressBar?.addEventListener("wheel", (e) => {
       e.preventDefault();
       const seekAmount = e.deltaY > 0 ? -1 : 1;
       if (this.audio && this.state.duration > 0) {
@@ -1176,123 +1896,35 @@ class WebLyricsPlayer {
         );
         this.audio.currentTime = newTime;
         this.state.currentTime = newTime;
+        const adjustedTime = newTime * 1000 + this.state.lyricDelay;
+        this.lyricPlayer.setCurrentTime(adjustedTime);
         this.updateProgress();
         this.updateTimeDisplay();
       }
     }, { passive: false });
 
-    const progressBar = document.getElementById("progressBar");
-    let tooltip: HTMLElement | null = null;
-    let verticalLine: HTMLElement | null = null;
-    let tooltipTimer: number | null = null;
+    const progressBar = this.progressBar;
 
     if (progressBar) {
       progressBar.style.position = 'relative';
 
       progressBar.addEventListener("mousemove", (e) => {
-        const rect = progressBar.getBoundingClientRect();
-        const percentage = (e.clientX - rect.left) / rect.width;
-        const timeInSeconds = percentage * this.state.duration;
-
-        const linePosition = `${percentage * 100}%`;
-
-        if (!verticalLine) {
-          verticalLine = document.createElement('div');
-          verticalLine.style.position = 'absolute';
-          verticalLine.style.width = '1px';
-          verticalLine.style.height = '100%';
-          verticalLine.style.backgroundColor = 'var(--dominant-color-light)';
-          verticalLine.style.top = '0';
-          verticalLine.style.opacity = '0.7';
-          verticalLine.style.zIndex = '51';
-          progressBar.appendChild(verticalLine);
-        }
-        verticalLine.style.left = linePosition;
-        verticalLine.style.display = 'block';
-
-        if (!tooltip) {
-          tooltip = document.createElement('div');
-          tooltip.style.position = 'fixed';
-          tooltip.style.color = 'var(--dominant-color-light)';
-          tooltip.style.padding = '4px 8px';
-          tooltip.style.borderRadius = '0.75em';
-          tooltip.style.fontSize = '0.75em';
-          tooltip.style.pointerEvents = 'none';
-          tooltip.style.zIndex = '52';
-          tooltip.style.transform = 'translateY(6px)';
-          tooltip.style.transition = 'all 0.3s ease-out';
-          tooltip.style.opacity = '0';
-          document.body.appendChild(tooltip);
-        }
-
-        const mins = Math.floor(timeInSeconds / 60);
-        const secs = Math.floor(timeInSeconds % 60);
-        const ms = Math.floor((timeInSeconds % 1) * 1000);
-        const formattedTime = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
-
-        if (!(formattedTime == '00:00.000' || !isFinite(this.state.duration))) {
-          tooltip.textContent = formattedTime;
-
-          const lineRect = verticalLine.getBoundingClientRect();
-          tooltip.style.left = `${lineRect.right - 6}px`;
-
-          const tooltipRect = tooltip.getBoundingClientRect();
-          const targetTop = `${rect.top + (rect.height - tooltipRect.height) / 2 - 18}px`;
-
-          tooltip.style.top = targetTop;
-          tooltip.style.display = 'block';
-          void tooltip.offsetWidth;
-          tooltip.style.transform = 'translateY(0)';
-          tooltip.style.opacity = '0.7';
-
-          if (tooltipTimer) {
-            clearTimeout(tooltipTimer);
-          }
-
-          tooltipTimer = window.setTimeout(() => {
-            if (tooltip) {
-              tooltip.style.transform = 'translateY(6px)';
-              tooltip.style.opacity = '0';
-              setTimeout(() => {
-                if (tooltip) {
-                  tooltip.style.display = 'none';
-                }
-              }, 250);
-            }
-            if (verticalLine) {
-              verticalLine.style.display = 'none';
-            }
-          }, 3000);
-        } else {
-          if (tooltip) {
-            tooltip.style.transform = 'translateY(6px)';
-            tooltip.style.opacity = '0';
-            setTimeout(() => {
-              if (tooltip) {
-                tooltip.style.display = 'none';
-              }
-            }, 250);
-          }
-          if (tooltipTimer) {
-            clearTimeout(tooltipTimer);
-          }
-        }
+        this.showTooltip(progressBar, e.clientX);
       });
 
       progressBar.addEventListener("mouseleave", () => {
-        if (tooltipTimer) {
-          clearTimeout(tooltipTimer);
+        if (this.tooltipTimer) {
+          clearTimeout(this.tooltipTimer);
         }
-
-        if (verticalLine) {
-          verticalLine.style.display = 'none';
+        if (this.verticalLine) {
+          this.verticalLine.style.display = 'none';
         }
-        if (tooltip) {
-          tooltip.style.transform = 'translateY(6px)';
-          tooltip.style.opacity = '0';
+        if (this.tooltip) {
+          this.tooltip.style.transform = 'translateY(4px)';
+          this.tooltip.style.opacity = '0';
           setTimeout(() => {
-            if (tooltip) {
-              tooltip.style.display = 'none';
+            if (this.tooltip) {
+              this.tooltip.style.display = 'none';
             }
           }, 300);
         }
@@ -1309,18 +1941,15 @@ class WebLyricsPlayer {
       this.adjustLyricPosition();
     });
     document.addEventListener("fullscreenchange", () => {
-      const enterIcon = document.querySelector('.fullscreen-enter') as HTMLElement;
-      const exitIcon = document.querySelector('.fullscreen-exit') as HTMLElement;
-
       if (document.fullscreenElement) {
-        if (enterIcon && exitIcon) {
-          enterIcon.style.display = 'none';
-          exitIcon.style.display = 'inline';
+        if (this.fullscreenEnterIcon && this.fullscreenExitIcon) {
+          this.fullscreenEnterIcon.style.display = 'none';
+          this.fullscreenExitIcon.style.display = 'inline';
         }
       } else {
-        if (enterIcon && exitIcon) {
-          enterIcon.style.display = 'inline';
-          exitIcon.style.display = 'none';
+        if (this.fullscreenEnterIcon && this.fullscreenExitIcon) {
+          this.fullscreenEnterIcon.style.display = 'inline';
+          this.fullscreenExitIcon.style.display = 'none';
         }
       }
     });
@@ -1329,12 +1958,434 @@ class WebLyricsPlayer {
       .matchMedia("(orientation: portrait)")
       .addEventListener("change", () => {
         this.adjustLyricPosition();
+        if (this.songTitle) {
+          this.songTitle.classList.remove('marquee');
+          void this.songTitle.offsetWidth; // 强制重排
+          this.checkAndUpdateMarquee(this.songTitle);
+        }
+        if (this.songArtist) {
+          this.songArtist.classList.remove('marquee');
+          void this.songArtist.offsetWidth; // 强制重排
+          this.checkAndUpdateMarquee(this.songArtist);
+        }
       });
+  }
+
+  private async detectMaxFPS(): Promise<number> {
+    try {
+      const screenWithRefreshRate = window.screen as any;
+      if (screenWithRefreshRate?.refreshRate) {
+        return Math.round(screenWithRefreshRate.refreshRate);
+      }
+
+      if (navigator.mediaCapabilities?.encodingInfo) {
+        try {
+          const capabilities = await navigator.mediaCapabilities.encodingInfo({
+            type: 'record',
+            video: {
+              contentType: 'video/mp4',
+              width: 1920,
+              height: 1080,
+              bitrate: 1000000,
+              framerate: 60
+            }
+          } as any);
+
+          if (capabilities.supported) {
+            for (let fps = 120; fps > 60; fps -= 10) {
+              const highFpsCapabilities = await navigator.mediaCapabilities.encodingInfo({
+                type: 'record',
+                video: {
+                  contentType: 'video/mp4',
+                  width: 1920,
+                  height: 1080,
+                  bitrate: 1000000,
+                  framerate: fps
+                }
+              } as any);
+              if (highFpsCapabilities.supported) {
+                return fps;
+              }
+            }
+          }
+        } catch (e) {
+          try {
+            const capabilities = await navigator.mediaCapabilities.encodingInfo({
+              type: 'transmission',
+              video: {
+                contentType: 'video/mp4',
+                width: 1920,
+                height: 1080,
+                bitrate: 1000000,
+                framerate: 60
+              }
+            } as any);
+
+            if (capabilities.supported) {
+              for (let fps = 120; fps > 60; fps -= 10) {
+                const highFpsCapabilities = await navigator.mediaCapabilities.encodingInfo({
+                  type: 'transmission',
+                  video: {
+                    contentType: 'video/mp4',
+                    width: 1920,
+                    height: 1080,
+                    bitrate: 1000000,
+                    framerate: fps
+                  }
+                } as any);
+                if (highFpsCapabilities.supported) {
+                  return fps;
+                }
+              }
+            }
+          } catch (innerError) {
+            console.warn('MediaCapabilities API failed:', innerError);
+          }
+        }
+      }
+      return await this.measureFpsWithRAF();
+    } catch (error) {
+      console.warn('Failed to detect max FPS:', error);
+    }
+    return 60;
+  }
+
+  private measureFpsWithRAF(): Promise<number> {
+    return new Promise((resolve) => {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (!isMobile) {
+        resolve(60);
+        return;
+      }
+
+      const duration = 1000; // 测量持续时间（毫秒）
+      let frames = 0;
+      let startTime: number | null = null;
+
+      function measureFrame(timestamp: number) {
+        if (!startTime) startTime = timestamp;
+        const elapsed = timestamp - startTime;
+
+        frames++;
+
+        if (elapsed < duration) {
+          requestAnimationFrame(measureFrame);
+        } else {
+          const measuredFPS = Math.ceil((frames * 1000) / elapsed);
+          const maxFPS = Math.min(measuredFPS, 120);
+          resolve(Math.max(maxFPS, 30));
+        }
+      }
+      requestAnimationFrame(measureFrame);
+    });
+  }
+
+  private async generateWaveformData() {
+    if (!this.audio.src || !this.waveformCanvas) {
+      console.warn('No audio source or waveform canvas available');
+      return;
+    }
+
+    try {
+      this.cachedWaveform = null;
+      this.audioBuffer = null;
+      console.log('Generating waveform data for:', this.audio.src);
+      const response = await fetch(this.audio.src);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      this.cachedWaveform = this.createWaveformData(this.audioBuffer);
+      console.log('Waveform data generated successfully');
+      this.updateWaveformCanvasSize();
+      this.redrawWaveform(); // 生成数据后立即绘制
+    } catch (error) {
+      console.error('Failed to generate waveform data:', error);
+      this.cachedWaveform = null;
+    }
+  }
+
+  private createWaveformData(buffer: AudioBuffer): Float32Array {
+    const channelData = buffer.getChannelData(0);
+    let samples = 0;
+    if (this.waveformCanvas && this.waveformCanvas.width > 0) {
+      samples = Math.floor(this.waveformCanvas.width * 5);
+    } else if (this.progressBar) {
+      const progressBarWidth = parseFloat(getComputedStyle(this.progressBar).width);
+      if (progressBarWidth > 0) {
+        samples = Math.floor(progressBarWidth * 10);
+      }
+    }
+    const blockSize = Math.floor(channelData.length / samples);
+    const waveform = new Float32Array(samples);
+
+    for (let i = 0; i < samples; i++) {
+      let sum = 0;
+      for (let j = 0; j < blockSize; j++) {
+        const index = i * blockSize + j;
+        sum += Math.abs(channelData[index] || 0);
+      }
+      waveform[i] = sum / blockSize;
+    }
+    return waveform;
+  }
+
+  private updateWaveformCanvasSize() {
+    if (!this.waveformCanvas || !this.progressBar) return;
+
+    if (this.waveformCanvas.parentNode !== this.progressBar) {
+      if (this.waveformCanvas.parentNode) {
+        this.waveformCanvas.parentNode.removeChild(this.waveformCanvas);
+      }
+      this.progressBar.appendChild(this.waveformCanvas);
+    }
+
+    const minWidth = 0;
+    const canvasWidth = Math.max(minWidth, parseFloat(getComputedStyle(this.progressBar).width));
+    const oldWidth = this.waveformCanvas.width;
+    this.waveformCanvas.width = canvasWidth;
+    this.waveformCanvas.height = this.progressBar.getBoundingClientRect().height;
+    this.waveformCanvas.style.position = 'absolute';
+    this.waveformCanvas.style.top = '0';
+    this.waveformCanvas.style.left = '0';
+    this.waveformCanvas.style.width = '100%';
+    this.waveformCanvas.style.height = '100%';
+    this.waveformCanvas.style.minWidth = `${minWidth}px`;
+    this.waveformCanvas.style.pointerEvents = 'none';
+    this.waveformCanvas.style.opacity = '0';
+    this.waveformCanvas.style.transition = 'opacity 0.3s ease';
+    if (this.cachedWaveform && this.audioBuffer && oldWidth > 0 && Math.abs(canvasWidth - oldWidth) > oldWidth * 0.1) {
+      this.cachedWaveform = this.createWaveformData(this.audioBuffer);
+    }
+
+    if (this.cachedWaveform) {
+      this.redrawWaveform();
+    }
+  }
+
+  private redrawWaveform() {
+    if (!this.waveformCanvas || !this.waveformContext || !this.cachedWaveform) return;
+
+    const canvas = this.waveformCanvas;
+    const ctx = this.waveformContext;
+    const waveform = this.cachedWaveform;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (waveform.length > 0) {
+      const firstAmplitude = waveform[0];
+      let allEqual = true;
+      for (let i = 1; i < waveform.length; i++) {
+        if (waveform[i] !== firstAmplitude) {
+          allEqual = false;
+          break;
+        }
+      }
+      if (allEqual) {
+        return;
+      }
+    }
+
+    const waveformColor = getComputedStyle(document.documentElement).getPropertyValue('--waveform-color').trim();
+    ctx.strokeStyle = waveformColor || this.originalDominant;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerY = height / 2;
+    const step = width / waveform.length;
+
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    for (let i = 0; i < waveform.length; i++) {
+      const x = i * step;
+      const amplitude = waveform[i] * height * 0.9; // 振幅缩放
+
+      ctx.moveTo(x, centerY - amplitude);
+      ctx.lineTo(x, centerY + amplitude);
+    }
+    ctx.stroke();
+  }
+
+  private tooltip: HTMLElement | null = null;
+  private verticalLine: HTMLElement | null = null;
+  private tooltipTimer: number | null = null;
+  private showTooltip(progressBar: HTMLElement, x: number) {
+    const rect = progressBar.getBoundingClientRect();
+    const percentage = (x - rect.left) / rect.width;
+    const timeInSeconds = percentage * this.state.duration;
+    const linePosition = `${percentage * 100}%`;
+    if (!this.verticalLine) {
+      this.verticalLine = document.createElement('div');
+      this.verticalLine.style.position = 'absolute';
+      this.verticalLine.style.width = '1px';
+      this.verticalLine.style.height = '100%';
+      this.verticalLine.style.backgroundColor = 'var(--dominant-color-light)';
+      this.verticalLine.style.top = '0';
+      this.verticalLine.style.opacity = '0.18';
+      this.verticalLine.style.zIndex = '51';
+      progressBar.appendChild(this.verticalLine);
+    }
+    this.verticalLine.style.left = linePosition;
+    this.verticalLine.style.display = 'block';
+
+    if (!this.tooltip) {
+      this.tooltip = document.createElement('div');
+      this.tooltip.style.position = 'fixed';
+      this.tooltip.style.color = 'var(--dominant-color-light)';
+      this.tooltip.style.padding = '4px 8px';
+      this.tooltip.style.borderRadius = '0.75em';
+      this.tooltip.style.fontSize = '0.75em';
+      this.tooltip.style.pointerEvents = 'none';
+      this.tooltip.style.zIndex = '49';
+      this.tooltip.style.transform = 'translateY(4px)';
+      this.tooltip.style.transition = 'all 0.3s ease-out';
+      this.tooltip.style.opacity = '0';
+      document.body.appendChild(this.tooltip);
+    }
+
+    const mins = Math.floor(timeInSeconds / 60);
+    const secs = Math.floor(timeInSeconds % 60);
+    const ms = Math.floor((timeInSeconds % 1) * 1000);
+    const formattedTime = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
+
+    if (!(formattedTime == '00:00.000' || timeInSeconds < 0 || !isFinite(this.state.duration))) {
+      this.tooltip.textContent = formattedTime;
+
+      const lineRect = this.verticalLine.getBoundingClientRect();
+      this.tooltip.style.left = `${lineRect.right - 6}px`;
+
+      const tooltipRect = this.tooltip.getBoundingClientRect();
+      const targetTop = `${rect.top + (rect.height - tooltipRect.height) / 2 - rect.height / 2 - 14}px`;
+
+      this.tooltip.style.top = targetTop;
+      this.tooltip.style.display = 'block';
+      void this.tooltip.offsetWidth;
+      this.tooltip.style.transform = 'translateY(0)';
+      this.tooltip.style.opacity = '0.7';
+
+      if (this.tooltipTimer) {
+        clearTimeout(this.tooltipTimer);
+      }
+
+      this.tooltipTimer = window.setTimeout(() => {
+        if (this.tooltip) {
+          this.tooltip.style.transform = 'translateY(4px)';
+          this.tooltip.style.opacity = '0';
+          setTimeout(() => {
+            if (this.tooltip) {
+              this.tooltip.style.display = 'none';
+            }
+          }, 250);
+        }
+        if (this.verticalLine) {
+          this.verticalLine.style.display = 'none';
+        }
+      }, 3000);
+    } else {
+      if (this.tooltip) {
+        this.tooltip.style.transform = 'translateY(4px)';
+        this.tooltip.style.opacity = '0';
+        setTimeout(() => {
+          if (this.tooltip) {
+            this.tooltip.style.display = 'none';
+          }
+        }, 250);
+      }
+      if (this.tooltipTimer) {
+        clearTimeout(this.tooltipTimer);
+      }
+    }
+  }
+
+  private setupWaveformEvents() {
+    if (!this.progressBar || !this.waveformCanvas) {
+      console.warn('Waveform canvas or progress bar not found');
+      return;
+    }
+
+    this.progressBar.addEventListener('mouseenter', () => {
+      if (this.waveformCanvas && this.waveformCanvas.width > 0 && this.progressBar && this.cachedWaveform && this.cachedWaveform.length > 0) {
+        this.waveformCanvas.style.opacity = '1';
+        this.redrawWaveform();
+        this.progressBar.style.height = '24px';
+        this.progressBar.style.borderRadius = '12px';
+        const progressFill = this.progressBar.querySelector('#progressFill') as HTMLElement | null;
+        if (progressFill) {
+          progressFill.style.opacity = '0.24';
+        }
+      }
+    });
+
+    this.progressBar.addEventListener('mouseleave', () => {
+      if (this.waveformCanvas && this.waveformCanvas.width > 0 && this.progressBar && this.cachedWaveform && this.cachedWaveform.length > 0) {
+        this.waveformCanvas.style.opacity = '0';
+        this.progressBar.style.height = '';
+        this.progressBar.style.borderRadius = '';
+        const progressFill = this.progressBar.querySelector('#progressFill') as HTMLElement | null;
+        if (progressFill) {
+          progressFill.style.opacity = '';
+        }
+      }
+    });
+
+    this.progressBar.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.waveformCanvas && this.waveformCanvas.width > 0 && this.progressBar && this.cachedWaveform && this.cachedWaveform.length > 0) {
+        if (this.touchExitTimeout !== null) {
+          clearTimeout(this.touchExitTimeout);
+          this.touchExitTimeout = null;
+        }
+        this.progressBar.style.height = '24px';
+        this.progressBar.style.borderRadius = '12px';
+        const progressFill = this.progressBar.querySelector('#progressFill') as HTMLElement | null;
+        if (progressFill) {
+          progressFill.style.opacity = '0.24';
+        }
+        this.waveformCanvas.style.opacity = '1';
+        this.redrawWaveform();
+        this.seekToPosition(e);
+      }
+    });
+
+    this.progressBar.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (this.progressBar && this.state.duration > 0 && e.touches.length > 0) {
+        this.showTooltip(this.progressBar, e.touches[0].clientX);
+      }
+    });
+
+    this.progressBar.addEventListener('touchend', () => {
+      if (this.waveformCanvas && this.progressBar) {
+        this.touchExitTimeout = window.setTimeout(() => {
+          if (this.progressBar) {
+            this.progressBar.style.height = '';
+            this.progressBar.style.borderRadius = '';
+            const progressFill = this.progressBar.querySelector('#progressFill') as HTMLElement | null;
+            if (progressFill) {
+              progressFill.style.opacity = '';
+            }
+          }
+          if (this.waveformCanvas) {
+            this.waveformCanvas.style.opacity = '0';
+          }
+          this.touchExitTimeout = null;
+        }, 3000);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      this.updateWaveformCanvasSize();
+      if (this.waveformCanvas && this.cachedWaveform) {
+        this.redrawWaveform();
+      }
+    });
   }
 
   private initBackground() {
     this.background = BackgroundRender.new(MeshGradientRenderer);
-    this.background.setFPS(144);
+    this.background.setFPS(this.state.backgroundFPS || 60);
     this.background.setRenderScale(this.state.backgroundRenderScale || 1);
     this.background.setStaticMode(!this.state.backgroundDynamic);
     this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
@@ -1346,14 +2397,28 @@ class WebLyricsPlayer {
     this.background.getElement().style.backgroundSize = "cover";
     this.background.getElement().style.backgroundPosition = "center";
     this.background.getElement().style.backgroundRepeat = "no-repeat";
+    this.detectMaxFPS().then(maxFPS => {
+      if (this.bgFPS) {
+        this.bgFPS.max = maxFPS.toString();
+        if (parseInt(this.bgFPS.value) > maxFPS || parseInt(this.bgFPS.value) === 60) {
+          this.bgFPS.value = maxFPS.toString();
+          this.state.backgroundFPS = maxFPS;
+          if (this.bgFPSValue) {
+            this.bgFPSValue.textContent = `${maxFPS}fps`;
+          }
+          this.background.setFPS(maxFPS);
+          this.saveBackgroundSettings();
+        }
+      }
+    });
 
-    const backgroundStyleSelect = document.getElementById("backgroundStyle") as HTMLSelectElement;
-    if (backgroundStyleSelect) {
-      backgroundStyleSelect.addEventListener("change", (e) => {
+    if (this.backgroundStyleSelect) {
+      this.backgroundStyleSelect.addEventListener("change", (e) => {
         const value = (e.target as HTMLSelectElement).value;
         this.switchBackgroundStyle(value);
       });
 
+      const backgroundStyleSelect = this.backgroundStyleSelect;
       backgroundStyleSelect.addEventListener("keydown", (e) => {
         if (e.key === "ArrowUp" || e.key === "ArrowDown") {
           e.preventDefault();
@@ -1363,14 +2428,41 @@ class WebLyricsPlayer {
           this.switchBackgroundStyle(backgroundStyleSelect.value);
         }
       });
-      backgroundStyleSelect.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 1 : -1;
-        const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
-        backgroundStyleSelect.selectedIndex = newIndex;
-        this.switchBackgroundStyle(backgroundStyleSelect.value);
+      if (this.backgroundStyleSelect) {
+        const backgroundStyleSelect = this.backgroundStyleSelect;
+        backgroundStyleSelect.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? 1 : -1;
+          const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
+          backgroundStyleSelect.selectedIndex = newIndex;
+          this.switchBackgroundStyle(backgroundStyleSelect.value);
+        }, { passive: false });
+      }
+    }
+
+    if (this.bgLowFreqVolume && this.bgLowFreqVolumeValue) {
+      // 将[0.0-1.0]映射到[80hz-120hz]的显示函数
+      const mapToFrequency = (value: number): string => {
+        const frequency = 80 + (value * 40); // 0->80, 1->120
+        return `${frequency.toFixed(0)}hz`;
+      };
+
+      this.bgLowFreqVolumeValue.textContent = mapToFrequency(parseFloat(this.bgLowFreqVolume.value));
+
+      this.bgLowFreqVolume?.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        this.state.backgroundLowFreqVolume = value;
+        if (this.bgLowFreqVolumeValue) {
+          this.bgLowFreqVolumeValue.textContent = mapToFrequency(value);
+        }
+        if (this.background && typeof this.background.setLowFreqVolume === 'function') {
+          this.background.setLowFreqVolume(value);
+        }
+
+        this.saveBackgroundSettings();
       });
     }
+
   }
 
   private originalDark = '';
@@ -1384,10 +2476,14 @@ class WebLyricsPlayer {
     let dark = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color-dark').trim();
     let light = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color-light').trim();
     let dominant = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color').trim();
+    let waveform = getComputedStyle(document.documentElement).getPropertyValue('--waveform-color').trim();
 
-    this.originalDark = dark || 'rgb(100 3 2)';
-    this.originalLight = light || 'rgb(255 207 206)';
-    this.originalDominant = dominant || 'rgb(253 156 155)';
+    this.originalDark = dark || 'rgb(100, 3, 2)';
+    this.originalLight = light || 'rgb(255, 207, 206)';
+    this.originalDominant = dominant || 'rgb(253, 156, 155)';
+    if (!waveform) {
+      document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
+    }
 
     this.isColorsInitialized = true;
   }
@@ -1396,21 +2492,39 @@ class WebLyricsPlayer {
     document.documentElement.style.setProperty('--dominant-color', 'rgb(253, 156, 155)');
     document.documentElement.style.setProperty('--dominant-color-light', 'rgb(255, 207, 206)');
     document.documentElement.style.setProperty('--dominant-color-dark', 'rgb(100, 3, 2)');
+    document.documentElement.style.setProperty('--waveform-color', 'rgb(253, 156, 155)');
 
     this.originalDominant = 'rgb(253, 156, 155)';
     this.originalLight = 'rgb(255, 207, 206)';
     this.originalDark = 'rgb(100, 3, 2)';
     this.isColorsInitialized = true;
 
-    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
-    if (invertCheckbox) {
-      this.invertColors(invertCheckbox.checked);
+    if (this.invertColorsCheckbox) {
+      this.invertColors(this.invertColorsCheckbox.checked);
     }
   }
 
+  private initSystemDarkMode(): void {
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDarkMode) {
+      this.state.invertColors = true;
+      if (this.invertColorsCheckbox) {
+        this.invertColorsCheckbox.checked = true;
+        this.invertColors(true);
+      }
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      const isDarkMode = e.matches;
+      this.state.invertColors = isDarkMode;
+      if (this.invertColorsCheckbox) {
+        this.invertColorsCheckbox.checked = isDarkMode;
+        this.invertColors(isDarkMode);
+      }
+    });
+  }
+
   private invertColors(checked: boolean): void {
-    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
-    if (!invertCheckbox) return;
+    if (!this.invertColorsCheckbox) return;
 
     if (!this.isColorsInitialized) {
       this.initColors();
@@ -1420,45 +2534,59 @@ class WebLyricsPlayer {
       document.documentElement.style.setProperty('--dominant-color', this.originalLight);
       document.documentElement.style.setProperty('--dominant-color-light', this.originalDark);
       document.documentElement.style.setProperty('--dominant-color-dark', this.originalDominant);
+      document.documentElement.style.setProperty('--waveform-color', this.originalDark);
     } else {
       document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
       document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
       document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
+      document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
     }
 
     this.state.invertColors = checked;
     this.saveBackgroundSettings();
+    this.redrawWaveform();
   }
 
   private applyDominantColorAsCSSVariable(): void {
-    const invertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
-    const isInverted = invertCheckbox?.checked;
+    const isInverted = this.invertColorsCheckbox?.checked;
 
     if (this.dominantColor) {
       this.originalDominant = this.dominantColor;
       this.originalLight = this.lightenColor(this.dominantColor, 0.2);
       this.originalDark = this.darkenColor(this.dominantColor, 0.5);
       this.isColorsInitialized = true;
-      this.invertColors(isInverted);
+      this.invertColors(isInverted || false);
     }
   }
 
   private switchBackgroundStyle(style: string) {
     if (!this.background) return;
 
-    const player = document.getElementById("amll-lyric-player");
-    const fluidDesc = document.getElementById("fluid-desc");
-    const coverDesc = document.getElementById("cover-desc");
-    const solidDesc = document.getElementById("solid-desc");
+    if (this.fluidDesc) this.fluidDesc.style.display = style === "fluid" ? "block" : "none";
+    if (this.coverDesc) this.coverDesc.style.display = style === "cover" ? "block" : "none";
+    if (this.solidDesc) this.solidDesc.style.display = style === "solid" ? "block" : "none";
 
-    if (fluidDesc) fluidDesc.style.display = style === "fluid" ? "block" : "none";
-    if (coverDesc) coverDesc.style.display = style === "cover" ? "block" : "none";
-    if (solidDesc) solidDesc.style.display = style === "solid" ? "block" : "none";
+    if (this.solidOptions) {
+      if (style === 'solid') {
+        this.solidOptions.forEach(option => {
+          (option as HTMLOptionElement).style.display = 'block';
+        });
+      } else {
+        this.solidOptions.forEach(option => {
+          (option as HTMLOptionElement).style.display = 'none';
+        });
+      }
+    }
+    if (this.coverStyleSelect && ['neumorphismA', 'neumorphismB'].includes(this.coverStyleSelect.value)) {
+      this.coverStyleSelect.value = 'normal';
+      this.state.coverStyle = 'normal';
+      this.applyCoverStyle();
+    }
 
     switch (style) {
       case "fluid":
-        this.background.setFlowSpeed(4);
-        if (player) player.style.background = "";
+        this.background.setFlowSpeed(this.state.backgroundFlowSpeed || 4);
+        if (this.player) this.player.style.background = "";
         this.state.backgroundType = 'fluid';
         this.updateBackground();
         this.updateBackgroundUI();
@@ -1466,7 +2594,7 @@ class WebLyricsPlayer {
         break;
       case "cover":
         this.background.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
-        if (player) player.style.background = "";
+        if (this.player) this.player.style.background = "";
         this.state.backgroundType = 'cover';
         this.updateBackground();
         this.updateBackgroundUI();
@@ -1474,18 +2602,20 @@ class WebLyricsPlayer {
         break;
       case "solid":
         this.background.setAlbum("");
-        if (player) player.style.background = "transparent";
+        if (this.player) this.player.style.background = "transparent";
         this.state.backgroundType = 'solid';
         this.updateBackground();
         this.updateBackgroundUI();
         this.saveBackgroundSettings();
-        const solidInvertCheckbox = document.getElementById("invertColors") as HTMLInputElement;
-        if (solidInvertCheckbox) {
-          solidInvertCheckbox.onchange = () => {
-            this.invertColors(solidInvertCheckbox.checked);
+        if (this.invertColorsCheckbox) {
+          const isChecked = this.invertColorsCheckbox.checked;
+          this.invertColorsCheckbox.onchange = () => {
+            if (this.invertColorsCheckbox) {
+              this.invertColors(this.invertColorsCheckbox.checked);
+            }
           };
-          if (solidInvertCheckbox.checked) {
-            this.invertColors(solidInvertCheckbox.checked);
+          if (isChecked) {
+            this.invertColors(isChecked);
           }
         }
         break;
@@ -1499,6 +2629,10 @@ class WebLyricsPlayer {
       this.state.duration = this.audio.duration;
       this.updateTimeDisplay();
       this.updateMediaSessionMetadata();
+
+      if (!isFinite(this.state.duration) && !this.cachedWaveform) {
+        this.generateWaveformData();
+      }
 
       if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream) {
         setTimeout(() => {
@@ -1546,6 +2680,13 @@ class WebLyricsPlayer {
       this.updatePlayButton();
       if (this.state.loopPlay) {
         this.audio.currentTime = 0;
+        const firstLineStartTime = this.processedLyricLines.length > 0
+          ? this.processedLyricLines[0].startTime
+          : 0;
+        this.lyricPlayer.setCurrentTime(firstLineStartTime);
+        setTimeout(() => {
+          this.lyricPlayer.setCurrentTime(this.state.lyricDelay);
+        }, 50);
         this.audio.play();
       }
 
@@ -1554,6 +2695,18 @@ class WebLyricsPlayer {
       }
     });
 
+    let currentSrc = this.audio.src;
+    const srcObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+          if (this.audio.src !== currentSrc) {
+            currentSrc = this.audio.src;
+            this.generateWaveformData();
+          }
+        }
+      });
+    });
+    srcObserver.observe(this.audio, { attributes: true });
     this.setupMediaSessionHandlers();
   }
 
@@ -1571,15 +2724,14 @@ class WebLyricsPlayer {
   }
 
   private updateLyricAreaHint() {
-    const lyricsPanel = document.getElementById("lyricsPanel");
-    if (!lyricsPanel) return;
+    if (!this.lyricsPanel) return;
 
-    const oldHint = document.getElementById("lyricAreaHint");
-    if (oldHint) oldHint.remove();
+    if (this.lyricAreaHint) this.lyricAreaHint.remove();
 
     if (!this.hasLyrics) {
       const hintElement = document.createElement("div");
       hintElement.id = "lyricAreaHint";
+      this.lyricAreaHint = hintElement;
       hintElement.style.cssText = `
         position: absolute;
         top: 50%;
@@ -1595,53 +2747,45 @@ class WebLyricsPlayer {
         opacity: 0.7;
         transition: opacity 0.3s ease;
         cursor: pointer;
+        user-select: none;
       `;
       hintElement.innerHTML = `
         <div style="margin-bottom: 15px; font-size: 22px; font-weight: 500;">${t(
         "clickToAddLyrics"
       )}</div>
-        <div style="opacity: 0.6; line-height: 1.5;">*.ass, *.lqe, *.lrc, *.lyl, *lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
+        <div style="opacity: 0.6; line-height: 1.5;">*.ass, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
       `;
       // <div style="opacity: 0.6; line-height: 1.5;">*.alrc, *.ass, *.json, *.krc, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.srt, *.ttml, *.yrc</div>
 
       hintElement.addEventListener("click", (e) => {
         e.stopPropagation();
-        const lyricFileInput = document.getElementById(
-          "lyricFile"
-        ) as HTMLInputElement;
-        if (lyricFileInput) lyricFileInput.click();
+        if (this.lyricFile) this.lyricFile.click();
       });
 
       hintElement.addEventListener("touchend", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const lyricFileInput = document.getElementById(
-          "lyricFile"
-        ) as HTMLInputElement;
-        if (lyricFileInput) lyricFileInput.click();
+        if (this.lyricFile) this.lyricFile.click();
       }, { passive: false });
 
-      lyricsPanel.appendChild(hintElement);
+      this.lyricsPanel.appendChild(hintElement);
     }
   }
 
   private setupDragAndDropEvents() {
-    const albumCover = document.getElementById("albumCoverLarge");
-    const lyricsPanel = document.getElementById("lyricsPanel");
-
-    if (albumCover) {
-      albumCover.addEventListener("dragover", (e) => {
+    if (this.albumCoverLarge) {
+      this.albumCoverLarge.addEventListener("dragover", (e) => {
         e.preventDefault();
-        albumCover.style.opacity = "0.7";
+        this.albumCoverLarge!.style.opacity = "0.7";
       });
 
-      albumCover.addEventListener("dragleave", () => {
-        albumCover.style.opacity = "1";
+      this.albumCoverLarge.addEventListener("dragleave", () => {
+        this.albumCoverLarge!.style.opacity = "1";
       });
 
-      albumCover.addEventListener("drop", (e) => {
+      this.albumCoverLarge.addEventListener("drop", (e) => {
         e.preventDefault();
-        albumCover.style.opacity = "1";
+        this.albumCoverLarge!.style.opacity = "1";
 
         if (e.dataTransfer?.files.length) {
           const file = e.dataTransfer.files[0];
@@ -1658,19 +2802,19 @@ class WebLyricsPlayer {
       });
     }
 
-    if (lyricsPanel) {
-      lyricsPanel.addEventListener("dragover", (e) => {
+    if (this.lyricsPanel) {
+      this.lyricsPanel.addEventListener("dragover", (e) => {
         e.preventDefault();
-        lyricsPanel.style.border = "2px dashed rgba(255, 255, 255, 0.5)";
+        this.lyricsPanel!.style.border = "2px dashed rgba(255, 255, 255, 0.5)";
       });
 
-      lyricsPanel.addEventListener("dragleave", () => {
-        lyricsPanel.style.border = "none";
+      this.lyricsPanel.addEventListener("dragleave", () => {
+        this.lyricsPanel!.style.border = "none";
       });
 
-      lyricsPanel.addEventListener("drop", (e) => {
+      this.lyricsPanel.addEventListener("drop", (e) => {
         e.preventDefault();
-        lyricsPanel.style.border = "none";
+        this.lyricsPanel!.style.border = "none";
 
         if (e.dataTransfer?.files.length) {
           const file = e.dataTransfer.files[0];
@@ -1689,7 +2833,15 @@ class WebLyricsPlayer {
   }
 
   private updateFileInputDisplay(inputId: string, file: File | string) {
-    const fileInput = document.getElementById(inputId) as HTMLInputElement;
+    let fileInput: HTMLInputElement | null = null;
+    if (inputId === "musicFile") {
+      fileInput = this.musicFile;
+    } else if (inputId === "lyricFile") {
+      fileInput = this.lyricFile;
+    } else if (inputId === "coverFile") {
+      fileInput = this.coverFile;
+    }
+
     if (!fileInput) return;
 
     if (!file) {
@@ -1702,18 +2854,16 @@ class WebLyricsPlayer {
 
     const fileDisplay = document.createElement("span");
     fileDisplay.className = "control-value";
-    fileDisplay.style = `max-width: 100%;`;
+    fileDisplay.style = `max-width: 100%; overflow: hidden; text-overflow: ellipsis;`;
     if (file instanceof File) {
       fileDisplay.textContent = `${file.name}`;
     } else {
       try {
-        // Try to parse as URL first
         const url = new URL(file);
         const pathname = url.pathname;
         const filename = pathname.split('/').pop() || file;
         fileDisplay.textContent = `${filename}`;
       } catch {
-        // If URL parsing fails, treat it as a direct display text
         fileDisplay.textContent = file;
       }
     }
@@ -1736,22 +2886,19 @@ class WebLyricsPlayer {
 
   private initUI() {
     this.initUploadButtons();
-    const player = document.getElementById("player");
-    const lyricsPanel = document.getElementById("lyricsPanel");
 
-    if (lyricsPanel && this.lyricPlayer.getElement()) {
-      lyricsPanel.appendChild(this.lyricPlayer.getElement());
+    if (this.lyricsPanel && this.lyricPlayer.getElement()) {
+      this.lyricsPanel.appendChild(this.lyricPlayer.getElement());
     }
 
     this.updateLyricAreaHint();
     this.initLyricDisplayControls();
 
-    const playButton = document.getElementById("playPauseBtn");
-    if (playButton) {
+    if (this.playButton) {
       let playButtonLongPressTimer: number;
       let isLongPressTriggered = false;
 
-      playButton.addEventListener("click", (e) => {
+      this.playButton.addEventListener("click", (e) => {
         if (isLongPressTriggered) {
           isLongPressTriggered = false;
           return;
@@ -1759,10 +2906,7 @@ class WebLyricsPlayer {
 
         if (!this.state.musicUrl || !this.audio.src) {
           e.preventDefault();
-          const musicFileInput = document.getElementById(
-            "musicFile"
-          ) as HTMLInputElement;
-          if (musicFileInput) musicFileInput.click();
+          if (this.musicFile) this.musicFile.click();
           return;
         }
 
@@ -1773,84 +2917,72 @@ class WebLyricsPlayer {
 
       let isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-      playButton.addEventListener("mousedown", () => {
+      this.playButton.addEventListener("mousedown", () => {
         isLongPressTriggered = false;
         playButtonLongPressTimer = window.setTimeout(() => {
           isLongPressTriggered = true;
-          const musicFileInput = document.getElementById(
-            "musicFile"
-          ) as HTMLInputElement;
-          if (musicFileInput) musicFileInput.click();
+          if (this.musicFile) this.musicFile.click();
         }, 3000);
       });
 
-      playButton.addEventListener("mouseup", () => {
+      this.playButton.addEventListener("mouseup", () => {
         clearTimeout(playButtonLongPressTimer);
       });
 
-      playButton.addEventListener("mouseleave", () => {
+      this.playButton.addEventListener("mouseleave", () => {
         clearTimeout(playButtonLongPressTimer);
       });
 
-      playButton.addEventListener("contextmenu", (e) => {
+      this.playButton.addEventListener("contextmenu", (e) => {
         e.preventDefault(); // 阻止默认右键菜单
-        const musicFileInput = document.getElementById(
-          "musicFile"
-        ) as HTMLInputElement;
-        if (musicFileInput) musicFileInput.click();
+        if (this.musicFile) this.musicFile.click();
         return false; // 为Safari返回false
       });
 
-      playButton.addEventListener("touchstart", (e) => {
+      this.playButton.addEventListener("touchstart", (e) => {
         const touchStartTime = Date.now();
 
         let isLongPress = false;
         playButtonLongPressTimer = window.setTimeout(() => {
           isLongPress = true;
-          const musicFileInput = document.getElementById(
-            "musicFile"
-          ) as HTMLInputElement;
-          if (musicFileInput) musicFileInput.click();
+          if (this.musicFile) this.musicFile.click();
         }, 3000);
       }, { passive: true });
 
-      playButton.addEventListener("touchend", () => {
+      this.playButton.addEventListener("touchend", () => {
         clearTimeout(playButtonLongPressTimer);
       }, { passive: true });
 
-      playButton.addEventListener("touchcancel", () => {
+      this.playButton.addEventListener("touchcancel", () => {
         clearTimeout(playButtonLongPressTimer);
       }, { passive: true });
     }
 
-    if (player) {
-      player.appendChild(this.audio);
-      player.appendChild(this.background.getElement());
-      player.appendChild(this.coverBlurBackground);
+    if (this.player) {
+      // 检查this.player是否有appendChild方法（确保它是DOM元素）
+      if (typeof this.player.appendChild === 'function') {
+        this.player.appendChild(this.audio);
+        this.player.appendChild(this.background.getElement());
+        this.player.appendChild(this.coverBlurBackground);
 
-      if (lyricsPanel) {
-        lyricsPanel.appendChild(this.lyricPlayer.getElement());
+        if (this.lyricsPanel) {
+          this.lyricsPanel.appendChild(this.lyricPlayer.getElement());
 
-        lyricsPanel.addEventListener("click", (e) => {
-          if (!this.hasLyrics) {
-            const lyricFileInput = document.getElementById(
-              "lyricFile"
-            ) as HTMLInputElement;
-            if (lyricFileInput) lyricFileInput.click();
-          }
-        });
+          this.lyricsPanel.addEventListener("click", (e) => {
+            if (!this.hasLyrics) {
+              if (this.lyricFile) this.lyricFile.click();
+            }
+          });
 
-        lyricsPanel.addEventListener("touchend", (e) => {
-          if (!this.hasLyrics) {
-            e.preventDefault();
-            const lyricFileInput = document.getElementById(
-              "lyricFile"
-            ) as HTMLInputElement;
-            if (lyricFileInput) lyricFileInput.click();
-          }
-        }, { passive: false });
-      } else {
-        player.appendChild(this.lyricPlayer.getElement());
+          this.lyricsPanel.addEventListener("touchend", (e) => {
+            if (!this.hasLyrics) {
+              e.preventDefault();
+              if (this.lyricFile) this.lyricFile.click();
+            }
+          }, { passive: false });
+        } else {
+          this.player.appendChild(this.lyricPlayer.getElement());
+        }
       }
     }
 
@@ -1859,13 +2991,15 @@ class WebLyricsPlayer {
     this.background.setAlbum("./assets/icon-512x512.png");
     this.setDefaultColors();
 
-    const controlPanel = document.getElementById("controlPanel");
-    if (controlPanel) {
-      controlPanel.style.display = "none";
+    if (this.controlPanel) {
+      this.controlPanel.style.width = "0px";
+      this.controlPanel.style.right = "-50px";
+      this.controlPanel.style.opacity = "0";
     }
 
     this.adjustLyricPosition();
     this.updateAlbumSidePanel();
+    this.updateLayoutByOrientation();
   }
 
   private async loadMusicFromFile(file: File) {
@@ -1884,6 +3018,15 @@ class WebLyricsPlayer {
       this.audio.crossOrigin = "anonymous"; // 允许跨域访问音频文件
       this.audio.src = url;
       this.audio.load();
+
+      if (this.playControls) {
+        this.playControls.style.bottom = "";
+        this.playControls.style.opacity = "";
+      }
+      if (this.progressBar) {
+        this.progressBar.style.width = "";
+      }
+
       if (this.state.autoPlay) {
         this.togglePlayPause();
       } else {
@@ -1893,8 +3036,11 @@ class WebLyricsPlayer {
       await this.parseAudioMetadata(file);
       this.updateMediaSessionMetadata();
 
-      const controlPanel = document.getElementById("controlPanel");
-      if (controlPanel) controlPanel.style.display = "none";
+      if (this.controlPanel) {
+        this.controlPanel.style.width = "0px";
+        this.controlPanel.style.right = "-50px";
+        this.controlPanel.style.opacity = "0";
+      }
 
       this.updateFileInputDisplay("musicFile", file);
       this.showStatus(t("musicLoadSuccess"));
@@ -1945,21 +3091,18 @@ class WebLyricsPlayer {
   }
 
   private async loadFromURLs() {
-    let musicUrl = (document.getElementById("musicUrl") as HTMLInputElement)
-      ?.value;
-    let lyricUrl = (document.getElementById("lyricUrl") as HTMLInputElement)
-      ?.value;
-    let coverUrl = (document.getElementById("coverUrl") as HTMLInputElement)
-      ?.value;
+    let musicUrl = this.musicUrl?.value;
+    let lyricUrl = this.lyricUrl?.value;
+    let coverUrl = this.coverUrl?.value;
 
     // 如果输入框为空，尝试从URL参数获取
     const urlParams = new URLSearchParams(window.location.search);
 
     if (!musicUrl) {
       const urlMusic = urlParams.get("music");
-      if (urlMusic) {
+      if (urlMusic && this.musicUrl) {
         musicUrl = urlMusic;
-        (document.getElementById("musicUrl") as HTMLInputElement).value = musicUrl;
+        this.musicUrl.value = musicUrl;
         if (this.state.autoPlay) {
           this.togglePlayPause();
         } else {
@@ -1971,19 +3114,17 @@ class WebLyricsPlayer {
 
     if (!lyricUrl) {
       const urlLyric = urlParams.get("lyric");
-      if (urlLyric) {
+      if (urlLyric && this.lyricUrl) {
         lyricUrl = urlLyric;
-        (document.getElementById("lyricUrl") as HTMLInputElement).value =
-          lyricUrl;
+        this.lyricUrl.value = lyricUrl;
       }
     }
 
     if (!coverUrl) {
       const urlCover = urlParams.get("cover");
-      if (urlCover) {
+      if (urlCover && this.coverUrl) {
         coverUrl = urlCover;
-        (document.getElementById("coverUrl") as HTMLInputElement).value =
-          coverUrl;
+        this.coverUrl.value = coverUrl;
       }
     }
 
@@ -1997,17 +3138,13 @@ class WebLyricsPlayer {
     if (playbackSpeed) {
       const speed = parseFloat(playbackSpeed);
       if (!isNaN(speed) && speed > 0) {
-        const playbackRateControl = document.getElementById(
-          "playbackRate"
-        ) as HTMLInputElement;
-        const playbackRateValue = document.getElementById("playbackRateValue");
-        if (playbackRateControl) {
-          playbackRateControl.value = speed.toString();
+        if (this.playbackRateControl) {
+          this.playbackRateControl.value = speed.toString();
           if (this.audio) {
             this.audio.playbackRate = speed;
           }
-          if (playbackRateValue) {
-            playbackRateValue.textContent = speed.toFixed(2) + "x";
+          if (this.playbackRateValue) {
+            this.playbackRateValue.textContent = speed.toFixed(2) + "x";
           }
           this.updatePlaybackRateIcon(speed);
         }
@@ -2017,11 +3154,8 @@ class WebLyricsPlayer {
     if (lyricDelayMs) {
       const delay = parseInt(lyricDelayMs);
       if (!isNaN(delay)) {
-        const lyricDelayInput = document.getElementById(
-          "lyricDelayInput"
-        ) as HTMLInputElement;
-        if (lyricDelayInput) {
-          lyricDelayInput.value = delay.toString();
+        if (this.lyricDelayInput) {
+          this.lyricDelayInput.value = delay.toString();
           this.state.lyricDelay = delay;
         }
       }
@@ -2039,17 +3173,13 @@ class WebLyricsPlayer {
           vol = 0.5;
         }
 
-        const volumeControl = document.getElementById(
-          "volumeControl"
-        ) as HTMLInputElement;
-        const volumeValue = document.getElementById("volumeValue");
-        if (volumeControl) {
-          volumeControl.value = Math.round(vol * 100).toString();
+        if (this.volumeControl) {
+          this.volumeControl.value = Math.round(vol * 100).toString();
           if (this.audio) {
             this.audio.volume = vol;
           }
-          if (volumeValue) {
-            volumeValue.textContent = Math.round(vol * 100) + "%";
+          if (this.volumeValue) {
+            this.volumeValue.textContent = Math.round(vol * 100) + "%";
           }
           this.updateVolumeIcon(Math.round(vol * 100));
         }
@@ -2057,34 +3187,24 @@ class WebLyricsPlayer {
     }
 
     if (urlParams.has("loop")) {
-      const loopPlayCheckbox = document.getElementById(
-        "loopPlay"
-      ) as HTMLInputElement;
-      if (loopPlayCheckbox) {
-        loopPlayCheckbox.checked = loopPlay;
+      if (this.loopPlayCheckbox) {
+        this.loopPlayCheckbox.checked = loopPlay;
         this.state.loopPlay = loopPlay;
       }
     }
 
-    const songTitleInput = document.getElementById(
-      "songTitleInput"
-    ) as HTMLInputElement;
-    const songArtistInput = document.getElementById(
-      "songArtistInput"
-    ) as HTMLInputElement;
-
-    if (!songTitleInput.value) {
+    if (this.songTitleInput && !this.songTitleInput.value) {
       const urlTitle = urlParams.get("title");
       if (urlTitle) {
-        songTitleInput.value = urlTitle;
+        this.songTitleInput.value = urlTitle;
         this.state.songTitle = urlTitle;
       }
     }
 
-    if (!songArtistInput.value) {
+    if (this.songArtistInput && !this.songArtistInput.value) {
       const urlArtist = urlParams.get("artist");
       if (urlArtist) {
-        songArtistInput.value = urlArtist;
+        this.songArtistInput.value = urlArtist;
         this.state.songArtist = urlArtist;
       }
     }
@@ -2101,6 +3221,15 @@ class WebLyricsPlayer {
       this.state.musicUrl = musicUrl;
       this.audio.src = musicUrl;
       this.audio.load();
+
+      if (this.playControls) {
+        this.playControls.style.bottom = "";
+        this.playControls.style.opacity = "";
+      }
+      if (this.progressBar) {
+        this.progressBar.style.width = "";
+      }
+
       if (this.state.autoPlay) {
         this.togglePlayPause();
       } else {
@@ -2146,8 +3275,11 @@ class WebLyricsPlayer {
 
     this.updateSongInfo();
 
-    const controlPanel = document.getElementById("controlPanel");
-    if (controlPanel) controlPanel.style.display = "none";
+    if (this.controlPanel) {
+      this.controlPanel.style.width = "0px";
+      this.controlPanel.style.right = "-50px";
+      this.controlPanel.style.opacity = "0";
+    }
 
     const title = this.state.songTitle;
     const artist = this.state.songArtist;
@@ -2170,12 +3302,9 @@ class WebLyricsPlayer {
   }
 
   private async loadFromFiles() {
-    const musicFile = (document.getElementById("musicFile") as HTMLInputElement)
-      ?.files?.[0];
-    const lyricFile = (document.getElementById("lyricFile") as HTMLInputElement)
-      ?.files?.[0];
-    const coverFile = (document.getElementById("coverFile") as HTMLInputElement)
-      ?.files?.[0];
+    const musicFile = this.musicFile?.files?.[0];
+    const lyricFile = this.lyricFile?.files?.[0];
+    const coverFile = this.coverFile?.files?.[0];
 
     if (musicFile) {
       await this.loadMusicFromFile(musicFile);
@@ -2211,6 +3340,12 @@ class WebLyricsPlayer {
           const rawLines = parseLyRiCA2(content);
           const ttmlContent = convertToTTML(rawLines);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
+        } else if (isWalaokeFormat(content)) {
+          const ttmlContent = parseWalaoke(content);
+          lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
+        } else if (isSPLFormat(content)) {
+          const ttmlContent = parseSPL(content);
+          lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else {
           lines = parseLrc(content).map(this.mapLyric);
         }
@@ -2233,6 +3368,9 @@ class WebLyricsPlayer {
       } else if (filename.endsWith(".lyl")) {
         const ttmlContent = lylToTTML(content);
         lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
+      } else if (filename.endsWith(".spl")) {
+        const ttmlContent = parseSPL(content);
+        lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
       } else {
         if (isESFormat) {
           const rawLines = parseESLyRiC(content);
@@ -2241,6 +3379,12 @@ class WebLyricsPlayer {
         } else if (isA2Format) {
           const rawLines = parseLyRiCA2(content);
           const ttmlContent = convertToTTML(rawLines);
+          lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
+        } else if (isWalaokeFormat(content)) {
+          const ttmlContent = parseWalaoke(content);
+          lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
+        } else if (isSPLFormat(content)) {
+          const ttmlContent = parseSPL(content);
           lines = parseTTML(ttmlContent).lines.map(this.mapTTMLLyric);
         } else if (isSrtFormat(content)) {
           const ttmlContent = srtToTTML(content);
@@ -2263,10 +3407,8 @@ class WebLyricsPlayer {
       this.hasLyrics = lines.length > 0;
       this.updateLyricsDisplay();
 
-      const lyricsPanel = document.getElementById("lyricsPanel");
-      if (lyricsPanel && this.hasLyrics) {
-        const oldHint = document.getElementById("lyricAreaHint");
-        if (oldHint) oldHint.remove();
+      if (this.lyricsPanel && this.hasLyrics) {
+        if (this.lyricAreaHint) this.lyricAreaHint.remove();
       }
       this.updateLyricAreaHint();
       this.showStatus(`${t("lyricsParseSuccess")}${lines.length} 行`);
@@ -2296,9 +3438,24 @@ class WebLyricsPlayer {
     };
   }
 
+  private findNextLyricLineStartTime(currentTimeMs: number): number {
+    if (!this.processedLyricLines || this.processedLyricLines.length === 0) {
+      return currentTimeMs;
+    }
+    const adjustedTimeMs = currentTimeMs + this.state.lyricDelay;
+    for (let i = 0; i < this.processedLyricLines.length; i++) {
+      const line = this.processedLyricLines[i];
+      if (line.startTime >= adjustedTimeMs) {
+        return line.startTime;
+      }
+    }
+    // 如果没有找到，返回最后一行的startTime
+    return this.processedLyricLines[this.processedLyricLines.length - 1].startTime;
+  }
+
   private updateLyricsDisplay() {
     if (!this.hasLyrics) return;
-    const lines = JSON.parse(JSON.stringify(this.originalLyricLines));
+    const lines = this.originalLyricLines.map(line => ({ ...line }));
     const currentTime = this.audio.currentTime;
 
     const updatedLines = lines.map((line: any) => {
@@ -2348,6 +3505,11 @@ class WebLyricsPlayer {
         }
       }
 
+      if (this.state.advanceLyricTiming) {
+        updatedLine.startTime = Math.max(0, updatedLine.startTime - 0.4); // 减去400ms
+        updatedLine.endTime = Math.max(0, updatedLine.endTime + 0.4); // 加上400ms
+      }
+
       return updatedLine;
     });
 
@@ -2357,61 +3519,110 @@ class WebLyricsPlayer {
 
     this.processedLyricLines = filteredLines as LyricLine[];
     this.lyricPlayer.setLyricLines(this.processedLyricLines);
+    this.lyricPlayer.setHidePassedLines(this.state.hidePassedLyrics);
+    const currentTimeMs = this.audio.currentTime * 1000;
+    const nextLineStartTime = this.findNextLyricLineStartTime(currentTimeMs);
+    this.lyricPlayer.setCurrentTime(nextLineStartTime);
+    setTimeout(() => {
+      const adjustedTime = currentTimeMs + this.state.lyricDelay;
+      this.lyricPlayer.setCurrentTime(adjustedTime);
+    }, 50);
   }
 
   private initLyricDisplayControls() {
-    const translatedLyricCheckbox = document.getElementById('showTranslatedLyric') as HTMLInputElement;
-    if (translatedLyricCheckbox) {
-      translatedLyricCheckbox.checked = this.state.showTranslatedLyric;
-      translatedLyricCheckbox.addEventListener('change', (e) => {
+    if (this.showTranslatedLyricCheckbox) {
+      this.showTranslatedLyricCheckbox.checked = this.state.showTranslatedLyric;
+      this.showTranslatedLyricCheckbox.addEventListener('change', (e) => {
         this.state.showTranslatedLyric = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
       });
     }
 
-    const romanLyricCheckbox = document.getElementById('showRomanLyric') as HTMLInputElement;
-    if (romanLyricCheckbox) {
-      romanLyricCheckbox.checked = this.state.showRomanLyric;
-      romanLyricCheckbox.addEventListener('change', (e) => {
+    if (this.showRomanLyricCheckbox) {
+      this.showRomanLyricCheckbox.checked = this.state.showRomanLyric;
+      this.showRomanLyricCheckbox.addEventListener('change', (e) => {
         this.state.showRomanLyric = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
       });
     }
 
-    const swapPositionsCheckbox = document.getElementById('swapLyricPositions') as HTMLInputElement;
-    if (swapPositionsCheckbox) {
-      swapPositionsCheckbox.checked = this.state.swapLyricPositions;
-      swapPositionsCheckbox.addEventListener('change', (e) => {
+    if (this.swapLyricPositionsCheckbox) {
+      this.swapLyricPositionsCheckbox.checked = this.state.swapLyricPositions;
+      this.swapLyricPositionsCheckbox.addEventListener('change', (e) => {
         this.state.swapLyricPositions = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
       });
     }
 
-    const bgLyricCheckbox = document.getElementById('showbgLyric') as HTMLInputElement;
-    if (bgLyricCheckbox) {
-      bgLyricCheckbox.checked = this.state.showbgLyric;
-      bgLyricCheckbox.addEventListener('change', (e) => {
+    if (this.showbgLyricCheckbox) {
+      this.showbgLyricCheckbox.checked = this.state.showbgLyric;
+      this.showbgLyricCheckbox.addEventListener('change', (e) => {
         this.state.showbgLyric = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
         this.saveBackgroundSettings();
       });
     }
 
-    const swapDuetsCheckbox = document.getElementById('swapDuetsPositions') as HTMLInputElement;
-    if (swapDuetsCheckbox) {
-      swapDuetsCheckbox.checked = this.state.swapDuetsPositions;
-      swapDuetsCheckbox.addEventListener('change', (e) => {
+    if (this.swapDuetsPositionsCheckbox) {
+      this.swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+      this.swapDuetsPositionsCheckbox.addEventListener('change', (e) => {
         this.state.swapDuetsPositions = (e.target as HTMLInputElement).checked;
+
+        const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+
+        if (isPortrait) {
+          const songInfoContainer = this.albumSidePanel?.querySelector('.song-info-container');
+
+          if (songInfoContainer && this.albumInfo && this.albumCoverContainer) {
+            if (this.state.swapDuetsPositions) {
+              songInfoContainer.insertBefore(this.albumInfo, this.albumCoverContainer);
+              this.albumCoverContainer.style.marginRight = '0';
+              this.albumCoverContainer.style.marginLeft = '15px';
+              this.albumInfo.style.textAlign = 'right';
+            } else {
+              songInfoContainer.insertBefore(this.albumCoverContainer, this.albumInfo);
+              this.albumCoverContainer.style.marginLeft = '0';
+              this.albumCoverContainer.style.marginRight = '15px';
+              this.albumInfo.style.textAlign = 'left';
+            }
+          }
+        } else {
+          if (this.albumSidePanel && this.lyricsPanel && this.player) {
+            if (this.state.swapDuetsPositions) {
+              this.player.insertBefore(this.lyricsPanel, this.albumSidePanel);
+            } else {
+              this.player.insertBefore(this.albumSidePanel, this.lyricsPanel);
+            }
+          }
+        }
+
         this.updateLyricsDisplay();
         this.saveBackgroundSettings();
       });
     }
 
-    const hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
-    if (hidePassedLyricsCheckbox) {
-      hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
-      hidePassedLyricsCheckbox.addEventListener('change', (e) => {
+    if (this.hidePassedLyricsCheckbox) {
+      this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
+      this.hidePassedLyricsCheckbox.addEventListener('change', (e) => {
         this.state.hidePassedLyrics = (e.target as HTMLInputElement).checked;
+        this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
+      });
+    }
+
+    if (this.advanceLyricTimingCheckbox) {
+      this.advanceLyricTimingCheckbox.checked = this.state.advanceLyricTiming;
+      this.advanceLyricTimingCheckbox.addEventListener('change', (e) => {
+        this.state.advanceLyricTiming = (e.target as HTMLInputElement).checked;
+        this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
+      });
+    }
+
+    if (this.singleLyricsCheckbox) {
+      this.singleLyricsCheckbox.checked = this.state.singleLyrics;
+      this.singleLyricsCheckbox.addEventListener('change', (e) => {
+        this.state.singleLyrics = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
         this.saveBackgroundSettings();
       });
@@ -2435,8 +3646,8 @@ class WebLyricsPlayer {
   }
 
   private updatePlayButton() {
-    const btn = document.getElementById("playPauseBtn");
-    const landscapeBtn = document.getElementById("landscapePlayBtn");
+    const btn = this.playButton;
+    const landscapeBtn = this.landscapePlayBtn;
 
     if (btn) {
       btn.innerHTML = this.state.isPlaying
@@ -2446,23 +3657,18 @@ class WebLyricsPlayer {
   }
 
   private updateProgress() {
-    const progressFill = document.getElementById("progressFill");
-    const landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
     if (this.state.duration > 0) {
       const percentage = (this.state.currentTime / this.state.duration) * 100;
-      if (progressFill) {
-        progressFill.style.width = `${percentage}%`;
+      if (this.progressFill) {
+        this.progressFill.style.width = `${percentage}%`;
       }
-      if (landscapeProgressFill) {
-        landscapeProgressFill.style.width = `${percentage}%`;
+      if (this.landscapeProgressFill) {
+        this.landscapeProgressFill.style.width = `${percentage}%`;
       }
     }
   }
 
   private updateTimeDisplay() {
-    const timeDisplay = document.getElementById("timeDisplay");
-    const landscapeTimeDisplay = document.querySelector(".landscape-time") as HTMLElement;
-
     const currentTime = this.formatTime(this.state.currentTime);
     const duration = this.formatTime(this.state.duration);
 
@@ -2476,12 +3682,12 @@ class WebLyricsPlayer {
       timeText = `${currentTime} / ${duration}`;
     }
 
-    if (timeDisplay) {
-      timeDisplay.textContent = timeText;
+    if (this.timeDisplay) {
+      this.timeDisplay.textContent = timeText;
     }
 
-    if (landscapeTimeDisplay) {
-      landscapeTimeDisplay.textContent = timeText;
+    if (this.landscapeTimeDisplay) {
+      this.landscapeTimeDisplay.textContent = timeText;
     }
   }
 
@@ -2493,39 +3699,254 @@ class WebLyricsPlayer {
       .padStart(2, "0")}`;
   }
 
-  private seekToPosition(e: MouseEvent) {
-    const progressBar = document.getElementById("progressBar");
+  private updateCoverStyle() {
+    if (this.coverStyleSelect) {
+      this.coverStyleSelect.value = this.state.coverStyle;
+    }
+    this.applyCoverStyle();
+  }
+
+  private applyCoverStyle() {
+    if (!this.albumCoverContainer) return;
+    this.albumCoverContainer.style.boxShadow = '';
+    this.albumCoverContainer.style.transform = '';
+    this.albumCoverContainer.style.background = '';
+    this.albumCoverContainer.style.border = '';
+    this.albumCoverContainer.style.filter = '';
+
+    // 移除之前可能添加的伪元素样式
+    if (this.coverStyleDynamic && this.coverStyleDynamic.parentNode) {
+      this.coverStyleDynamic.parentNode.removeChild(this.coverStyleDynamic);
+      this.coverStyleDynamic = null;
+    }
+
+    switch (this.state.coverStyle) {
+      case "normal":
+        // 默认样式阴影
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+      case "innerShadow":
+        // 内阴影 - 使用伪元素实现，避免被图片覆盖，并随圆角变化
+        const borderRadius = (this.state.roundedCover / 100) * 50;
+        const style = document.createElement('style');
+        style.id = 'coverStyleDynamic';
+        this.coverStyleDynamic = style; // 保存引用以便后续移除
+        style.textContent = `
+          #albumCoverContainer {
+            position: relative;
+          }
+          #albumCoverContainer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 10;
+            border-radius: ${borderRadius}%;
+          }
+          #albumCoverLarge {
+            position: relative;
+            z-index: 5;
+          }
+        `;
+        document.head.appendChild(style);
+        break;
+      case "threeDShadow":
+        // 立体投影效果（待实现）
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+      case "longShadow":
+        // 长投影效果，仿照div长阴影样式实现，使用transform-origin、skew变换和动画效果，支持动态圆角（待实现）
+        const borderRadiusL = (this.state.roundedCover / 100) * 50;
+        const styleL = document.createElement('style');
+        styleL.id = 'coverStyleDynamic';
+        this.coverStyleDynamic = styleL; // 保存引用以便后续移除
+        styleL.textContent = `
+          #albumCoverContainer {
+            position: relative;
+            overflow: visible !important; /* 确保长投影不被裁剪 */
+            box-shadow: none !important; /* 移除默认阴影以避免干扰 */
+          }
+          #albumCoverContainer::before,
+          #albumCoverContainer::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: -1;
+            border-radius: ${borderRadiusL}%;
+          }
+          #albumCoverContainer::before {
+            transform-origin: 0 50%;
+            transform: translate(100%, 0) skewY(45deg) scaleX(.6);
+            background: linear-gradient(90deg, rgba(0, 0, 0, .3), transparent);
+            animation: shadowMoveY 5s infinite linear alternate;
+          }
+          #albumCoverContainer::after {
+            transform-origin: 0 0;
+            transform: translate(0%, 100%) skewX(45deg) scaleY(.6);
+            background: linear-gradient(180deg, rgba(0, 0, 0, .3), transparent);
+            animation: shadowMoveX 5s infinite linear alternate;
+          }
+          @keyframes shadowMoveX {
+            to {
+              transform: translate(0%, 100%) skewX(50deg) scaleY(.6);
+            }
+          }
+          @keyframes shadowMoveY {
+            to {
+              transform: translate(100%, 0) skewY(40deg) scaleX(.6);
+            }
+          }
+        `;
+        document.head.appendChild(styleL);
+        break;
+      case "neumorphismA":
+        // 新拟态A - 浅色背景的凸起效果，支持动态圆角（待实现）
+        const borderRadiusA = (this.state.roundedCover / 100) * 50;
+        this.albumCoverContainer.style.boxShadow = '7px 7px 12px var(--dominant-color-dark), -7px -7px 12px var(--dominant-color-light), inset 0 0 0 var(--dominant-color-light), inset 0 0 0 var(--dominant-color-dark)';
+        this.albumCoverContainer.style.borderRadius = `${borderRadiusA}%`;
+        break;
+      case "neumorphismB":
+        // 新拟态B - 浅色背景的凹陷效果，使用伪元素实现，避免被图片覆盖，并随圆角变化（待实现）
+        const borderRadiusB = (this.state.roundedCover / 100) * 50;
+        const styleB = document.createElement('style');
+        styleB.id = 'coverStyleDynamic';
+        this.coverStyleDynamic = styleB; // 保存引用以便后续移除
+        styleB.textContent = `
+          #albumCoverContainer {
+            position: relative;
+          }
+          #albumCoverContainer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            box-shadow: 0 0 0 var(--dominant-color-dark), 0 0 0 var(--dominant-color-light), inset -7px -7px 12px var(--dominant-color-light), inset 7px 7px 12px var(--dominant-color-dark);
+            pointer-events: none;
+            z-index: 10;
+            border-radius: ${borderRadiusB}%;
+          }
+          #albumCoverLarge {
+            position: relative;
+            z-index: 5;
+            border-radius: ${borderRadiusB}%;
+          }
+        `;
+        document.head.appendChild(styleB);
+        break;
+      case "reflection":
+        // 反射效果（待实现）
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+      case "cd":
+        // CD样式（待实现）
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+      case "vinyl":
+        // 黑胶唱片样式（待实现）
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+      case "colored":
+        // 彩色样式（待实现）
+        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        break;
+    }
+  }
+
+  private seekToPosition(e: MouseEvent | TouchEvent) {
+    const progressBar = this.progressBar;
     if (progressBar && this.state.duration > 0) {
       const rect = progressBar.getBoundingClientRect();
-      const percentage = (e.clientX - rect.left) / rect.width;
+      let percentage = 0;
+      if (e instanceof MouseEvent) {
+        percentage = (e.clientX - rect.left) / rect.width;
+      } else if (e instanceof TouchEvent && e.touches.length > 0) {
+        percentage = (e.touches[0].clientX - rect.left) / rect.width;
+      }
+
       const newTime = percentage * this.state.duration;
       this.audio.currentTime = newTime;
+      this.state.currentTime = newTime;
+      const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
+      this.lyricPlayer.setCurrentTime(nextLineStartTime);
+      setTimeout(() => {
+        const adjustedTime = newTime * 1000 + this.state.lyricDelay;
+        this.lyricPlayer.setCurrentTime(adjustedTime);
+      }, 50);
+
+      this.updateProgress();
+      this.updateTimeDisplay();
     }
   }
 
   private toggleFullscreen() {
-    const enterIcon = document.querySelector('.fullscreen-enter') as HTMLElement;
-    const exitIcon = document.querySelector('.fullscreen-exit') as HTMLElement;
-
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      if (enterIcon && exitIcon) {
-        enterIcon.style.display = 'none';
-        exitIcon.style.display = 'inline';
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0;
+
+      if (isMobile) {
+        const enterLandscapeFullscreen = async () => {
+          try {
+            await document.documentElement.requestFullscreen();
+            const screenOrientation = (screen as any).orientation;
+            if (screenOrientation && screenOrientation.lock) {
+              try {
+                await screenOrientation.lock('landscape');
+              } catch (orientationError) {
+              }
+            }
+            if (this.fullscreenEnterIcon && this.fullscreenExitIcon) {
+              this.fullscreenEnterIcon.style.display = 'none';
+              this.fullscreenExitIcon.style.display = 'inline';
+            }
+          } catch (fullscreenError) {
+          }
+        };
+
+        enterLandscapeFullscreen();
+      } else {
+        document.documentElement.requestFullscreen();
+        if (this.fullscreenEnterIcon && this.fullscreenExitIcon) {
+          this.fullscreenEnterIcon.style.display = 'none';
+          this.fullscreenExitIcon.style.display = 'inline';
+        }
       }
     } else {
       document.exitFullscreen();
-      if (enterIcon && exitIcon) {
-        enterIcon.style.display = 'inline';
-        exitIcon.style.display = 'none';
+      const screenOrientation = (screen as any).orientation;
+      if (screenOrientation && screenOrientation.unlock) {
+        try {
+          screenOrientation.unlock();
+        } catch (unlockError) {
+        }
+      }
+      if (this.fullscreenEnterIcon && this.fullscreenExitIcon) {
+        this.fullscreenEnterIcon.style.display = 'inline';
+        this.fullscreenExitIcon.style.display = 'none';
       }
     }
   }
 
   private toggleControlPanel() {
-    const panel = document.getElementById("controlPanel");
-    if (panel) {
-      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    if (this.controlPanel) {
+      if (this.controlPanel.style.width === "0px") {
+        this.controlPanel.style.width = "320px";
+        this.controlPanel.style.right = "20px";
+        this.controlPanel.style.opacity = "1";
+      } else {
+        this.controlPanel.style.width = "0px";
+        this.controlPanel.style.right = "-50px";
+        this.controlPanel.style.opacity = "0";
+      }
     }
   }
 
@@ -2542,12 +3963,24 @@ class WebLyricsPlayer {
         break;
       case "ArrowLeft":
         this.audio.currentTime = Math.max(0, this.audio.currentTime - 10);
+        const nextLineStartTimeLeft = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        this.lyricPlayer.setCurrentTime(nextLineStartTimeLeft);
+        setTimeout(() => {
+          const adjustedTimeLeft = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          this.lyricPlayer.setCurrentTime(adjustedTimeLeft);
+        }, 50);
         break;
       case "ArrowRight":
         this.audio.currentTime = Math.min(
           this.audio.duration,
           this.audio.currentTime + 10
         );
+        const nextLineStartTimeRight = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        this.lyricPlayer.setCurrentTime(nextLineStartTimeRight);
+        setTimeout(() => {
+          const adjustedTimeRight = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          this.lyricPlayer.setCurrentTime(adjustedTimeRight);
+        }, 50);
         break;
       case "f":
         this.toggleFullscreen();
@@ -2582,13 +4015,14 @@ class WebLyricsPlayer {
           tapCount = 0;
           this.state.showFPS = !this.state.showFPS;
           this.updateFPSDisplay();
-          const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
-          if (showFPSCheckbox) {
-            showFPSCheckbox.checked = this.state.showFPS;
+          if (this.showFPSCheckbox) {
+            this.showFPSCheckbox.checked = this.state.showFPS;
           }
           this.saveBackgroundSettings();
-          this.gui.domElement.style.display =
-            this.gui.domElement.style.display === "none" ? "block" : "none";
+          if (this.gui) {
+            this.gui.domElement.style.display =
+              this.gui.domElement.style.display === "none" ? "block" : "none";
+          }
           this.stats.dom.style.display =
             this.stats.dom.style.display === "none" ? "block" : "none";
         }
@@ -2606,6 +4040,14 @@ class WebLyricsPlayer {
     this.state.musicUrl = "";
     this.state.isPlaying = false;
 
+    if (this.playControls) {
+      this.playControls.style.bottom = "10px";
+      this.playControls.style.opacity = "1";
+    }
+    if (this.progressBar) {
+      this.progressBar.style.width = "72vw";
+    }
+
     this.hasLyrics = false;
     this.lyricPlayer.setLyricLines([]);
     this.updateLyricAreaHint();
@@ -2619,8 +4061,8 @@ class WebLyricsPlayer {
     this.initColors();
     this.state.roundedCover = 8;
     this.updateRoundedCover();
-    this.state.backgroundRenderScale = 1.0;
-    this.background.setRenderScale(1.0);
+    this.state.backgroundRenderScale = 1.00;
+    this.background.setRenderScale(1.00);
     this.state.lyricAlignPosition = 0.5;
     this.lyricPlayer.setAlignPosition(0.5);
     this.state.hidePassedLyrics = false;
@@ -2633,11 +4075,17 @@ class WebLyricsPlayer {
     this.lyricPlayer.setEnableSpring(true);
     this.state.wordFadeWidth = 0.50;
     this.lyricPlayer.setWordFadeWidth(0.50);
+    this.state.backgroundFPS = 60;
+    this.background.setFPS(60);
     this.state.showTranslatedLyric = true;
     this.state.showRomanLyric = true;
     this.state.swapLyricPositions = false;
     this.state.showbgLyric = true;
     this.state.swapDuetsPositions = false;
+    this.state.singleLyrics = false;
+    this.state.backgroundLowFreqVolume = 1;
+    this.background.setLowFreqVolume(1);
+    this.state.coverStyle = 'normal';
 
     this.state.lyricUrl = "";
     this.state.songTitle = "";
@@ -2645,53 +4093,24 @@ class WebLyricsPlayer {
     this.state.coverUrl = "";
     document.title = "AMLL Web Player";
 
-    const songCover = document.getElementById(
-      "songCoverTopLeft"
-    ) as HTMLImageElement;
-    if (songCover) {
-      songCover.src = "./assets/icon-512x512.png";
-      songCover.style.display = "none";
+    if (this.albumCoverLarge) {
+      this.albumCoverLarge.src = "./assets/icon-512x512.png";
     }
 
-    const albumCoverLarge = document.getElementById(
-      "albumCoverLarge"
-    ) as HTMLImageElement;
-    if (albumCoverLarge) {
-      albumCoverLarge.src = "./assets/icon-512x512.png";
+    if (this.songTitle) {
+      this.songTitle.textContent = t("title");
     }
 
-    const songTitleTopLeft = document.getElementById("songTitleTopLeft");
-    if (songTitleTopLeft) {
-      songTitleTopLeft.textContent = t("title");
+    if (this.songArtist) {
+      this.songArtist.textContent = t("artist");
     }
 
-    const songArtistTopLeft = document.getElementById("songArtistTopLeft");
-    if (songArtistTopLeft) {
-      songArtistTopLeft.textContent = t("artist");
+    if (this.songTitleInput) {
+      this.songTitleInput.value = "";
     }
 
-    const songTitle = document.getElementById("songTitle");
-    if (songTitle) {
-      songTitle.textContent = t("title");
-    }
-
-    const songArtist = document.getElementById("songArtist");
-    if (songArtist) {
-      songArtist.textContent = t("artist");
-    }
-
-    const songTitleInput = document.getElementById(
-      "songTitleInput"
-    ) as HTMLInputElement;
-    if (songTitleInput) {
-      songTitleInput.value = "";
-    }
-
-    const songArtistInput = document.getElementById(
-      "songArtistInput"
-    ) as HTMLInputElement;
-    if (songArtistInput) {
-      songArtistInput.value = "";
+    if (this.songArtistInput) {
+      this.songArtistInput.value = "";
     }
 
     this.updateMediaSessionMetadata();
@@ -2707,98 +4126,137 @@ class WebLyricsPlayer {
       "lyricDelayInput",
     ];
 
-    const loopPlayCheckbox = document.getElementById(
-      "loopPlay"
-    ) as HTMLInputElement;
-    if (loopPlayCheckbox) {
-      loopPlayCheckbox.checked = true;
+    if (this.loopPlayCheckbox) {
+      this.loopPlayCheckbox.checked = true;
     }
 
-    const lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
-    if (lyricAlignPositionValue) {
-      lyricAlignPositionValue.textContent = '0.5';
+    if (this.lyricAlignPositionValue) {
+      this.lyricAlignPositionValue.textContent = '0.5';
     }
 
-    const enableLyricBlur = document.getElementById('enableLyricBlur') as HTMLInputElement;
-    if (enableLyricBlur) {
-      enableLyricBlur.checked = true;
+    if (this.enableLyricBlur) {
+      this.enableLyricBlur.checked = true;
     }
-    const enableLyricScale = document.getElementById('enableLyricScale') as HTMLInputElement;
-    if (enableLyricScale) {
-      enableLyricScale.checked = true;
+    if (this.enableLyricScale) {
+      this.enableLyricScale.checked = true;
     }
-    const enableLyricSpring = document.getElementById('enableLyricSpring') as HTMLInputElement;
-    if (enableLyricSpring) {
-      enableLyricSpring.checked = true;
+    if (this.enableLyricSpring) {
+      this.enableLyricSpring.checked = true;
     }
 
-    const showbgLyricCheckbox = document.getElementById('showbgLyric') as HTMLInputElement;
-    if (showbgLyricCheckbox) {
-      showbgLyricCheckbox.checked = this.state.showbgLyric;
+    if (this.showbgLyricCheckbox) {
+      this.showbgLyricCheckbox.checked = this.state.showbgLyric;
     }
-    const swapDuetsPositionsCheckbox = document.getElementById('swapDuetsPositions') as HTMLInputElement;
-    if (swapDuetsPositionsCheckbox) {
-      swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+    if (this.swapDuetsPositionsCheckbox) {
+      this.swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+    }
+    if (this.singleLyricsCheckbox) {
+      this.singleLyricsCheckbox.checked = this.state.singleLyrics;
     }
 
-    const playbackRateControl = document.getElementById(
-      "playbackRate"
-    ) as HTMLInputElement;
-    const playbackRateValue = document.getElementById("playbackRateValue");
-    if (playbackRateControl) {
-      playbackRateControl.value = "1.00";
+    if (this.bgLowFreqVolume) {
+      this.bgLowFreqVolume.value = '1';
+    }
+    if (this.bgLowFreqVolumeValue) {
+      this.bgLowFreqVolumeValue.textContent = '120hz'; // 1.0映射到120hz
+    }
+    if (this.posYSpringMassInput) {
+      this.posYSpringMassInput.value = '1';
+    }
+    if (this.springPosYMassValue) {
+      this.springPosYMassValue.textContent = '1.0';
+    }
+    if (this.posYSpringDampingInput) {
+      this.posYSpringDampingInput.value = '15';
+    }
+    if (this.springPosYDampingValue) {
+      this.springPosYDampingValue.textContent = '15';
+    }
+    if (this.posYSpringStiffnessInput) {
+      this.posYSpringStiffnessInput.value = '100';
+    }
+    if (this.springPosYStiffnessValue) {
+      this.springPosYStiffnessValue.textContent = '100';
+    }
+    if (this.posYSpringSoftCheckbox) {
+      this.posYSpringSoftCheckbox.checked = false;
+    }
+    if (this.scaleSpringMassInput) {
+      this.scaleSpringMassInput.value = '1';
+    }
+    if (this.springScaleMassValue) {
+      this.springScaleMassValue.textContent = '1.0';
+    }
+    if (this.scaleSpringDampingInput) {
+      this.scaleSpringDampingInput.value = '20';
+    }
+    if (this.springScaleDampingValue) {
+      this.springScaleDampingValue.textContent = '20';
+    }
+    if (this.scaleSpringStiffnessInput) {
+      this.scaleSpringStiffnessInput.value = '100';
+    }
+    if (this.springScaleStiffnessValue) {
+      this.springScaleStiffnessValue.textContent = '100';
+    }
+    if (this.scaleSpringSoftCheckbox) {
+      this.scaleSpringSoftCheckbox.checked = false;
+    }
+
+    if (this.playbackRateControl) {
+      this.playbackRateControl.value = "1.00";
       this.audio.playbackRate = 1.0;
-      if (playbackRateValue) {
-        playbackRateValue.textContent = "1.00x";
+      if (this.playbackRateValue) {
+        this.playbackRateValue.textContent = "1.00x";
       }
       this.updatePlaybackRateIcon(1.0);
     }
 
-    const volumeControl = document.getElementById(
-      "volumeControl"
-    ) as HTMLInputElement;
-    const volumeValue = document.getElementById("volumeValue");
-    if (volumeControl) {
-      volumeControl.value = "50";
+    if (this.volumeControl) {
+      this.volumeControl.value = "50";
       this.audio.volume = 0.5;
-      if (volumeValue) {
-        volumeValue.textContent = "50%";
+      if (this.volumeValue) {
+        this.volumeValue.textContent = "50%";
       }
       this.updateVolumeIcon(50);
     }
 
-    const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
-    if (showFPSCheckbox) {
-      showFPSCheckbox.checked = false;
+    if (this.showFPSCheckbox) {
+      this.showFPSCheckbox.checked = false;
     }
 
-    const controlPanel = document.getElementById("controlPanel");
-    if (controlPanel) controlPanel.style.display = "block";
+    if (this.controlPanel) {
+      this.controlPanel.style.width = "320px";
+      this.controlPanel.style.right = "20px";
+      this.controlPanel.style.opacity = "1";
+    }
+    if (this.musicUrl) this.musicUrl.value = "";
+    if (this.lyricUrl) this.lyricUrl.value = "";
+    if (this.coverUrl) this.coverUrl.value = "";
+
     inputs.forEach((id) => {
-      const input = document.getElementById(id) as HTMLInputElement;
-      if (input) {
-        if (input.type === "file") {
-          input.value = "";
-        } else {
-          input.value = "";
-        }
+      if (id === "musicUrl" || id === "lyricUrl" || id === "coverUrl") {
+        return;
+      }
+      // 使用缓存的DOM元素引用
+      if (id === "musicFile" && this.musicFile) {
+        this.musicFile.value = "";
+      } else if (id === "lyricFile" && this.lyricFile) {
+        this.lyricFile.value = "";
+      } else if (id === "coverFile" && this.coverFile) {
+        this.coverFile.value = "";
+      } else if (id === "songTitleInput" && this.songTitleInput) {
+        this.songTitleInput.value = "";
+      } else if (id === "songArtistInput" && this.songArtistInput) {
+        this.songArtistInput.value = "";
+      } else if (id === "lyricDelayInput" && this.lyricDelayInput) {
+        this.lyricDelayInput.value = "";
       }
     });
 
-    const songInfoTopLeft = document.getElementById("songInfoTopLeft");
-    if (songInfoTopLeft) {
-      songInfoTopLeft.style.display = "none";
-      this.updateMarqueeSettings();
-    }
-
-    const setCheckboxChecked = (id: string, checked: boolean) => {
-      const element = document.getElementById(id) as HTMLInputElement;
-      if (element) element.checked = checked;
-    };
-
-    setCheckboxChecked('showTranslatedLyric', true);
-    setCheckboxChecked('showRomanLyric', true);
-    setCheckboxChecked('swapLyricPositions', false);
+    if (this.showTranslatedLyricCheckbox) this.showTranslatedLyricCheckbox.checked = true;
+    if (this.showRomanLyricCheckbox) this.showRomanLyricCheckbox.checked = true;
+    if (this.swapLyricPositionsCheckbox) this.swapLyricPositionsCheckbox.checked = false;
     this.updateLyricsDisplay();
     this.adjustLyricPosition();
     this.updatePlayButton();
@@ -2828,6 +4286,7 @@ class WebLyricsPlayer {
       roundedCover: 16,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
+      backgroundFPS: 60,
       lyricAlignPosition: 0.5,
       hidePassedLyrics: false,
       enableLyricBlur: true,
@@ -2841,6 +4300,20 @@ class WebLyricsPlayer {
       swapLyricPositions: false,
       showbgLyric: true,
       swapDuetsPositions: false,
+      advanceLyricTiming: false,
+      singleLyrics: false,
+      backgroundLowFreqVolume: 1,
+      coverStyle: 'normal',
+      fftDataRangeMin: 1,
+      fftDataRangeMax: 22050,
+      posYSpringMass: 1,
+      posYSpringDamping: 15,
+      posYSpringStiffness: 100,
+      posYSpringSoft: false,
+      scaleSpringMass: 1,
+      scaleSpringDamping: 20,
+      scaleSpringStiffness: 100,
+      scaleSpringSoft: false,
     };
 
     // 清除localStorage中的BackgroundSettings
@@ -2850,13 +4323,11 @@ class WebLyricsPlayer {
     this.updateBackground();
     this.updateFPSDisplay();
 
-    const progressFill = document.getElementById("progressFill");
-    const landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
-    if (progressFill) {
-      progressFill.style.width = "0%";
+    if (this.progressFill) {
+      this.progressFill.style.width = "0%";
     }
-    if (landscapeProgressFill) {
-      landscapeProgressFill.style.width = "0%";
+    if (this.landscapeProgressFill) {
+      this.landscapeProgressFill.style.width = "0%";
     }
 
     this.updateProgress();
@@ -2879,6 +4350,12 @@ class WebLyricsPlayer {
       navigator.mediaSession.setActionHandler("seekbackward", (details) => {
         const skipTime = details.seekOffset || 10;
         this.audio.currentTime = Math.max(this.audio.currentTime - skipTime, 0);
+        const nextLineStartTime = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        this.lyricPlayer.setCurrentTime(nextLineStartTime);
+        setTimeout(() => {
+          const adjustedTime = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          this.lyricPlayer.setCurrentTime(adjustedTime);
+        }, 50);
       });
 
       navigator.mediaSession.setActionHandler("seekforward", (details) => {
@@ -2887,16 +4364,36 @@ class WebLyricsPlayer {
           this.audio.currentTime + skipTime,
           this.audio.duration
         );
+        const nextLineStartTime = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        this.lyricPlayer.setCurrentTime(nextLineStartTime);
+        setTimeout(() => {
+          const adjustedTime = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          this.lyricPlayer.setCurrentTime(adjustedTime);
+        }, 50);
       });
 
       navigator.mediaSession.setActionHandler("seekto", (details) => {
         if (details.seekTime !== undefined) {
           this.audio.currentTime = details.seekTime;
+          const nextLineStartTime = this.findNextLyricLineStartTime(details.seekTime * 1000);
+          this.lyricPlayer.setCurrentTime(nextLineStartTime);
+          setTimeout(() => {
+            const adjustedTime = details.seekTime! * 1000 + this.state.lyricDelay;
+            this.lyricPlayer.setCurrentTime(adjustedTime);
+          }, 50);
         }
       });
 
       navigator.mediaSession.setActionHandler("previoustrack", () => {
         this.audio.currentTime = 0;
+        if (this.processedLyricLines && this.processedLyricLines.length > 0) {
+          const firstLineStartTime = this.processedLyricLines[0].startTime;
+          this.lyricPlayer.setCurrentTime(firstLineStartTime);
+          setTimeout(() => {
+            const adjustedTime = this.state.lyricDelay;
+            this.lyricPlayer.setCurrentTime(adjustedTime);
+          }, 50);
+        }
       });
 
       navigator.mediaSession.setActionHandler("nexttrack", null);
@@ -2925,32 +4422,10 @@ class WebLyricsPlayer {
   }
 
   private updateSongInfo() {
-    const songInfoTopLeft = document.getElementById("songInfoTopLeft");
-    const songCover = document.getElementById(
-      "songCoverTopLeft"
-    ) as HTMLImageElement;
-    const songTitle = document.getElementById("songTitleTopLeft");
-    const songArtist = document.getElementById("songArtistTopLeft");
-    const landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
-
-    if (songInfoTopLeft && songCover && songTitle && songArtist) {
-      if (this.state.coverUrl) {
-        songCover.src = this.state.coverUrl;
-        songCover.style.display = "block";
-        if (landscapeCover) {
-          landscapeCover.style.backgroundImage = `url(${this.state.coverUrl})`;
-        }
-      } else {
-        songCover.style.display = "none";
-        if (landscapeCover) {
-          landscapeCover.style.backgroundImage = "none";
-        }
-      }
-
-      songTitle.textContent = this.state.songTitle || t("title");
-      songArtist.textContent = this.state.songArtist || t("artist");
-      songInfoTopLeft.style.display = "block";
-      this.updateMarqueeSettings();
+    if (this.state.coverUrl && this.landscapeCover) {
+      this.landscapeCover.style.backgroundImage = `url(${this.state.coverUrl})`;
+    } else if (this.landscapeCover) {
+      this.landscapeCover.style.backgroundImage = "none";
     }
 
     this.updateAlbumSidePanel();
@@ -2975,32 +4450,22 @@ class WebLyricsPlayer {
       if (isLandscape) {
         lyricElement.style.paddingTop = "20px";
       } else {
-        const songInfoTopLeft = document.getElementById("songInfoTopLeft");
-        if (songInfoTopLeft && songInfoTopLeft.style.display !== "none") {
-          lyricElement.style.paddingTop = "120px";
-        } else {
-          lyricElement.style.paddingTop = "20px";
-        }
+        lyricElement.style.paddingTop = "120px";
       }
       this.updateLyricAreaHint();
     }
   }
 
   private updateAlbumSidePanel() {
-    const albumCoverLarge = document.getElementById(
-      "albumCoverLarge"
-    ) as HTMLImageElement;
-    const songTitle = document.getElementById("songTitle");
-    const songArtist = document.getElementById("songArtist");
-
-    if (albumCoverLarge && songTitle && songArtist) {
+    if (this.albumCoverLarge && this.songTitle && this.songArtist) {
       if (this.state.coverUrl) {
-        albumCoverLarge.src = this.state.coverUrl;
+        this.albumCoverLarge.src = this.state.coverUrl;
       } else {
-        albumCoverLarge.src = "./assets/icon-512x512.png";
+        this.albumCoverLarge.src = "./assets/icon-512x512.png";
       }
-      songTitle.textContent = this.state.songTitle || t("title");
-      songArtist.textContent = this.state.songArtist || t("artist");
+      this.songTitle.textContent = this.state.songTitle || t("title");
+      this.songArtist.textContent = this.state.songArtist || t("artist");
+      this.updateMarqueeSettings();
     }
   }
 
@@ -3029,9 +4494,9 @@ class WebLyricsPlayer {
             // 提取歌曲信息 - 优先使用TIT2(歌曲名)而不是TALB(专辑名)
             if (tag.tags && tag.tags.title) {
               this.state.songTitle = tag.tags.title;
-              (
-                document.getElementById("songTitleInput") as HTMLInputElement
-              ).value = tag.tags.title;
+              if (this.songTitleInput) {
+                this.songTitleInput.value = tag.tags.title;
+              }
               console.log("Extracted song title:", tag.tags.title);
               hasMetadata = true;
             } else {
@@ -3040,9 +4505,9 @@ class WebLyricsPlayer {
 
             if (tag.tags && tag.tags.artist) {
               this.state.songArtist = tag.tags.artist;
-              (
-                document.getElementById("songArtistInput") as HTMLInputElement
-              ).value = tag.tags.artist;
+              if (this.songArtistInput) {
+                this.songArtistInput.value = tag.tags.artist;
+              }
               console.log("Extracted song artist:", tag.tags.artist);
               hasMetadata = true;
             } else {
@@ -3090,20 +4555,17 @@ class WebLyricsPlayer {
           onError: (error: any) => {
             console.log("Audio metadata parsing failed:", error);
             this.showStatus(t("metadataParseFailed"), true);
-            // 尝试备用方案
             this.parseAudioMetadataFallback(file);
           },
         });
       } else {
         console.log("jsmediatags library not loaded");
         this.showStatus(t("metadataLibNotLoaded"), true);
-        // 尝试备用方案
         this.parseAudioMetadataFallback(file);
       }
     } catch (error) {
       console.log("Audio metadata parsing error:", error);
       this.showStatus(t("metadataParseError"), true);
-      // 尝试备用方案
       this.parseAudioMetadataFallback(file);
     }
   }
@@ -3122,10 +4584,12 @@ class WebLyricsPlayer {
         this.state.songArtist = parts[0].trim();
         this.state.songTitle = parts[1].trim();
 
-        (document.getElementById("songArtistInput") as HTMLInputElement).value =
-          this.state.songArtist;
-        (document.getElementById("songTitleInput") as HTMLInputElement).value =
-          this.state.songTitle;
+        if (this.songArtistInput) {
+          this.songArtistInput.value = this.state.songArtist;
+        }
+        if (this.songTitleInput) {
+          this.songTitleInput.value = this.state.songTitle;
+        }
 
         console.log("Parsing from filename:", {
           artist: this.state.songArtist,
@@ -3140,12 +4604,12 @@ class WebLyricsPlayer {
           this.state.songArtist = altParts[0].trim();
           this.state.songTitle = altParts[1].trim();
 
-          (
-            document.getElementById("songArtistInput") as HTMLInputElement
-          ).value = this.state.songArtist;
-          (
-            document.getElementById("songTitleInput") as HTMLInputElement
-          ).value = this.state.songTitle;
+          if (this.songArtistInput) {
+            this.songArtistInput.value = this.state.songArtist;
+          }
+          if (this.songTitleInput) {
+            this.songTitleInput.value = this.state.songTitle;
+          }
 
           console.log("Parsing from filename (long dash):", {
             artist: this.state.songArtist,
@@ -3156,9 +4620,9 @@ class WebLyricsPlayer {
           this.showStatus(t("extractedSongInfo"));
         } else {
           this.state.songTitle = nameWithoutExt;
-          (
-            document.getElementById("songTitleInput") as HTMLInputElement
-          ).value = this.state.songTitle;
+          if (this.songTitleInput) {
+            this.songTitleInput.value = this.state.songTitle;
+          }
           console.log("Using filename as title:", this.state.songTitle);
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
@@ -3187,21 +4651,20 @@ class WebLyricsPlayer {
   }
 
   private showStatus(message: string, isError = false) {
-    const status = document.getElementById("status");
-    const statusText = document.getElementById("statusText");
-
-    if (status && statusText) {
-      statusText.textContent = message;
-      status.style.display = "block";
+    if (this.status && this.statusText) {
+      this.statusText.textContent = message;
+      this.status.style.display = "block";
 
       if (isError) {
-        status.style.background = "rgba(255, 0, 0, 0.9)";
+        this.status.style.background = "rgba(255, 0, 0, 0.9)";
       } else {
-        status.style.background = "var(--dominant-color-dark)";
+        this.status.style.background = "var(--dominant-color-dark)";
       }
 
       setTimeout(() => {
-        status.style.display = "none";
+        if (this.status) {
+          this.status.style.display = "none";
+        }
       }, 3000);
     }
   }
@@ -3245,7 +4708,6 @@ class WebLyricsPlayer {
         isLongPress = true;
         callback();
       }, longPressTime);
-
       // 不再阻止默认事件，允许正常点击
     }, { passive: true });
 
@@ -3279,7 +4741,7 @@ class WebLyricsPlayer {
       <div style="margin-bottom: 15px; font-size: 16px; font-weight: bold;">[INFO] 自动播放提示</div>
       <div style="margin-bottom: 15px;">由于浏览器安全策略，需要用户交互才能自动播放音频。</div>
       <div style="margin-bottom: 15px;">请点击播放按钮开始播放。</div>
-      <button onclick="this.parentElement.remove()" style="
+      <button onclick="this.parentElement.remove()" title="Got it" style="
         background: #007bff;
         color: white;
         border: none;
@@ -3318,22 +4780,24 @@ class WebLyricsPlayer {
       : true;
     const currentTime = urlParams.get("t");
     if (!music) {
-      const controlPanel = document.getElementById("controlPanel");
-      if (controlPanel) controlPanel.style.display = "block";
+      if (this.controlPanel) {
+        this.controlPanel.style.width = "320px";
+        this.controlPanel.style.right = "20px";
+        this.controlPanel.style.opacity = "1";
+      }
     }
 
-    if (music) {
-      (document.getElementById("musicUrl") as HTMLInputElement).value = music;
+    if (music && this.musicUrl) {
+      this.musicUrl.value = music;
     }
-    if (lyric) {
-      (document.getElementById("lyricUrl") as HTMLInputElement).value = lyric;
+    if (lyric && this.lyricUrl) {
+      this.lyricUrl.value = lyric;
     }
-    if (cover) {
-      (document.getElementById("coverUrl") as HTMLInputElement).value = cover;
+    if (cover && this.coverUrl) {
+      this.coverUrl.value = cover;
     }
     if (title) {
-      (document.getElementById("songTitleInput") as HTMLInputElement).value =
-        title;
+      if (this.songTitleInput) this.songTitleInput.value = title;
       this.state.songTitle = title;
 
       if (artist) {
@@ -3343,25 +4807,20 @@ class WebLyricsPlayer {
       }
     }
     if (artist) {
-      (document.getElementById("songArtistInput") as HTMLInputElement).value =
-        artist;
+      if (this.songArtistInput) this.songArtistInput.value = artist;
       this.state.songArtist = artist;
     }
 
     if (playbackSpeed) {
       const speed = parseFloat(playbackSpeed);
       if (!isNaN(speed) && speed > 0) {
-        const playbackRateControl = document.getElementById(
-          "playbackRate"
-        ) as HTMLInputElement;
-        const playbackRateValue = document.getElementById("playbackRateValue");
-        if (playbackRateControl) {
-          playbackRateControl.value = speed.toString();
+        if (this.playbackRateControl) {
+          this.playbackRateControl.value = speed.toString();
           if (this.audio) {
             this.audio.playbackRate = speed;
           }
-          if (playbackRateValue) {
-            playbackRateValue.textContent = speed.toFixed(2) + "x";
+          if (this.playbackRateValue) {
+            this.playbackRateValue.textContent = speed.toFixed(2) + "x";
           }
         }
       }
@@ -3370,11 +4829,8 @@ class WebLyricsPlayer {
     if (lyricDelayMs) {
       const delay = parseInt(lyricDelayMs);
       if (!isNaN(delay)) {
-        const lyricDelayInput = document.getElementById(
-          "lyricDelayInput"
-        ) as HTMLInputElement;
-        if (lyricDelayInput) {
-          lyricDelayInput.value = delay.toString();
+        if (this.lyricDelayInput) {
+          this.lyricDelayInput.value = delay.toString();
           this.state.lyricDelay = delay;
         }
       }
@@ -3392,28 +4848,21 @@ class WebLyricsPlayer {
           vol = 0.5;
         }
 
-        const volumeControl = document.getElementById(
-          "volumeControl"
-        ) as HTMLInputElement;
-        const volumeValue = document.getElementById("volumeValue");
-        if (volumeControl) {
-          volumeControl.value = Math.round(vol * 100).toString();
+        if (this.volumeControl) {
+          this.volumeControl.value = Math.round(vol * 100).toString();
           if (this.audio) {
             this.audio.volume = vol;
           }
-          if (volumeValue) {
-            volumeValue.textContent = Math.round(vol * 100) + "%";
+          if (this.volumeValue) {
+            this.volumeValue.textContent = Math.round(vol * 100) + "%";
           }
         }
       }
     }
 
     if (hasLoopParam) {
-      const loopPlayCheckbox = document.getElementById(
-        "loopPlay"
-      ) as HTMLInputElement;
-      if (loopPlayCheckbox) {
-        loopPlayCheckbox.checked = loopPlay;
+      if (this.loopPlayCheckbox) {
+        this.loopPlayCheckbox.checked = loopPlay;
         this.state.loopPlay = loopPlay;
       }
     }
@@ -3443,6 +4892,19 @@ class WebLyricsPlayer {
     this.loadBackgroundSettings();
     this.startAnimationLoop();
     this.background.resume();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasMusicParam = urlParams.has("music");
+    if (!hasMusicParam) {
+      if (this.playControls) {
+        this.playControls.style.bottom = "10px";
+        this.playControls.style.opacity = "1";
+      }
+      if (this.progressBar) {
+        this.progressBar.style.width = "72vw";
+      }
+    }
+
     this.isInitialized = true;
   }
 
@@ -3501,9 +4963,7 @@ class WebLyricsPlayer {
       const [newR, newG, newB] = this.hslToRgb(hsl[0], hsl[1], hsl[2]);
       this.dominantColor = this.rgbToHex(newR, newG, newB);
       this.applyDominantColorAsCSSVariable();
-      console.log('封面取色:', this.dominantColor);
     } catch (error) {
-      console.error('封面取色失败:', error);
       this.setDefaultColors();
       this.applyDominantColorAsCSSVariable();
     }
@@ -3629,6 +5089,21 @@ class WebLyricsPlayer {
       swapLyricPositions: this.state.swapLyricPositions,
       showbgLyric: this.state.showbgLyric,
       swapDuetsPositions: this.state.swapDuetsPositions,
+      advanceLyricTiming: this.state.advanceLyricTiming,
+      singleLyrics: this.state.singleLyrics,
+      backgroundLowFreqVolume: this.state.backgroundLowFreqVolume,
+      coverStyle: this.state.coverStyle,
+      fftDataRangeMin: this.state.fftDataRangeMin,
+      fftDataRangeMax: this.state.fftDataRangeMax,
+      posYSpringMass: this.state.posYSpringMass,
+      backgroundFPS: this.state.backgroundFPS,
+      posYSpringDamping: this.state.posYSpringDamping,
+      posYSpringStiffness: this.state.posYSpringStiffness,
+      posYSpringSoft: this.state.posYSpringSoft,
+      scaleSpringMass: this.state.scaleSpringMass,
+      scaleSpringDamping: this.state.scaleSpringDamping,
+      scaleSpringStiffness: this.state.scaleSpringStiffness,
+      scaleSpringSoft: this.state.scaleSpringSoft,
     };
     localStorage.setItem('amll_background_settings', JSON.stringify(settings));
   }
@@ -3663,53 +5138,88 @@ class WebLyricsPlayer {
         this.state.swapLyricPositions = settings.swapLyricPositions !== undefined ? settings.swapLyricPositions : false;
         this.state.showbgLyric = settings.showbgLyric !== undefined ? settings.showbgLyric : true;
         this.state.swapDuetsPositions = settings.swapDuetsPositions !== undefined ? settings.swapDuetsPositions : false;
+        this.state.advanceLyricTiming = settings.advanceLyricTiming !== undefined ? settings.advanceLyricTiming : false;
+        this.state.singleLyrics = settings.singleLyrics !== undefined ? settings.singleLyrics : false;
+        this.state.backgroundLowFreqVolume = settings.backgroundLowFreqVolume !== undefined ? settings.backgroundLowFreqVolume : 1;
+        this.state.coverStyle = settings.coverStyle || 'normal';
+        this.state.fftDataRangeMin = settings.fftDataRangeMin || 1;
+        this.state.fftDataRangeMax = settings.fftDataRangeMax || 22050;
+        this.state.posYSpringMass = settings.posYSpringMass !== undefined ? settings.posYSpringMass : 1;
+        this.state.backgroundFPS = settings.backgroundFPS !== undefined ? settings.backgroundFPS : 60;
+        this.state.posYSpringDamping = settings.posYSpringDamping !== undefined ? settings.posYSpringDamping : 15;
+        this.state.posYSpringStiffness = settings.posYSpringStiffness !== undefined ? settings.posYSpringStiffness : 100;
+        this.state.posYSpringSoft = settings.posYSpringSoft !== undefined ? settings.posYSpringSoft : false;
+        this.state.scaleSpringMass = settings.scaleSpringMass !== undefined ? settings.scaleSpringMass : 1;
+        this.state.scaleSpringDamping = settings.scaleSpringDamping !== undefined ? settings.scaleSpringDamping : 20;
+        this.state.scaleSpringStiffness = settings.scaleSpringStiffness !== undefined ? settings.scaleSpringStiffness : 100;
+        this.state.scaleSpringSoft = settings.scaleSpringSoft !== undefined ? settings.scaleSpringSoft : false;
+
         this.updateBackgroundUI();
         this.updateBackground();
         this.updateFPSDisplay();
         this.updateRoundedCover();
+        this.updateCoverStyle();
         this.updateLyricsDisplay();
         this.updateMarqueeSettings();
         this.lyricPlayer.setAlignPosition(this.state.lyricAlignPosition);
-        this.lyricPlayer.setHidePassedLines(this.state.hidePassedLyrics);
+        this.invertColors(this.state.invertColors);
         this.lyricPlayer.setEnableBlur(this.state.enableLyricBlur);
         this.lyricPlayer.setEnableScale(this.state.enableLyricScale);
         this.lyricPlayer.setEnableSpring(this.state.enableLyricSpring);
         this.lyricPlayer.setWordFadeWidth(this.state.wordFadeWidth);
+        this.lyricPlayer.setLinePosYSpringParams({ mass: this.state.posYSpringMass, damping: this.state.posYSpringDamping, stiffness: this.state.posYSpringStiffness, soft: this.state.posYSpringSoft });
+        this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: this.state.scaleSpringDamping, stiffness: this.state.scaleSpringStiffness, soft: this.state.scaleSpringSoft });
         this.background.setRenderScale(this.state.backgroundRenderScale);
       }
 
-      const lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
-      if (lyricAlignPositionValue) {
-        lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
+      if (this.lyricAlignPositionValue) {
+        this.lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
       }
-
-      const hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
-      if (hidePassedLyricsCheckbox) {
-        hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
+      if (this.springPosYMassValue) {
+        this.springPosYMassValue.textContent = this.state.posYSpringMass.toFixed(1);
       }
-      const enableLyricBlur = document.getElementById('enableLyricBlur') as HTMLInputElement;
-      if (enableLyricBlur) {
-        enableLyricBlur.checked = this.state.enableLyricBlur;
+      if (this.springPosYDampingValue) {
+        this.springPosYDampingValue.textContent = this.state.posYSpringDamping.toString();
       }
-      const enableLyricScale = document.getElementById('enableLyricScale') as HTMLInputElement;
-      if (enableLyricScale) {
-        enableLyricScale.checked = this.state.enableLyricScale;
+      if (this.springPosYStiffnessValue) {
+        this.springPosYStiffnessValue.textContent = this.state.posYSpringStiffness.toString();
       }
-      const enableLyricSpring = document.getElementById('enableLyricSpring') as HTMLInputElement;
-      if (enableLyricSpring) {
-        enableLyricSpring.checked = this.state.enableLyricSpring;
+      if (this.springScaleMassValue) {
+        this.springScaleMassValue.textContent = this.state.scaleSpringMass.toFixed(1);
       }
-      const wordFadeWidthInput = document.getElementById('wordFadeWidth') as HTMLInputElement;
-      if (wordFadeWidthInput) {
-        wordFadeWidthInput.value = this.state.wordFadeWidth.toString();
+      if (this.springScaleDampingValue) {
+        this.springScaleDampingValue.textContent = this.state.scaleSpringDamping.toString();
       }
-      const showbgLyricCheckbox = document.getElementById('showbgLyric') as HTMLInputElement;
-      if (showbgLyricCheckbox) {
-        showbgLyricCheckbox.checked = this.state.showbgLyric;
+      if (this.springScaleStiffnessValue) {
+        this.springScaleStiffnessValue.textContent = this.state.scaleSpringStiffness.toString();
       }
-      const swapDuetsPositionsCheckbox = document.getElementById('swapDuetsPositions') as HTMLInputElement;
-      if (swapDuetsPositionsCheckbox) {
-        swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+      if (this.hidePassedLyricsCheckbox) {
+        this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
+      }
+      if (this.enableLyricBlur) {
+        this.enableLyricBlur.checked = this.state.enableLyricBlur;
+      }
+      if (this.enableLyricScale) {
+        this.enableLyricScale.checked = this.state.enableLyricScale;
+      }
+      if (this.enableLyricSpring) {
+        this.enableLyricSpring.checked = this.state.enableLyricSpring;
+        const springDesc = document.getElementById('spring-desc');
+        if (springDesc) {
+          springDesc.style.display = this.state.enableLyricSpring ? 'block' : 'none';
+        }
+      }
+      if (this.wordFadeWidthInput) {
+        this.wordFadeWidthInput.value = this.state.wordFadeWidth.toString();
+      }
+      if (this.wordFadeWidthValue) {
+        this.wordFadeWidthValue.textContent = this.state.wordFadeWidth.toFixed(2);
+      }
+      if (this.showbgLyricCheckbox) {
+        this.showbgLyricCheckbox.checked = this.state.showbgLyric;
+      }
+      if (this.swapDuetsPositionsCheckbox) {
+        this.swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
       }
     } catch (error) {
       console.log('加载背景设置失败:', error);
@@ -3717,73 +5227,102 @@ class WebLyricsPlayer {
   }
 
   private updateBackgroundUI() {
-    const bgFlowSpeed = document.getElementById('bgFlowSpeed') as HTMLInputElement;
-    const bgFlowSpeedValue = document.getElementById('bgFlowSpeedValue');
-    const bgColorMask = document.getElementById('bgColorMask') as HTMLInputElement;
-    const bgMaskColor = document.getElementById('bgMaskColor') as HTMLInputElement;
-    const bgMaskOpacity = document.getElementById('bgMaskOpacity') as HTMLInputElement;
-    const bgMaskOpacityValue = document.getElementById('bgMaskOpacityValue');
-    const showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
-    const backgroundStyleSelect = document.getElementById('backgroundStyle') as HTMLSelectElement;
-    const coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
-    const coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
-    const invertColorsCheckbox = document.getElementById('invertColors') as HTMLInputElement;
-    const roundedCoverSlider = document.getElementById('roundedCover') as HTMLInputElement;
-    const roundedCoverValue = document.getElementById('roundedCoverValue') as HTMLElement;
-    const coverRotationSlider = document.getElementById('coverRotation') as HTMLInputElement;
-    const coverRotationValue = document.getElementById('coverRotationValue') as HTMLElement;
-    const enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
-    const bgRenderScale = document.getElementById('bgRenderScale') as HTMLInputElement;
-    const bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
-    const lyricAlignPosition = document.getElementById('lyricAlignPosition') as HTMLInputElement;
-    const lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
-    const hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
-    const fluidDesc = document.getElementById('fluid-desc');
-    const coverDesc = document.getElementById('cover-desc');
-    const solidDesc = document.getElementById('solid-desc');
+    if (this.bgFlowSpeed) this.bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
+    if (this.bgFlowSpeedValue) this.bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
+    if (this.bgColorMask) this.bgColorMask.checked = this.state.backgroundColorMask;
+    if (this.bgMaskColor) this.bgMaskColor.value = this.state.backgroundMaskColor;
+    if (this.bgMaskOpacity) this.bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
+    if (this.bgMaskOpacityValue) this.bgMaskOpacityValue.textContent = `${this.state.backgroundMaskOpacity}%`;
+    if (this.showFPSCheckbox) this.showFPSCheckbox.checked = this.state.showFPS;
+    if (this.backgroundStyleSelect) this.backgroundStyleSelect.value = this.state.backgroundType;
+    if (this.coverBlurLevel) this.coverBlurLevel.value = this.state.coverBlurLevel.toString();
+    if (this.coverBlurLevelValue) this.coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
+    if (this.invertColorsCheckbox) this.invertColorsCheckbox.checked = this.state.invertColors;
+    if (this.roundedCoverSlider) this.roundedCoverSlider.value = this.state.roundedCover.toString();
+    if (this.roundedCoverValue) this.roundedCoverValue.textContent = `${this.state.roundedCover}%`;
+    if (this.coverRotationSlider) this.coverRotationSlider.value = this.state.coverRotationSpeed.toString();
+    if (this.coverRotationValue) this.coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
+    if (this.enableMarqueeCheckbox) this.enableMarqueeCheckbox.checked = this.state.marqueeEnabled;
+    if (this.bgRenderScale) {
+      this.bgRenderScale.value = this.state.backgroundRenderScale.toString();
+    }
+    if (this.bgRenderScaleValue) {
+      this.bgRenderScaleValue.textContent = this.state.backgroundRenderScale.toFixed(2);
+    }
+    if (this.bgFPS) {
+      this.bgFPS.value = this.state.backgroundFPS.toString();
+    }
+    if (this.bgFPSValue) {
+      this.bgFPSValue.textContent = `${this.state.backgroundFPS}fps`;
+    }
+    if (this.lyricAlignPosition) {
+      this.lyricAlignPosition.value = this.state.lyricAlignPosition.toString();
+    }
+    if (this.lyricAlignPositionValue) {
+      this.lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
+    }
+    if (this.hidePassedLyricsCheckbox) {
+      this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
+    }
+    if (this.fluidDesc) this.fluidDesc.style.display = this.state.backgroundType === 'fluid' ? 'block' : 'none';
+    if (this.coverDesc) this.coverDesc.style.display = this.state.backgroundType === 'cover' ? 'block' : 'none';
+    if (this.solidDesc) this.solidDesc.style.display = this.state.backgroundType === 'solid' ? 'block' : 'none';
 
-    if (bgFlowSpeed) bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
-    if (bgFlowSpeedValue) bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
-    if (bgColorMask) bgColorMask.checked = this.state.backgroundColorMask;
-    if (bgMaskColor) bgMaskColor.value = this.state.backgroundMaskColor;
-    if (bgMaskOpacity) bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
-    if (bgMaskOpacityValue) bgMaskOpacityValue.textContent = `${this.state.backgroundMaskOpacity}%`;
-    if (showFPSCheckbox) showFPSCheckbox.checked = this.state.showFPS;
-    if (backgroundStyleSelect) backgroundStyleSelect.value = this.state.backgroundType;
-    if (coverBlurLevel) coverBlurLevel.value = this.state.coverBlurLevel.toString();
-    if (coverBlurLevelValue) coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
-    if (invertColorsCheckbox) invertColorsCheckbox.checked = this.state.invertColors;
-    if (roundedCoverSlider) roundedCoverSlider.value = this.state.roundedCover.toString();
-    if (roundedCoverValue) roundedCoverValue.textContent = `${this.state.roundedCover}%`;
-    if (coverRotationSlider) coverRotationSlider.value = this.state.coverRotationSpeed.toString();
-    if (coverRotationValue) coverRotationValue.textContent = `${this.state.coverRotationSpeed}rpm`;
-    if (enableMarqueeCheckbox) enableMarqueeCheckbox.checked = this.state.marqueeEnabled;
-    if (bgRenderScale) {
-      bgRenderScale.value = this.state.backgroundRenderScale.toString();
+    if (this.solidOptions) {
+      if (this.state.backgroundType === 'solid') {
+        this.solidOptions.forEach(option => {
+          (option as HTMLOptionElement).style.display = 'block';
+        });
+      } else {
+        this.solidOptions.forEach(option => {
+          (option as HTMLOptionElement).style.display = 'none';
+        });
+      }
     }
-    if (bgRenderScaleValue) {
-      bgRenderScaleValue.textContent = this.state.backgroundRenderScale.toFixed(1);
+    if (this.coverStyleSelect && ['neumorphismA', 'neumorphismB'].includes(this.coverStyleSelect.value)) {
+      this.coverStyleSelect.value = 'normal';
+      this.state.coverStyle = 'normal';
+      this.applyCoverStyle();
     }
-    if (lyricAlignPosition) {
-      lyricAlignPosition.value = this.state.lyricAlignPosition.toString();
-    }
-    if (lyricAlignPositionValue) {
-      lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
-    }
-    if (hidePassedLyricsCheckbox) {
-      hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
-    }
-    if (fluidDesc) fluidDesc.style.display = this.state.backgroundType === 'fluid' ? 'block' : 'none';
-    if (coverDesc) coverDesc.style.display = this.state.backgroundType === 'cover' ? 'block' : 'none';
-    if (solidDesc) solidDesc.style.display = this.state.backgroundType === 'solid' ? 'block' : 'none';
 
-    const showbgLyricCheckbox = document.getElementById('showbgLyric') as HTMLInputElement;
-    if (showbgLyricCheckbox) {
-      showbgLyricCheckbox.checked = this.state.showbgLyric;
+    if (this.showbgLyricCheckbox) {
+      this.showbgLyricCheckbox.checked = this.state.showbgLyric;
     }
-    const swapDuetsPositionsCheckbox = document.getElementById('swapDuetsPositions') as HTMLInputElement;
-    if (swapDuetsPositionsCheckbox) {
-      swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+    if (this.swapDuetsPositionsCheckbox) {
+      this.swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
+    }
+    if (this.advanceLyricTimingCheckbox) {
+      this.advanceLyricTimingCheckbox.checked = this.state.advanceLyricTiming;
+    }
+
+    if (this.fftDataRangeMin && this.fftDataRangeMinValue) {
+      this.fftDataRangeMin.value = this.state.fftDataRangeMin.toString();
+      this.fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
+    }
+
+    if (this.fftDataRangeMax && this.fftDataRangeMaxValue) {
+      this.fftDataRangeMax.value = this.state.fftDataRangeMax.toString();
+      this.fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
+    }
+
+    if (this.bgLowFreqVolume) {
+      this.bgLowFreqVolume.value = this.state.backgroundLowFreqVolume.toString();
+    }
+    if (this.bgLowFreqVolumeValue) {
+      const mapToFrequency = (value: number): string => {
+        const frequency = 80 + (value * 40); // 0->80, 1->120
+        return `${frequency.toFixed(0)}hz`;
+      };
+      this.bgLowFreqVolumeValue.textContent = mapToFrequency(this.state.backgroundLowFreqVolume);
+    }
+
+    const springPosYSoftDiv = document.getElementById('springPosYSoft')?.parentElement;
+    if (springPosYSoftDiv) {
+      springPosYSoftDiv.style.display = this.state.posYSpringDamping < 1 ? 'flex' : 'none';
+    }
+    const springScaleSoftDiv = document.getElementById('springScaleSoft')?.parentElement;
+    if (springScaleSoftDiv) {
+      springScaleSoftDiv.style.display = this.state.scaleSpringDamping < 1 ? 'flex' : 'none';
     }
   }
 
@@ -3822,7 +5361,7 @@ class WebLyricsPlayer {
         this.coverBlurBackground.style.opacity = '1';
       }
 
-      const mappedBlurLevel = (this.state.coverBlurLevel / 100) * 50; // 映射0~100%到0px~50px
+      const mappedBlurLevel = (this.state.coverBlurLevel / 100) * 100;
       this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
     } else if (this.state.backgroundType === 'solid') {
       this.background.getElement().style.display = "none";
@@ -3846,44 +5385,31 @@ class WebLyricsPlayer {
   }
 
   private updatePlaybackRateIcon(rate: number) {
-    const speedIcons = document.querySelectorAll('#speed-icons svg');
-    speedIcons.forEach((icon) => {
-      (icon as HTMLElement).style.display = 'none';
-    });
-
-    let targetIcon: HTMLElement | null = null;
-    if (rate < 0.75) {
-      targetIcon = document.querySelector('.speed-low');
-    } else if (rate >= 0.76 && rate <= 1.5) {
-      targetIcon = document.querySelector('.speed-medium');
-    } else {
-      targetIcon = document.querySelector('.speed-high');
-    }
-
-    if (targetIcon) {
-      targetIcon.style.display = 'block';
+    if (this.speedLowIcon) this.speedLowIcon.style.display = 'none';
+    if (this.speedMediumIcon) this.speedMediumIcon.style.display = 'none';
+    if (this.speedHighIcon) this.speedHighIcon.style.display = 'none';
+    if (rate < 0.75 && this.speedLowIcon) {
+      this.speedLowIcon.style.display = 'block';
+    } else if (rate >= 0.76 && rate <= 1.5 && this.speedMediumIcon) {
+      this.speedMediumIcon.style.display = 'block';
+    } else if (this.speedHighIcon) {
+      this.speedHighIcon.style.display = 'block';
     }
   }
 
   private updateVolumeIcon(volume: number) {
-    const volumeIcons = document.querySelectorAll('#volume-icons svg');
-    volumeIcons.forEach((icon) => {
-      (icon as HTMLElement).style.display = 'none';
-    });
-
-    let targetIcon: HTMLElement | null = null;
-    if (volume === 0) {
-      targetIcon = document.querySelector('.volume-off');
-    } else if (volume > 0 && volume <= 35) {
-      targetIcon = document.querySelector('.volume-low');
-    } else if (volume > 35 && volume <= 65) {
-      targetIcon = document.querySelector('.volume-medium');
-    } else {
-      targetIcon = document.querySelector('.volume-high');
-    }
-
-    if (targetIcon) {
-      targetIcon.style.display = 'block';
+    if (this.volumeOffIcon) this.volumeOffIcon.style.display = 'none';
+    if (this.volumeLowIcon) this.volumeLowIcon.style.display = 'none';
+    if (this.volumeMediumIcon) this.volumeMediumIcon.style.display = 'none';
+    if (this.volumeHighIcon) this.volumeHighIcon.style.display = 'none';
+    if (volume === 0 && this.volumeOffIcon) {
+      this.volumeOffIcon.style.display = 'block';
+    } else if (volume > 0 && volume <= 35 && this.volumeLowIcon) {
+      this.volumeLowIcon.style.display = 'block';
+    } else if (volume > 35 && volume <= 65 && this.volumeMediumIcon) {
+      this.volumeMediumIcon.style.display = 'block';
+    } else if (this.volumeHighIcon) {
+      this.volumeHighIcon.style.display = 'block';
     }
   }
 }

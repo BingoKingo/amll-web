@@ -40,14 +40,12 @@ export interface Translations {
   playbackRate: string;
   volume: string;
   playbackControl: string;
-  Styles: string;
   amllBackground: string;
   coverBackground: string;
   solidBackground: string;
   coverBlurLevel: string;
   colorMask: string;
   invertColors: string;
-  debugInfo: string;
   showFPS: string;
   enableMarquee: string;
   roundedCover: string;
@@ -70,6 +68,36 @@ export interface Translations {
   swapLyricPositions: string;
   showbgLyric: string;
   swapDuetsPositions: string;
+  advanceLyricTiming: string;
+  lowFreqVolume: string;
+  singleLyrics: string;
+  coverStyle: string;
+  normalShadow: string;
+  innerShadow: string;
+  threeDShadow: string;
+  longShadow: string;
+  neumorphismA: string;
+  neumorphismB: string;
+  horizontalReflection: string;
+  cdRecord: string;
+  vinylRecord: string;
+  coloredRecord: string;
+  fftDataRangeMin: string;
+  fftDataRangeMax: string;
+  globalSettings: string;
+  coverSettings: string;
+  lyricSettings: string;
+  backgroundSettings: string;
+  visualizationSettings: string;
+  posYSpringMass: string;
+  posYSpringDamping: string;
+  posYSpringStiffness: string;
+  posYSpringSoft: string;
+  scaleSpringMass: string;
+  scaleSpringDamping: string;
+  scaleSpringStiffness: string;
+  scaleSpringSoft: string;
+  backgroundFPS: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -95,6 +123,11 @@ export const translations: Record<Language, Translations> = {
       "Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats",
     musicLoadSuccess: "Music file loaded successfully",
     musicLoadFailed: "Failed to load music file",
+    globalSettings: "Global",
+    coverSettings: "Cover",
+    lyricSettings: "Lyrics",
+    backgroundSettings: "Background",
+    visualizationSettings: "Visualization",
     lyricsLoadSuccess: "Lyrics file loaded successfully",
     lyricsLoadFailed: "Failed to load lyrics file",
     coverLoadSuccess: "Cover image loaded successfully",
@@ -115,20 +148,19 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "Playback Speed",
     volume: "Volume",
     playbackControl: "Playback Control",
-    Styles: "Styles",
     amllBackground: "AMLL Background",
     coverBackground: "Cover Background",
     solidBackground: "Solid Background",
     coverBlurLevel: "Blur Level",
     colorMask: "Color Mask",
     invertColors: "Invert Colors",
-    debugInfo: "Debug Information",
-    showFPS: "Show FPS",
+    showFPS: "Show Performance Monitor",
     enableMarquee: "Title Marquee Effect",
     roundedCover: "Cover Rounded Corners",
     coverRotation: "Cover Rotation Speed",
     renderScale: "Render Scale",
-    lyricAlignPosition: "Lyrics Vertical Align",
+    backgroundFPS: "Background FPS",
+    lyricAlignPosition: "Vertical Align",
     hidePassedLyrics: "Hide Passed Lyrics",
     lyricDelay: "Lyrics Delay",
     enableLyricBlur: "Lyrics Blur Effect",
@@ -145,6 +177,30 @@ export const translations: Record<Language, Translations> = {
     swapLyricPositions: "Swap Translated & Romanized",
     showbgLyric: "Show Background Lyrics",
     swapDuetsPositions: "Swap Left & Right",
+    advanceLyricTiming: "Compact Gap (±400ms)",
+    lowFreqVolume: "Low Frequency Volume",
+    singleLyrics: "Single Lyrics",
+    coverStyle: "Cover Style",
+    normalShadow: "Shadow",
+    innerShadow: "Inner Shadow",
+    threeDShadow: "3D Shadow",
+    longShadow: "Long Shadow",
+    neumorphismA: "Neumorphism A",
+    neumorphismB: "Neumorphism B",
+    horizontalReflection: "Horizontal Reflection",
+    cdRecord: "CD Record",
+    vinylRecord: "Vinyl Record",
+    coloredRecord: "Colored Record",
+    fftDataRangeMin: "Minimum Frequency",
+    fftDataRangeMax: "Maximum Frequency",
+    posYSpringMass: "Vertical Spring Mass",
+    posYSpringDamping: "Vertical Spring Damping",
+    posYSpringStiffness: "Vertical Spring Stiffness",
+    posYSpringSoft: "Soft Vertical Spring",
+    scaleSpringMass: "Scale Spring Mass",
+    scaleSpringDamping: "Scale Spring Damping",
+    scaleSpringStiffness: "Scale Spring Stiffness",
+    scaleSpringSoft: "Soft Scale Spring",
   },
   zh: {
     artist: "艺术家",
@@ -168,6 +224,11 @@ export const translations: Record<Language, Translations> = {
       "支持 LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) 格式",
     musicLoadSuccess: "音乐文件加载成功",
     musicLoadFailed: "音乐文件加载失败",
+    globalSettings: "全局",
+    coverSettings: "封面",
+    lyricSettings: "歌词",
+    backgroundSettings: "背景",
+    visualizationSettings: "可视化",
     lyricsLoadSuccess: "歌词文件加载成功",
     lyricsLoadFailed: "歌词文件加载失败",
     coverLoadSuccess: "封面图片加载成功",
@@ -188,20 +249,19 @@ export const translations: Record<Language, Translations> = {
     playbackRate: "播放速度",
     volume: "音量",
     playbackControl: "播放控制",
-    Styles: "样式",
     amllBackground: "AMLL 背景",
     coverBackground: "封面背景",
     solidBackground: "纯色背景",
     coverBlurLevel: "模糊程度",
     colorMask: "颜色蒙版",
     invertColors: "反转色",
-    debugInfo: "调试信息",
-    showFPS: "显示帧数",
+    showFPS: "显示性能监控",
     enableMarquee: "标题跑马灯效果",
     roundedCover: "封面圆角",
     coverRotation: "封面旋转速度",
     renderScale: "渲染比例",
-    lyricAlignPosition: "歌词垂直位置",
+    backgroundFPS: "背景帧率",
+    lyricAlignPosition: "垂直位置",
     hidePassedLyrics: "隐藏已播歌词",
     lyricDelay: "歌词延迟",
     enableLyricBlur: "歌词模糊效果",
@@ -218,6 +278,30 @@ export const translations: Record<Language, Translations> = {
     swapLyricPositions: "交换译文位置",
     showbgLyric: "显示背景词",
     swapDuetsPositions: "交换左右对齐",
+    advanceLyricTiming: "紧凑间隙 (±400ms)",
+    lowFreqVolume: "低音频率",
+    singleLyrics: "单行歌词",
+    coverStyle: "封面样式",
+    normalShadow: "阴影",
+    innerShadow: "内阴影",
+    threeDShadow: "立体投影",
+    longShadow: "长投影",
+    neumorphismA: "新拟态A",
+    neumorphismB: "新拟态B",
+    horizontalReflection: "水平倒影",
+    cdRecord: "CD唱片",
+    vinylRecord: "黑胶唱片",
+    coloredRecord: "彩胶唱片",
+    fftDataRangeMin: "最小频率",
+    fftDataRangeMax: "最大频率",
+    posYSpringMass: "垂直弹簧质量",
+    posYSpringDamping: "垂直弹簧阻尼",
+    posYSpringStiffness: "垂直弹簧刚度",
+    posYSpringSoft: "柔软垂直弹簧",
+    scaleSpringMass: "缩放弹簧质量",
+    scaleSpringDamping: "缩放弹簧阻尼",
+    scaleSpringStiffness: "缩放弹簧刚度",
+    scaleSpringSoft: "柔软缩放弹簧",
   },
 };
 

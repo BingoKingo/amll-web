@@ -82,7 +82,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
     const textWithTags = match.groups["Text"] ?? "";
 
     // 解析 \k 标签
-    const words: { text: string; startTime: number; endTime: number }[] = [];
+    const words: { word: string; startTime: number; endTime: number }[] = [];
     let cursor = startMs;
     const tagMatches = [...textWithTags.matchAll(KARAOKE_TAG_REGEX)];
 
@@ -93,7 +93,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
         trim: false,
       });
       if (cleaned) {
-        words.push({ text: cleaned, startTime: startMs, endTime: endMs });
+        words.push({ word: cleaned, startTime: startMs, endTime: endMs });
       }
     } else {
       for (let i = 0; i < tagMatches.length; i++) {
@@ -111,7 +111,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
         const durationMs = Math.max(0, durCs * 10);
         const segEndTime = cursor + durationMs;
         if (cleaned) {
-          words.push({ text: cleaned, startTime: cursor, endTime: segEndTime });
+          words.push({ word: cleaned, startTime: cursor, endTime: segEndTime });
         }
         cursor = segEndTime;
       }
@@ -127,6 +127,10 @@ export function parseAss(assContent: string): RawLyricLine[] {
         words,
         startTime: words[0].startTime,
         endTime: words[words.length - 1].endTime,
+        translatedLyric: '',
+        romanLyric: '',
+        isBG: false,
+        isDuet: false
       });
     }
   }
@@ -178,7 +182,7 @@ export function assToTTML(assContent: string): string {
       spans.push(
         `<span begin="${formatTime(word.startTime)}" end="${formatTime(
           word.endTime
-        )}">${escapeXml(word.text)}</span>`
+        )}">${escapeXml(word.word)}</span>`
       );
     }
     ttml += `${spans.join("")}`;

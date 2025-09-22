@@ -24,7 +24,8 @@
   "devDependencies": {
     "@types/stats.js": "^0.17.4",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
+    "vite": "^7.1.7",
+    "vite-plugin-compression": "^0.5.1",
     "vite-plugin-static-copy": "^3.1.2",
     "vite-plugin-wasm": "^3.5.0"
   },
@@ -51,8 +52,8 @@
     "jss-preset-default": "^10.10.0",
     "lil-gui": "^0.20.0",
     "mpg123-decoder": "^1.0.2",
-    "music-metadata": "^11.8.3",
-    "ogg-opus-decoder": "^1.7.0",
+    "music-metadata": "^11.9.0",
+    "ogg-opus-decoder": "^1.7.1",
     "stats": "^1.0.0",
     "stats.js": "^0.17.0",
     "synaudio": "^0.3.5"

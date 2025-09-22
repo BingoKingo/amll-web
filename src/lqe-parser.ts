@@ -17,6 +17,9 @@ enum ParseState {
 enum LyricFormat {
   Lrc,
   Lys,
+  Ass,
+  Yrc,
+  Qrc
 }
 
 // 解析 LQE 格式内容
@@ -40,7 +43,6 @@ export function parseLqe(content: string): RawLyricLine[] {
   // 检查是否存在歌词区块
   const hasLyricsBlock = lines.some(line => line.startsWith("[lyrics:"));
   if (!hasLyricsBlock) {
-    console.warn("警告: LQE 文件中没有找到 [lyrics:] 区块，尝试作为普通 LRC 解析");
     // 如果没有明确的歌词区块，尝试将整个内容作为 LRC 解析
     try {
       const lrcLines = parseLrc(content);
@@ -48,7 +50,6 @@ export function parseLqe(content: string): RawLyricLine[] {
         return lrcLines;
       }
     } catch (e) {
-      console.error("作为普通 LRC 解析失败:", e);
     }
   }
   
@@ -178,7 +179,6 @@ function parseSectionHeader(headerLine: string): { format: LyricFormat; lang: st
             format = LyricFormat.Qrc;
             break;
           default:
-            console.warn(`未知的 LQE 区块格式 '${value}', 将回退到 LRC`);
             format = LyricFormat.Lrc;
         }
       } else if (key === "language") {
@@ -210,7 +210,6 @@ function processBlock(content: string, format: LyricFormat): RawLyricLine[] {
         
         // 检查解析结果是否有效
         if (lines.length === 0) {
-          console.warn('LRC 解析结果为空，原始内容:', normalizedContent.substring(0, 200) + '...');
         } else {
           // 检查第一行是否有有效内容
           const firstLine = lines[0];
@@ -218,11 +217,9 @@ function processBlock(content: string, format: LyricFormat): RawLyricLine[] {
         
         return lines;
       default:
-        console.warn(`不支持的格式 ${format}，将尝试作为 LRC 解析`);
         return parseLrc(normalizedContent);
     }
   } catch (error) {
-    console.error('处理歌词区块时出错:', error);
     return [];
   }
 }
@@ -238,7 +235,6 @@ function mergeTracks(
 ): RawLyricLine[] {
   
   if (mainLines.length === 0) {
-    console.warn("主歌词为空，无法合并轨道");
     // 如果主歌词为空但有翻译，将翻译作为主歌词
     if (translationLines.length > 0) {
       return translationLines;
@@ -261,9 +257,8 @@ function mergeTracks(
     
     // 确保每行都有 words 数组
     if (!mainLine.words || !Array.isArray(mainLine.words) || mainLine.words.length === 0) {
-      console.warn(`第 ${i+1} 行缺少 words 数组，添加默认值`);
       mainLine.words = [{
-        text: `[行 ${i+1}]`,
+        word: `[行 ${i+1}]`,
         startTime: mainStartTime,
         endTime: mainEndTime || (mainStartTime + 1000)
       }];
@@ -279,8 +274,8 @@ function mergeTracks(
       
       if (exactMatch) {
         (mainLine as any).translatedLyric = exactMatch.words
-          .map(w => w.text)
-          .join("");
+            .map(w => w.word)
+            .join("");
       } else {
         // 找不到精确匹配时，查找最接近的翻译
         let closestTranslation = translationLines[0];
@@ -296,9 +291,8 @@ function mergeTracks(
         
         // 放宽时间差的接受范围（从1秒增加到2秒）
         if (minDiff < 2000) {
-          console.log(`第 ${i+1} 行找到接近的翻译，时间差: ${minDiff}ms`);
           (mainLine as any).translatedLyric = closestTranslation.words
-            .map(w => w.text)
+            .map(w => w.word)
             .join("");
         }
       }
@@ -314,7 +308,7 @@ function mergeTracks(
       
       if (exactMatch) {
         (mainLine as any).romanLyric = exactMatch.words
-          .map(w => w.text)
+          .map(w => w.word)
           .join("");
       } else {
         // 找不到精确匹配时，查找最接近的注音
@@ -332,7 +326,7 @@ function mergeTracks(
         // 放宽时间差的接受范围（从1秒增加到2秒）
         if (minDiff < 2000) {
           (mainLine as any).romanLyric = closestPronunciation.words
-            .map(w => w.text)
+            .map(w => w.word)
             .join("");
         }
       }
@@ -341,12 +335,10 @@ function mergeTracks(
     // 确保每个单词都有有效的开始和结束时间
     for (const word of mainLine.words) {
       if (isNaN(word.startTime) || word.startTime < 0) {
-        console.warn(`单词 "${word.text}" 的开始时间无效，设为行的开始时间`);
         word.startTime = mainStartTime;
       }
       
       if (isNaN(word.endTime) || word.endTime <= word.startTime) {
-        console.warn(`单词 "${word.text}" 的结束时间无效，设为开始时间 + 500ms`);
         word.endTime = word.startTime + 500;
       }
     }
@@ -373,29 +365,23 @@ export function lqeToTTML(content: string): string {
     const lines = parseLqe(content);
     
     if (lines.length === 0) {
-      console.warn("警告: 解析结果为空，尝试直接作为 LRC 解析");
       try {
         const lrcLines = parseLrc(content);
         if (lrcLines.length > 0) {
           return generateTTML(lrcLines);
         }
       } catch (e) {
-        console.error("作为普通 LRC 解析失败:", e);
       }
     }
     
     return generateTTML(lines);
   } catch (error) {
-    console.error("LQE 转换 TTML 时出错:", error);
-    
-    // 出错时尝试作为普通 LRC 解析
     try {
       const lrcLines = parseLrc(content);
       if (lrcLines.length > 0) {
         return generateTTML(lrcLines);
       }
     } catch (e) {
-      console.error("作为普通 LRC 解析也失败:", e);
     }
     
     // 如果所有尝试都失败，返回一个空的但有效的 TTML
@@ -447,13 +433,11 @@ function generateTTML(lines: RawLyricLine[]): string {
   for (const line of lines) {
     // 确保行有有效的开始和结束时间
     if (isNaN(line.startTime) || line.startTime < 0) {
-      console.warn("警告: 行的开始时间无效，设为默认值 0");
       line.startTime = 0;
     }
     
     // 如果结束时间无效，设置为开始时间后的 1 秒
     if (isNaN(line.endTime) || line.endTime <= line.startTime) {
-      console.warn("警告: 行的结束时间无效，设为开始时间 + 1 秒");
       line.endTime = line.startTime + 1000;
     }
     
@@ -466,7 +450,6 @@ function generateTTML(lines: RawLyricLine[]): string {
     
     // 确保行有单词
     if (!line.words || line.words.length === 0) {
-      console.warn("警告: 行没有单词，添加一个默认单词");
       // 添加一个默认单词，使用行的开始和结束时间
       spans.push(
         `<span begin="${startTime}" end="${endTime}">[无歌词]</span>`
@@ -479,7 +462,7 @@ function generateTTML(lines: RawLyricLine[]): string {
                            (wordStartTime + 500) : word.endTime;
         
         // 确保单词有文本
-        const wordText = word.text ? word.text : "[空]";
+        const wordText = word.word ? word.word : "[空]";
         
         spans.push(
           `<span begin="${formatTime(wordStartTime)}" end="${formatTime(wordEndTime)}">${escapeXml(wordText)}</span>`

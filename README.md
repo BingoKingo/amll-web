@@ -7,7 +7,7 @@
 ### Requirements
 
 - **Node.js**: 18.0+
-- **Browsers**: Chromium 120+, Firefox 100+, Safari 15.4+
+- **Browsers**: Chromium 120+, Firefox 100+ (Not Recommended), Safari 15.4+
 
 ## Install & Run
 
@@ -27,18 +27,18 @@ pnpm preview
 
 ### Input Methods
 
-1. **Local File Upload （Horizonal Layout）**
+1. **Local File Upload**
    - Audio File:
    - - Click (first time) or right click or long press (3s) the play button to select
    - - Drag and drop to the cover to select
    - Lyrics File:
    - - Right click or long press (3s) the fullscreen button to select
    - - Drag and drop to the right lyric player area to select
-   - Cover Image (optional): Click or drag and drop the cover to select
-   - Artist: Click to edit
-   - Title: Click to edit
+   - Cover Image (optional): Click (first time) or right click or long press (3s) drag and drop the cover to select
+   - Artist: Click (first time) or right click or long press (3s) to edit
+   - Title: Click (first time) or right click or long press (3s) to edit
 
-   All the above options can be accessed by clicking on the song information in the vertical layout to enter the control panel for initialization.
+   All the above options can be accessed by clicking on the song information to enter the control panel for initialization.
 
 2. **URL Parameters (API)**
 
@@ -70,11 +70,10 @@ pnpm preview
 This project is licensed under AGPL - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
-
-- [Steve-xmh/applemusic-like-lyrics](https://github.com/Steve-xmh/applemusic-like-lyrics)
-
 - [apoint123/lyrics_helper_rs](https://github.com/apoint123/lyrics_helper_rs)
-
 - [fred913/justlyrics](https://github.com/fred913/justlyrics)
+- [ionic-team/ionicons](https://github.com/ionic-team/ionicons)
+- [Steve-xmh/applemusic-like-lyrics](https://github.com/Steve-xmh/applemusic-like-lyrics)
+- [tabler/tabler-icons](https://github.com/tabler/tabler-icons)
 
 ⭐ If you find this project useful, please give it a star!

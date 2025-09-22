@@ -5,6 +5,8 @@
   <title>AMLL Web Player</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description"
+    content="AMLL Web Player - A feature-rich music player with customizable lyrics display, cover art effects, and audio visualization. Support multiple lyric formats including original, translated, and romanized lyrics." />
   <meta name="theme-color" content="#222222" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -20,8 +22,8 @@
       --dominant-color: rgb(253, 156, 155);
       --dominant-color-light: rgb(255, 207, 206);
       --dominant-color-dark: rgb(100, 3, 2);
+      --waveform-color: rgb(253, 156, 155);
     }
-
 
     .amll-lyric-player:hover ._lyricLine_1vq69_6 {
       filter: inherit !important;
@@ -57,22 +59,23 @@
 
     #controlPanel {
       position: fixed;
-      top: 120px;
+      top: 28px;
       max-height: calc(100vh - 40px);
-      bottom: 60px;
-      right: 20px;
+      bottom: 70px;
+      right: -50px;
       border-radius: 24px;
       padding: 15px;
       color: var(--dominant-color-light);
-      display: none;
       z-index: 50;
-      width: 320px;
+      width: 0px;
       overflow-y: auto;
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
       border: 1px solid rgba(255, 255, 255, 0.18);
+      transition: width 0.25s ease, right 0.25s ease, top 0.25s ease, opacity 0.25s ease;
+      opacity: 0;
     }
 
     .control-group {
@@ -123,7 +126,7 @@
       margin-right: 8px;
       margin-bottom: 8px;
       will-change: opacity;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.25s ease;
       display: flex;
       align-items: center;
     }
@@ -151,7 +154,7 @@
 
     #playControls {
       position: fixed;
-      bottom: 10px;
+      bottom: -32px;
       left: 50%;
       transform: translateX(-50%);
       border-radius: 8px;
@@ -161,13 +164,14 @@
       align-items: center;
       gap: 8px;
       opacity: 0;
-      transition: opacity 0.2s ease;
+      transition: bottom 0.25s ease, opacity 0.25s ease;
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
     }
 
     body:hover #playControls {
+      bottom: 10px;
       opacity: 1;
     }
 
@@ -184,7 +188,7 @@
     }
 
     #progressBar {
-      width: 60vw;
+      width: 0px;
       height: 8px;
       border-radius: 4px;
       background: rgba(255, 255, 255, 0.1);
@@ -195,12 +199,11 @@
       cursor: pointer;
       position: relative;
       overflow: hidden;
+      transition: width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
     }
 
-    #playbackRate,
-    #volumeControl {
-      position: relative;
-      cursor: pointer;
+    body:hover #progressBar {
+      width: 72vw;
     }
 
     .control-value {
@@ -209,17 +212,16 @@
       opacity: 0.6;
       display: inline-block;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     #progressFill {
       height: 100%;
       background: var(--dominant-color-light);
       width: 0%;
-      transition: width 0.2s ease;
+      transition: width 0.25s ease;
       position: relative;
       opacity: 0.7;
+      transition: opacity 0.25s ease;
     }
 
     #progressFill[style*="width: 0%"],
@@ -238,76 +240,15 @@
       text-align: center;
     }
 
-    #songInfoTopLeft {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      right: 20px;
-      background: transparent;
-      border-radius: 8px;
-      padding: 15px;
-      color: white;
-      z-index: 40;
-      display: none;
-      width: calc(100% - 80px);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    #songInfoTopLeft .song-cover {
-      width: 60px;
-      height: 60px;
-      border-radius: 8px;
-      object-fit: cover;
-      margin-right: 15px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    }
-
-    #songInfoTopLeft .song-info {
-      display: flex;
-      align-items: center;
-    }
-
-    #songInfoTopLeft .song-text-container {
-      max-width: calc(100% - 75px);
-      width: 100%;
-      overflow: hidden;
-    }
-
-    #songInfoTopLeft .song-title {
-      font-weight: bold;
-      font-size: 1em;
-      margin-bottom: 4px;
-      color: var(--dominant-color-light);
-      opacity: 0.9;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      width: 100%;
-      position: relative;
-    }
-
-    #songInfoTopLeft .song-artist {
-      color: var(--dominant-color-light);
-      font-size: 0.875em;
-      opacity: 0.8;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      width: 100%;
-      position: relative;
-    }
-
     #songTitle.marquee,
-    #songArtist.marquee,
-    #songInfoTopLeft .song-title.marquee,
-    #songInfoTopLeft .song-artist.marquee {
+    #songArtist.marquee {
       text-overflow: clip;
       color: transparent;
+      overflow: hidden;
+      white-space: nowrap;
     }
 
-    #songTitle.marquee::before,
-    #songInfoTopLeft .song-title.marquee::before {
+    #songTitle.marquee::before {
       content: attr(data-text);
       position: absolute;
       top: 0;
@@ -319,8 +260,7 @@
       opacity: 0.9;
     }
 
-    #songArtist.marquee::before,
-    #songInfoTopLeft .song-artist.marquee::before {
+    #songArtist.marquee::before {
       content: attr(data-text);
       position: absolute;
       top: 0;
@@ -332,16 +272,34 @@
       opacity: 0.8;
     }
 
-    #songArtist.marquee:hover::before,
-    #songInfoTopLeft .song-artist.marquee:hover::before {
+    #songArtist.marquee:hover::before {
       animation-play-state: paused;
       opacity: 0.9;
     }
 
-    #songTitle.marquee:hover::before,
-    #songInfoTopLeft .song-title.marquee:hover::before {
+    #songTitle.marquee:hover::before {
       animation-play-state: paused;
       opacity: 1;
+    }
+
+    #albumInfo {
+      color: var(--dominant-color-light);
+      cursor: pointer;
+    }
+
+    #albumCoverLarge {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      object-fit: cover;
+      cursor: pointer;
+    }
+
+    #albumCoverLarge:hover {
+      animation-play-state: paused !important;
     }
 
     #status {
@@ -357,6 +315,64 @@
       display: none;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #lyricAreaHint {
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+
+    #lyricsPanel:hover #lyricAreaHint {
+      z-index: 30;
+      opacity: 0.9 !important;
+    }
+
+    .amll-lyric-player {
+      margin-top: -15px !important;
+      padding-top: 15px !important;
+    }
+
+    .flex-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .flex-group-without-margin {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .range-input {
+      flex: 1;
+    }
+
+    .select-input {
+      flex: 1;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--dominant-color-light);
+      font-size: 0.875em;
+      box-sizing: border-box;
+      height: 2.5em;
+      padding: 8px 12px;
+    }
+
+    .tool-btn {
+      padding: 6px;
+      width: 36px;
+      height: 36px;
+      margin-right: 0px;
+      justify-content: center;
+    }
+
+    .icon-container {
+      display: inline-block;
+      width: 1.25em;
+      height: 1.25em;
     }
 
     @keyframes spin {
@@ -387,7 +403,7 @@
       }
 
       #albumSidePanel {
-        width: 50%;
+        width: 40%;
         min-width: 300px;
         height: 100vh;
         display: flex;
@@ -398,6 +414,13 @@
         box-sizing: border-box;
         position: relative;
         z-index: 40;
+      }
+
+      #albumSidePanel .song-info-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
       }
 
       #albumCoverContainer {
@@ -412,38 +435,25 @@
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        transition: transform 0.25s ease-in-out;
+        transition: transform 0.25s ease-in-out, width 0.25s ease, margin-bottom 0.25s ease;
       }
 
       #albumCoverLarge {
-        width: 100%;
-        height: 100%;
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        object-fit: cover;
-        cursor: pointer;
         position: relative;
         transform: translateZ(0);
-      }
-
-      #albumCoverLarge:hover {
-        animation-play-state: paused !important;
       }
 
       #albumInfo {
         width: 70%;
         max-width: 512px;
         text-align: center;
-        color: var(--dominant-color-light);
-        cursor: pointer;
       }
 
       #songTitle {
         font-size: var(--amll-lp-font-size, max(max(5vh, 2.5vw), 12px));
         font-weight: bold;
         margin-bottom: 6px;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.25s ease, font-size 0.25s ease, text-align 0.25s ease;
         opacity: 0.9;
         white-space: nowrap;
         overflow: hidden;
@@ -460,7 +470,7 @@
         font-size: var(--amll-lp-font-size, max(max(4vh, 2vw), 12px));
         color: var(--dominant-color-light);
         opacity: 0.8;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.25s ease, font-size 0.25s ease, text-align 0.25s ease;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -474,13 +484,9 @@
 
       #lyricsPanel {
         z-index: 30;
-        width: 70%;
+        width: 60%;
         height: 100vh;
         position: relative;
-      }
-
-      #songInfoTopLeft {
-        display: none !important;
       }
 
       .amll-lyric-player {
@@ -490,7 +496,63 @@
 
     @media (max-width: 768px) and (orientation: portrait) {
       #albumSidePanel {
-        display: none;
+        display: block;
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        right: 20px;
+        background: transparent;
+        border-radius: 8px;
+        padding: 15px;
+        color: white;
+        z-index: 40;
+        width: calc(100% - 80px);
+        cursor: pointer;
+        transition: transform 0.25s ease, background 0.25s ease, width 0.25s ease, top 0.25s ease, left 0.25s ease, right 0.25s ease;
+        text-align: left;
+      }
+
+      #albumCoverContainer {
+        width: 60px;
+        height: 60px;
+        margin-bottom: 0;
+        margin-right: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        transition: width 0.25s ease, height 0.25s ease, margin-bottom 0.25s ease, margin-right 0.25s ease;
+      }
+
+      #albumSidePanel .song-info-container {
+        display: flex;
+        align-items: center;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+      }
+
+      #albumInfo {
+        width: calc(100% - 75px);
+        text-align: left;
+      }
+
+      #songTitle {
+        font-size: 1em;
+        margin-bottom: 4px;
+        opacity: 0.9;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        transition: font-size 0.25s ease, text-align 0.25s ease;
+      }
+
+      #songArtist {
+        font-size: 0.875em;
+        opacity: 0.8;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        transition: font-size 0.25s ease, text-align 0.25s ease;
       }
 
       #lyricsPanel {
@@ -500,9 +562,7 @@
       }
 
       #controlPanel {
-        width: calc(100% - 75px);
-        left: 20px;
-        right: 20px;
+        top: 120px;
       }
 
       [style*="display: flex; gap: 10px;"] {
@@ -514,20 +574,6 @@
         right: 20px;
         transform: none;
       }
-    }
-
-    #lyricAreaHint {
-      transition: opacity 0.3s ease;
-    }
-
-    #lyricsPanel:hover #lyricAreaHint {
-      z-index: 30;
-      opacity: 0.9 !important;
-    }
-
-    .amll-lyric-player {
-      margin-top: -15px !important;
-      padding-top: 15px !important;
     }
   </style>
   <script src="./public/jsmediatags.min.js"></script>
@@ -548,32 +594,19 @@
 </head>
 
 <body>
-  <div id="songInfoTopLeft">
-    <div class="song-info">
-      <img class="song-cover" id="songCoverTopLeft" src="" alt="Cover" />
-      <div class="song-text-container">
-        <div class="song-title" id="songTitleTopLeft" data-i18n="songTitle">
-          Title
-        </div>
-        <div class="song-artist" id="songArtistTopLeft" data-i18n="songArtist">
-          Artist
-        </div>
-      </div>
-    </div>
-  </div>
+
   <div id="controlPanel">
     <div class="control-group">
       <label data-i18n="sourceFile">Source</label>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="flex-group-without-margin">
         <svg width="1em" height="1em" style="margin-bottom: 8px; padding: 6px; margin-right: 0px;"
           xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="var(--dominant-color-light)">
           <path
             d="M421.84 37.37a25.86 25.86 0 00-22.6-4.46L199.92 86.49A32.3 32.3 0 00176 118v226c0 6.74-4.36 12.56-11.11 14.83l-.12.05-52 18C92.88 383.53 80 402 80 423.91a55.54 55.54 0 0023.23 45.63A54.78 54.78 0 00135.34 480a55.82 55.82 0 0017.75-2.93l.38-.13 21.84-7.94A47.84 47.84 0 00208 423.91v-212c0-7.29 4.77-13.21 12.16-15.07l.21-.06L395 150.14a4 4 0 015 3.86v141.93c0 6.75-4.25 12.38-11.11 14.68l-.25.09-50.89 18.11A49.09 49.09 0 00304 375.92a55.67 55.67 0 0023.23 45.8 54.63 54.63 0 0049.88 7.35l.36-.12 21.84-7.95A47.83 47.83 0 00432 375.92V58a25.74 25.74 0 00-10.16-20.63z" />
         </svg>
         <input type="text" id="musicUrl" data-i18n-placeholder="musicUrl" placeholder="or enter music URL"
-          style="flex: 1;" />
-        <button class="btn" id="musicFileBtn"
-          style="padding: 6px; width: 36px; height: 36px; margin-right: 0px; justify-content: center;">
+          title="Enter music URL" style="flex: 1;" />
+        <button class="btn tool-btn" id="musicFileBtn" title="Select music file">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -586,17 +619,17 @@
           </svg>
         </button>
       </div>
-      <input type="file" id="musicFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" style="display: none;" />
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <input type="file" id="musicFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" style="display: none;"
+        title="Select music file" />
+      <div class="flex-group-without-margin">
         <svg width="1em" height="1em" style="margin-bottom: 8px; padding: 6px; margin-right: 0px;"
           xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="var(--dominant-color-light)">
           <path
             d="M368 32H144a64.07 64.07 0 00-64 64v320a64.07 64.07 0 0064 64h224a64.07 64.07 0 0064-64V96a64.07 64.07 0 00-64-64zM256 304h-80a16 16 0 010-32h80a16 16 0 010 32zm80-80H176a16 16 0 010-32h160a16 16 0 010 32zm0-80H176a16 16 0 010-32h160a16 16 0 010 32z" />
         </svg>
         <input type="text" id="lyricUrl" data-i18n-placeholder="lyricsUrl" placeholder="or enter lyrics URL"
-          style="flex: 1;" />
-        <button class="btn" id="lyricFileBtn"
-          style="padding: 6px; width: 36px; height: 36px; margin-right: 0px; justify-content: center;">
+          title="Enter lyrics URL" style="flex: 1;" />
+        <button class="btn tool-btn" id="lyricFileBtn" title="Select lyric file">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -610,22 +643,21 @@
         </button>
       </div>
       <input type="file" id="lyricFile" accept="text/plain,.lrc,.ttml,.yrc,.lys,.qrc,.ass,.lqe,.lyl,.spl,.srt"
-        style="display: none;" />
+        title="Select lyric file" style="display: none;" />
       <!-- <div
         style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: -4px; margin-bottom: 8px;" data-i18n="supportedLyricFormats"
       >
       Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats
       </div> -->
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="flex-group-without-margin">
         <svg width="1em" height="1em" style="margin-bottom: 8px; padding: 6px; margin-right: 0px;"
           xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="var(--dominant-color-light)">
           <path
             d="M416 64H96a64.07 64.07 0 00-64 64v256a64.07 64.07 0 0064 64h320a64.07 64.07 0 0064-64V128a64.07 64.07 0 00-64-64zm-80 64a48 48 0 11-48 48 48.05 48.05 0 0148-48zM96 416a32 32 0 01-32-32v-67.63l94.84-84.3a48.06 48.06 0 0165.8 1.9l64.95 64.81L172.37 416zm352-32a32 32 0 01-32 32H217.63l121.42-121.42a47.72 47.72 0 0161.64-.16L448 333.84z" />
         </svg>
         <input type="text" id="coverUrl" data-i18n-placeholder="coverUrl" placeholder="or enter cover image URL"
-          style="flex: 1;" />
-        <button class="btn" id="coverFileBtn"
-          style="padding: 6px; width: 36px; height: 36px; margin-right: 0px; justify-content: center;">
+          title="Enter cover image URL" style="flex: 1;" />
+        <button class="btn tool-btn" id="coverFileBtn" title="Select cover image">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -638,19 +670,19 @@
           </svg>
         </button>
       </div>
-      <input type="file" id="coverFile" accept="image/*" style="display: none;" />
+      <input type="file" id="coverFile" accept="image/*" style="display: none;" title="Select cover image" />
     </div>
     <div class="control-group">
       <label data-i18n="songInfo">Metadata</label>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="flex-group-without-margin">
         <svg width="1em" height="1em" style="margin-bottom: 8px; padding: 6px; margin-right: 0px;"
           xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="var(--dominant-color-light)">
           <path
-            d="M183.83 480a55.2 55.2 0 01-32.36-10.55A56.64 56.64 0 01128 423.58a50.26 50.26 0 0134.14-47.73L213 358.73a16.25 16.25 0 0011-15.49V92a32.1 32.1 0 0124.09-31.15l108.39-28.14A22 22 0 01384 54v57.75a32.09 32.09 0 01-24.2 31.19l-91.65 23.13A16.24 16.24 0 00256 181.91V424a48.22 48.22 0 01-32.78 45.81l-21.47 7.23a56 56 0 01-17.92 2.96z" />
+            d="M467 45.2A44.45 44.45 0 00435.29 32H312.36a30.63 30.63 0 00-21.52 8.89L45.09 286.59a44.82 44.82 0 000 63.32l117 117a44.83 44.83 0 0063.34 0l245.65-245.6A30.6 30.6 0 00480 199.8v-123a44.24 44.24 0 00-13-31.6zM384 160a32 32 0 1132-32 32 32 0 01-32 32z" />
         </svg>
-        <input type="text" id="songTitleInput" data-i18n-placeholder="title" placeholder="Title" style="flex: 1;" />
-        <button class="btn"
-          style="padding: 6px; width: 36px; height: 36px; margin-right: 0px; justify-content: center;">
+        <input type="text" id="songTitleInput" data-i18n-placeholder="title" placeholder="Title" style="flex: 1;"
+          title="Song title" />
+        <button class="btn tool-btn" title="Search song title">
           <svg class="search-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -663,15 +695,15 @@
           </svg>
         </button>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="flex-group-without-margin">
         <svg width="1em" height="1em" style="margin-bottom: 8px; padding: 6px; margin-right: 0px;"
           xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="var(--dominant-color-light)">
           <path
             d="M256 48C141.31 48 48 141.31 48 256s93.31 208 208 208 208-93.31 208-208S370.69 48 256 48zm-50.22 116.82C218.45 151.39 236.28 144 256 144s37.39 7.44 50.11 20.94c12.89 13.68 19.16 32.06 17.68 51.82C320.83 256 290.43 288 256 288s-64.89-32-67.79-71.25c-1.47-19.92 4.79-38.36 17.57-51.93zM256 432a175.49 175.49 0 01-126-53.22 122.91 122.91 0 0135.14-33.44C190.63 329 222.89 320 256 320s65.37 9 90.83 25.34A122.87 122.87 0 01382 378.78 175.45 175.45 0 01256 432z" />
         </svg>
-        <input type="text" id="songArtistInput" data-i18n-placeholder="artist" placeholder="Artist" style="flex: 1;" />
-        <button class="btn"
-          style="padding: 6px; width: 36px; height: 36px; margin-right: 0px; justify-content: center;">
+        <input type="text" id="songArtistInput" data-i18n-placeholder="artist" placeholder="Artist" style="flex: 1;"
+          title="Song artist" />
+        <button class="btn tool-btn" title="Search song artist">
           <svg class="search-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -687,21 +719,21 @@
     </div>
     <div class="control-group">
       <label data-i18n="playbackControl">Playback Control</label>
-      <div style="display: flex; align-items: center; margin-bottom: 12px; gap: 16px;">
+      <div class="flex-group" style="margin-bottom: 12px; gap: 16px;">
         <div style="display: flex; align-items: center">
-          <input type="checkbox" id="loopPlay" checked />
+          <input type="checkbox" id="loopPlay" checked title="Loop playback" />
           <span class="control-value" data-i18n="loopPlay" style="margin-left:6px;">Loop Playback</span>
         </div>
         <div style="flex: 1; display: flex; align-items: center; gap: 16px">
           <span class="control-value" data-i18n="lyricDelay" style="margin-left:6px;">Lyrics Delay</span>
-          <input type="number" id="lyricDelayInput" value="0" step="50" placeholder="0"
+          <input type="number" id="lyricDelayInput" value="0" step="50" placeholder="0" title="Lyrics delay (ms)"
             style="width: 80px; margin-bottom:0px; flex: 1;" />
           <span class="control-value">ms</span>
         </div>
       </div>
       <div style="display: flex; gap: 10px; margin-top: 10px">
         <div style="flex: 1; text-align: center">
-          <div id="speed-icons" style="display: inline-block; width: 1.25em; height: 1.25em;">
+          <div id="speed-icons" class="icon-container">
             <svg class="speed-low" width="1.25em" height="1.25em" fill="var(--dominant-color-light)"
               xmlns="http://www.w3.org/2000/svg" xml:space="preserve"
               style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;display: none;"
@@ -727,8 +759,8 @@
                 style="fill-rule:nonzero" />
             </svg>
           </div>
-          <input type="range" id="playbackRate" min="0.10" max="4.00" step="0.05" value="1.00"
-            style="width: 80%; margin: 8px 0" />
+          <input type="range" id="playbackRate" min="0.10" max="4.00" step="0.1" value="1.00"
+            title="Adjust playback speed" style="width: 80%; margin: 8px 0px;" />
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
             <span class="control-value">0.10x</span>
             <span id="playbackRateValue" class="control-value">1.00x</span>
@@ -736,7 +768,7 @@
           </div>
         </div>
         <div style="flex: 1; text-align: center;">
-          <div id="volume-icons" style="display: inline-block; width: 1.25em; height: 1.25em;">
+          <div id="volume-icons" class="icon-container">
             <svg class="volume-off" width="1.25em" height="1.25em" xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 512 512" fill="var(--dominant-color-light)" style="display: none;">
               <path
@@ -764,8 +796,8 @@
                 d="M416 432a16 16 0 01-13.39-24.74C429.85 365.47 448 323.76 448 256c0-66.5-18.18-108.62-45.49-151.39a16 16 0 1127-17.22C459.81 134.89 480 181.74 480 256c0 64.75-14.66 113.63-50.6 168.74A16 16 0 01416 432z" />
             </svg>
           </div>
-          <input type="range" id="volumeControl" min="0" max="100" step="1" value="50"
-            style="width: 80%; margin: 8px 0" />
+          <input type="range" id="volumeControl" min="0" max="100" step="5" value="50" title="Adjust volume"
+            style="width: 80%; margin: 8px 0px;" />
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
             <span class="control-value">0%</span>
             <span id="volumeValue" class="control-value">50%</span>
@@ -775,121 +807,226 @@
       </div>
     </div>
     <div class="control-group">
-      <label data-i18n="Styles">Styles</label>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="enableMarquee" checked>
-        <span class="control-value" data-i18n="enableMarquee">Title Marquee Effect</span>
+      <label data-i18n="coverSettings">Cover</label>
+      <div class="flex-group">
+        <span class="control-value" data-i18n="coverStyle">Cover Style</span>
+        <select id="coverStyle" title="Select cover style" class="select-input">
+          <option value="normal" selected data-i18n="normalShadow">Normal Shadow</option>
+          <option value="innerShadow" data-i18n="innerShadow">Inner Shadow</option>
+          <option value="threeDShadow" data-i18n="threeDShadow">3D Shadow</option>
+          <option value="longShadow" data-i18n="longShadow">Long Shadow</option>
+          <option value="neumorphismA" class="solid-option" data-i18n="neumorphismA">Neumorphism A</option>
+          <option value="neumorphismB" class="solid-option" data-i18n="neumorphismB">Neumorphism B</option>
+          <option value="reflection" data-i18n="horizontalReflection">Horizontal Reflection</option>
+          <option value="cd" class="record-option" data-i18n="cdRecord">CD Record</option>
+          <option value="vinyl" class="record-option" data-i18n="vinylRecord">Vinyl Record</option>
+          <option value="colored" class="record-option" data-i18n="coloredRecord">Colored Record</option>
+        </select>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+      <div class="flex-group">
         <span class="control-value" data-i18n="roundedCover">Cover Rounded Corners</span>
-        <input type="range" id="roundedCover" min="0" max="100" step="1" value="8" style="flex: 1;">
+        <input type="range" id="roundedCover" min="0" max="100" step="5" value="8" class="range-input"
+          title="Adjust cover rounded corners">
         <span class="control-value" id="roundedCoverValue">8%</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+      <div class="flex-group">
         <span class="control-value" data-i18n="coverRotation">Cover Rotation Speed</span>
-        <input type="range" id="coverRotation" min="-60" max="60" step="1" value="0" style="flex: 1;">
+        <input type="range" id="coverRotation" min="-60" max="60" step="5" value="0" class="range-input"
+          title="Adjust cover rotation speed">
         <span class="control-value" id="coverRotationValue">0rpm</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="showTranslatedLyric" checked>
+    </div>
+    <div class="control-group">
+      <label data-i18n="lyricSettings">Lyrics</label>
+      <div class="flex-group">
+        <input type="checkbox" id="showTranslatedLyric" checked title="Show translated lyrics">
         <span class="control-value" data-i18n="showTranslatedLyric">Show Translated</span>
-        <input type="checkbox" id="showRomanLyric" checked>
+        <input type="checkbox" id="showRomanLyric" checked title="Show romanized lyrics">
         <span class="control-value" data-i18n="showRomanLyric">Show Romanized</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="showbgLyric" checked>
+      <div class="flex-group">
+        <input type="checkbox" id="showbgLyric" checked title="Show background lyrics">
         <span class="control-value" data-i18n="showbgLyric">Show Background Lyrics</span>
-        <input type="checkbox" id="swapLyricPositions">
+        <input type="checkbox" id="swapLyricPositions" title="Swap translated and romanized lyrics">
         <span class="control-value" data-i18n="swapLyricPositions">Swap Translated & Romanized</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="swapDuetsPositions">
-        <span class="control-value" data-i18n="swapDuetsPositions">Swap Left & Right</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="enableLyricBlur" checked>
-        <span class="control-value" data-i18n="enableLyricBlur">Lyrics Blur Effect</span>
-        <input type="checkbox" id="enableLyricScale" checked>
-        <span class="control-value" data-i18n="enableLyricScale">Lyrics Scaling Effect</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-        <input type="checkbox" id="enableLyricSpring" checked>
-        <span class="control-value" data-i18n="enableLyricSpring">Lyrics Spring Effect</span>
-        <input type="checkbox" id="hidePassedLyrics">
+      <div class="flex-group">
+        <input type="checkbox" id="singleLyrics" title="Show single line lyrics">
+        <span class="control-value" data-i18n="singleLyrics">Single Lyrics</span>
+        <input type="checkbox" id="hidePassedLyrics" title="Hide passed lyrics">
         <span class="control-value" data-i18n="hidePassedLyrics">Hide Passed Lyrics</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+      <div class="flex-group">
+        <input type="checkbox" id="advanceLyricTiming" title="Compact gap between lyrics (±400ms)">
+        <span class="control-value" data-i18n="advanceLyricTiming">Compact Gap (±400ms)</span>
+        <input type="checkbox" id="enableLyricBlur" checked title="Enable lyrics blur effect">
+        <span class="control-value" data-i18n="enableLyricBlur">Lyrics Blur Effect</span>
+      </div>
+      <div class="flex-group">
+        <input type="checkbox" id="enableLyricScale" checked title="Enable lyrics scaling effect">
+        <span class="control-value" data-i18n="enableLyricScale">Lyrics Scaling Effect</span>
+        <input type="checkbox" id="enableLyricSpring" checked title="Enable lyrics spring effect">
+        <span class="control-value" data-i18n="enableLyricSpring">Lyrics Spring Effect</span>
+      </div>
+      <div id="spring-desc" class="spring-desc">
+        <div class="flex-group">
+          <div>
+            <input type="checkbox" id="springPosYSoft" title="Enable soft spring when damping < 1">
+            <span class="control-value" data-i18n="posYSpringSoft">Force Soft Spring</span>
+          </div>
+          <div>
+            <input type="checkbox" id="springScaleSoft" title="Enable soft spring when damping < 1">
+            <span class="control-value" data-i18n="scaleSpringSoft">Force Soft Spring</span>
+          </div>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="posYSpringMass">Vertical Spring Mass</span>
+          <input type="range" id="springPosYMass" min="0.1" max="10" step="0.1" value="1" class="range-input"
+            title="Spring mass">
+          <span class="control-value" id="springPosYMassValue">1</span>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="posYSpringDamping">Vertical Spring Damping</span>
+          <input type="range" id="springPosYDamping" min="0.1" max="50" step="0.1" value="15" class="range-input"
+            title="Spring damping">
+          <span class="control-value" id="springPosYDampingValue">15</span>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="posYSpringStiffness">Vertical Spring Stiffness</span>
+          <input type="range" id="springPosYStiffness" min="1" max="500" step="1" value="100" class="range-input"
+            title="Spring stiffness">
+          <span class="control-value" id="springPosYStiffnessValue">100</span>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="scaleSpringMass">Scale Spring Mass</span>
+          <input type="range" id="springScaleMass" min="0.1" max="10" step="0.1" value="1" class="range-input"
+            title="Spring mass">
+          <span class="control-value" id="springScaleMassValue">1</span>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="scaleSpringDamping">Scale Spring Damping</span>
+          <input type="range" id="springScaleDamping" min="0.1" max="50" step="0.1" value="20" class="range-input"
+            title="Spring damping">
+          <span class="control-value" id="springScaleDampingValue">20</span>
+        </div>
+        <div class="flex-group">
+          <span class="control-value" data-i18n="scaleSpringStiffness">Scale Spring Stiffness</span>
+          <input type="range" id="springScaleStiffness" min="1" max="500" step="1" value="100" class="range-input"
+            title="Spring stiffness">
+          <span class="control-value" id="springScaleStiffnessValue">100</span>
+        </div>
+      </div>
+      <div class="flex-group">
         <span class="control-value" data-i18n="lyricAlignPosition">Lyrics Vertical Align</span>
-        <input type="range" id="lyricAlignPosition" min="0" max="1" step="0.1" value="0.5" style="flex: 1;">
+        <input type="range" id="lyricAlignPosition" min="0" max="1" step="0.1" value="0.5" class="range-input"
+          title="Adjust lyrics vertical alignment">
         <span class="control-value" id="lyricAlignPositionValue">0.5</span>
       </div>
-      <div style="flex: 1; display: flex; align-items: center; gap: 16px; margin-bottom: 8px;">
+      <div class="flex-group">
         <span class="control-value" data-i18n="wordFadeWidth">Word Fade Width</span>
-        <input type="number" id="wordFadeWidth" value="0.50" step="0.10" min="0.01" placeholder="0.50"
-          style="width: 80px; margin-bottom:0px; flex: 1;" />
+        <input type="range" id="wordFadeWidth" min="0.01" max="10" step="0.01" value="0.50" class="range-input"
+          title="Word fade width">
+        <span class="control-value" id="wordFadeWidthValue">0.50</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+      <div class="flex-group">
         <span class="control-value" data-i18n="lyricAlignFocus">Lyrics Align Focus</span>
-        <select id="lyricAlignAnchor"
-          style="flex: 1; margin: 8px 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; background: rgba(255, 255, 255, 0.1); color: var(--dominant-color-light); font-size: 0.875em; box-sizing: border-box;height: 2.5em; padding: 8px 12px;">
+        <select id="lyricAlignAnchor" title="Lyrics alignment anchor" class="select-input">
           <option value="top" data-i18n="alignTop">Top</option>
           <option value="center" selected data-i18n="alignCenter">Center</option>
           <option value="bottom" data-i18n="alignBottom">Bottom</option>
         </select>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+    </div>
+    <div class="control-group">
+      <label data-i18n="backgroundSettings">Background</label>
+      <div class="flex-group">
         <span class="control-value" data-i18n="backgroundStyle">Background Style</span>
-        <select id="backgroundStyle"
-          style="flex: 1; margin: 8px 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; background: rgba(255, 255, 255, 0.1); color: var(--dominant-color-light); font-size: 0.875em; box-sizing: border-box;height: 2.5em; padding: 8px 12px;">
+        <select id="backgroundStyle" title="Background style" class="select-input">
           <option value="fluid" selected data-i18n="amllBackground">AMLL Background</option>
           <option value="cover" data-i18n="coverBackground">Cover Background</option>
           <option value="solid" data-i18n="solidBackground">Solid Background</option>
         </select>
       </div>
       <div id="fluid-desc" class="bg-desc">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+        <div class="flex-group">
+          <span class="control-value" data-i18n="lowFreqVolume">Low Frequency Volume</span>
+          <input type="range" id="bgLowFreqVolume" min="0" max="1" step="0.1" value="1" class="range-input"
+            title="Adjust low frequency volume">
+          <span class="control-value" id="bgLowFreqVolumeValue">1.0</span>
+        </div>
+        <div class="flex-group">
           <span class="control-value" data-i18n="flowSpeed">Flow Speed</span>
-          <input type="range" id="bgFlowSpeed" min="0" max="10" step="0.1" value="4" style="flex: 1;">
+          <input type="range" id="bgFlowSpeed" min="0" max="10" step="0.1" value="4" class="range-input"
+            title="Adjust flow speed">
           <span class="control-value" id="bgFlowSpeedValue">4.0</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+        <div class="flex-group">
           <span class="control-value" data-i18n="renderScale">Render Scale</span>
-          <input type="range" id="bgRenderScale" min="0.1" max="1" step="0.1" value="1" style="flex: 1;">
-          <span class="control-value" id="bgRenderScaleValue">1.0</span>
+          <input type="range" id="bgRenderScale" min="0.1" max="1" step="0.1" value="1" class="range-input"
+            title="Adjust render scale">
+          <span class="control-value" id="bgRenderScaleValue">1.00</span>
+        </div>
+
+        <div class="flex-group">
+          <span class="control-value" data-i18n="backgroundFPS">Background FPS</span>
+          <input type="range" id="bgFPS" min="1" max="60" step="1" value="60" class="range-input"
+            title="Adjust background FPS">
+          <span class="control-value" id="bgFPSValue">60</span>
         </div>
       </div>
       <div id="cover-desc" class="bg-desc" style="display:none">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+        <div class="flex-group">
           <span class="control-value" data-i18n="coverBlurLevel">Blur Level</span>
-          <input type="range" id="coverBlurLevel" min="0" max="100" step="1" value="0" style="flex: 1;">
+          <input type="range" id="coverBlurLevel" min="0" max="100" step="5" value="0" class="range-input"
+            title="Adjust cover blur level">
           <span class="control-value" id="coverBlurLevelValue">0%</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-          <input type="checkbox" id="bgColorMask">
+        <div class="flex-group">
+          <input type="checkbox" id="bgColorMask" title="Enable color mask">
           <span class="control-value" data-i18n="colorMask">Color Mask</span>
-          <input type="color" id="bgMaskColor" value="#FFFFFF" style="width: 3em; height: 1em;">
-          <input type="range" id="bgMaskOpacity" min="0" max="100" step="5" value="30" style="flex: 1;">
+          <input type="color" id="bgMaskColor" value="#FFFFFF" style="width: 3em; height: 1em;" title="Mask color">
+          <input type="range" id="bgMaskOpacity" min="0" max="100" step="5" value="30" class="range-input"
+            title="Adjust mask opacity">
           <span class="control-value" id="bgMaskOpacityValue">30%</span>
         </div>
       </div>
       <div id="solid-desc" class="bg-desc" style="display:none">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-          <input type="checkbox" id="invertColors">
+        <div class="flex-group">
+          <input type="checkbox" id="invertColors" title="Invert colors">
           <span class="control-value" data-i18n="invertColors">Invert Colors</span>
         </div>
       </div>
     </div>
     <div class="control-group">
-      <label data-i18n="debugInfo">Debug Information</label>
-      <div style="margin-bottom: 8px;">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-          <input type="checkbox" id="showFPS">
-          <span class="control-value" data-i18n="showFPS">Show FPS</span>
-        </div>
+      <label data-i18n="visualizationSettings">Visualization</label>
+      <div class="flex-group">
+        <span class="control-value" data-i18n="fftDataRangeMin">Minimum Visualization Frequency</span>
+        <input type="range" id="fftDataRangeMin" min="1" max="22050" step="1" value="1" class="range-input"
+          title="Minimum visualization frequency">
+        <span class="control-value" id="fftDataRangeMinValue">1Hz</span>
+      </div>
+      <div class="flex-group">
+        <span class="control-value" data-i18n="fftDataRangeMax">Maximum Visualization Frequency</span>
+        <input type="range" id="fftDataRangeMax" min="1" max="22050" step="1" value="22050" class="range-input"
+          title="Maximum visualization frequency">
+        <span class="control-value" id="fftDataRangeMaxValue">22050Hz</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label data-i18n="globalSettings">Global</label>
+      <div class="flex-group">
+        <input type="checkbox" id="enableMarquee" checked title="Enable title marquee effect">
+        <span class="control-value" data-i18n="enableMarquee">Title Marquee Effect</span>
+        <input type="checkbox" id="swapDuetsPositions" title="Swap left and right positions">
+        <span class="control-value" data-i18n="swapDuetsPositions">Swap Left & Right</span>
+      </div>
+      <div class="flex-group">
+        <input type="checkbox" id="showFPS" title="Show frames per second">
+        <span class="control-value" data-i18n="showFPS">Show FPS</span>
       </div>
     </div>
     <div style="margin-top: 16px">
-      <button class="btn" id="loadFromUrl">
+      <button class="btn" id="loadFromUrl" title="Load from URL">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path d="M200.66 352H144a96 96 0 010-192h55.41M312.59 160H368a96 96 0 010 192h-56.66M169.07 256h175.86"
@@ -897,7 +1034,7 @@
         </svg>
         <span data-i18n="loadFromUrl">Load from URL</span>
       </button>
-      <button class="btn" id="loadFiles">
+      <button class="btn" id="loadFiles" title="Load files">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path
@@ -906,7 +1043,7 @@
         </svg>
         <span data-i18n="loadFiles">Load Files</span>
       </button>
-      <button class="btn" id="resetPlayer" style="display: flex; align-items: center;">
+      <button class="btn" id="resetPlayer" style="display: flex; align-items: center;" title="Reset player">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path
@@ -920,17 +1057,19 @@
     </div>
   </div>
   <div id="playControls">
-    <button class="play-btn" id="playPauseBtn">
+    <button class="play-btn" id="playPauseBtn" title="Play/Pause">
       <svg aria-hidden="true" width="1em" height="1em" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
         <path d="M17.22 8.68a1.5 1.5 0 0 1 0 2.63l-10 5.5A1.5 1.5 0 0 1 5 15.5v-11A1.5 1.5 0 0 1 7.22 3.2l10 5.5Z"
           fill="currentColor"></path>
       </svg>
     </button>
-    <div id="progressBar">
+    <div id="progressBar" title="Seek to position">
+      <canvas id="waveformCanvas"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0;"></canvas>
       <div id="progressFill"></div>
     </div>
-    <div id="timeDisplay" class="control-value">00:00 / 00:00</div>
-    <button class="play-btn" id="fullscreenBtn" style="margin-left: -6px;">
+    <div id="timeDisplay" class="control-value" title="Current time / Total duration">00:00 / 00:00</div>
+    <button class="play-btn" id="fullscreenBtn" style="margin-left: -6px;" title="Toggle Fullscreen">
       <svg class="fullscreen-enter" aria-hidden="true" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 512 512">
         <path
@@ -949,12 +1088,14 @@
   </div>
   <div id="player">
     <div id="albumSidePanel">
-      <div id="albumCoverContainer">
-        <img id="albumCoverLarge" src="./assets/icon-512x512.png" alt="歌曲封面" />
-      </div>
-      <div id="albumInfo">
-        <div id="songTitle" data-i18n="title">Title</div>
-        <div id="songArtist" data-i18n="artist">Artist</div>
+      <div class="song-info-container">
+        <div id="albumCoverContainer">
+          <img id="albumCoverLarge" src="./assets/icon-512x512.png" alt="Cover" title="Album Cover" />
+        </div>
+        <div id="albumInfo">
+          <div id="songTitle" data-i18n="title" title="Song Title">Title</div>
+          <div id="songArtist" data-i18n="artist" title="Song Artist">Artist</div>
+        </div>
       </div>
     </div>
     <div id="lyricsPanel" style="position: relative"></div>
@@ -976,6 +1117,7 @@
       });
     }
   </script>
+  <div style="position: fixed; bottom: 0; left: 0; width: 100%; height: 16px; z-index: 49;"></div>
 </body>
 
 </html>
