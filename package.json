@@ -43,6 +43,7 @@
     "@pixi/filter-color-matrix": "^7.4.3",
     "@pixi/sprite": "^7.4.3",
     "@types/colorthief": "^2.6.0",
+    "@vercel/speed-insights": "^1.2.0",
     "@wasm-audio-decoders/flac": "^0.2.8",
     "@wasm-audio-decoders/ogg-vorbis": "^0.1.18",
     "@wasm-audio-decoders/opus-ml": "^0.0.1",

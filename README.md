@@ -57,13 +57,14 @@ pnpm preview
    | `ms` | Number | ±Num | `0` | Lyric delay in milliseconds (ms) |
    | `vol` | Number | 0-100 / 0-1 | `50` /`0.5` | Volume level in percent (%)|
    | `t` | Number | Num | `0` | Start playback position in seconds (s) |
+   | `te` | Number | Num | `0` | End playback position in seconds (s) |
 
 ### Hotkeys
 
 - `Space`: Play/Pause
 - `Left/Right Arrows`: Seek forward/backward (10s)
-- `H`: Toggle Control Panel
 - `F`: Toggle fullscreen
+- `H`: Toggle Control Panel
 
 ## License
 

@@ -22,17 +22,17 @@ function parseTimestampMs(tsStr: string): number {
   if (parts.length < 2 || parts.length > 3) {
     throw new Error(`Invalid timestamp format: ${tsStr}`);
   }
-  
+
   let minutes: number, seconds: number, milliseconds: number;
-  
+
   if (parts.length === 3) {
     minutes = parseInt(parts[0]);
     seconds = parseInt(parts[1]);
-    
+
     // 处理毫秒部分
     const fractionStr = parts[2];
     milliseconds = 0;
-    
+
     switch (fractionStr.length) {
       case 1:
         milliseconds = parseInt(fractionStr) * 100;
@@ -54,7 +54,7 @@ function parseTimestampMs(tsStr: string): number {
     seconds = parseInt(parts[1]);
     milliseconds = 0;
   }
-  
+
   return (minutes * 60 + seconds) * 1000 + milliseconds;
 }
 
@@ -208,67 +208,97 @@ export function parseESLyRiC(content: string): RawLyricLine[] {
 export function parseSPL(content: string): string {
   const lines = content.split("\n").filter((line) => line.trim().length > 0);
   const result: RawLyricLine[] = [];
-  
+
+  // 首先收集所有行的开始时间
+  const lineStartTimes: number[] = [];
+
   for (const line of lines) {
     const trimmedLine = line.trim();
     // 匹配行首时间戳
     const lineStartMatch = trimmedLine.match(/^\[(\d{1,3}):(\d{1,2})(?:\.(\d{1,6}))?\]/);
     if (!lineStartMatch) continue;
-    
+
+    // 计算行起始时间
+    const minutes = parseInt(lineStartMatch[1]);
+    const seconds = parseInt(lineStartMatch[2]);
+    const milliseconds = lineStartMatch[3] ? parseInt(lineStartMatch[3].padEnd(3, '0').slice(0, 3)) : 0;
+    const lineStartTime = minutes * 60000 + seconds * 1000 + milliseconds;
+
+    lineStartTimes.push(lineStartTime);
+  }
+
+  // 处理每一行歌词
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+    // 匹配行首时间戳
+    const lineStartMatch = trimmedLine.match(/^\[(\d{1,3}):(\d{1,2})(?:\.(\d{1,6}))?\]/);
+    if (!lineStartMatch) continue;
+
     // 计算行起始时间
     const minutes = parseInt(lineStartMatch[1]);
     const seconds = parseInt(lineStartMatch[2]);
     const milliseconds = lineStartMatch[3] ? parseInt(lineStartMatch[3].padEnd(3, '0').slice(0, 3)) : 0;
     let lineStartTime = minutes * 60000 + seconds * 1000 + milliseconds;
-    
+
+    // 计算行结束时间：如果是最后一行，则默认持续5秒；否则使用下一行的开始时间
+    let lineEndTime: number;
+    if (i === lineStartTimes.length - 1) {
+      // 最后一行，默认持续5秒
+      lineEndTime = lineStartTime + 5000;
+    } else {
+      // 使用下一行的开始时间作为当前行的结束时间
+      lineEndTime = lineStartTimes[i + 1];
+    }
+
     // 提取行首时间戳后的内容
     let remainingLine = trimmedLine.substring(lineStartMatch[0].length);
-    
+
     const words: any[] = [];
     let lastTime = lineStartTime;
-    
+
     // 检查是否有行间时间戳格式 <00:00.00> 或 [00:00.00]
     const hasInlineTimestamps = remainingLine.includes('<') || remainingLine.includes('[');
-    
+
     if (hasInlineTimestamps) {
       // 处理行间时间戳格式
-      
+
       // 方法1：先尝试匹配所有的文字-时间戳组合，支持尖括号和方括号两种格式
       const inlineMatchRegex = /([^<\[]+?)[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]]/g;
       let inlineMatch;
       let hasMatches = false;
-      
+
       // 记录所有匹配结果
-      const matches: Array<{word: string, time: number}> = [];
-      
+      const matches: Array<{ word: string, time: number }> = [];
+
       while ((inlineMatch = inlineMatchRegex.exec(remainingLine)) !== null) {
         hasMatches = true;
         const word = inlineMatch[1].trim();
         const time = parseTimestampMs(`${inlineMatch[2]}:${inlineMatch[3]}.${inlineMatch[4]}`);
-        
+
         matches.push({ word, time });
       }
-      
+
       if (hasMatches && matches.length > 0) {
         // 处理所有匹配到的词
-        for (let i = 0; i < matches.length; i++) {
-          const match = matches[i];
-          const nextTime = i < matches.length - 1 ? matches[i + 1].time : match.time + 1000; // 默认持续时间
-          
+        for (let j = 0; j < matches.length; j++) {
+          const match = matches[j];
+          const nextTime = j < matches.length - 1 ? matches[j + 1].time : match.time + 1000; // 默认持续时间
+
           words.push({
             word: match.word,
             startTime: lastTime,
             endTime: match.time
           });
-          
+
           lastTime = match.time;
         }
-        
+
         // 检查行尾是否有额外的时间戳 (例如 <00:00.00> 或 [00:00.00])
         const endTimestampMatch = remainingLine.match(/[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]]$/);
         if (endTimestampMatch) {
           const endTime = parseTimestampMs(`${endTimestampMatch[1]}:${endTimestampMatch[2]}.${endTimestampMatch[3]}`);
-          
+
           // 如果最后一个词存在，更新其结束时间
           if (words.length > 0) {
             words[words.length - 1].endTime = endTime;
@@ -289,26 +319,26 @@ export function parseSPL(content: string): string {
             });
             lastTime = words[words.length - 1].endTime;
           }
-          
+
           // 继续处理剩余的时间戳和文本
           remainingLine = remainingLine.substring(firstInlineMatch.index + firstInlineMatch[0].length);
-          
+
           // 再次尝试匹配后续的文字和时间戳组合
           let subsequentMatch;
           while ((subsequentMatch = inlineMatchRegex.exec(remainingLine)) !== null) {
             const word = subsequentMatch[1].trim();
             const time = parseTimestampMs(`${subsequentMatch[2]}:${subsequentMatch[3]}.${subsequentMatch[4]}`);
-            
+
             words.push({
               word,
               startTime: lastTime,
               endTime: time
             });
-            
+
             lastTime = time;
           }
         }
-        
+
         // 处理最后一个时间戳后的文本
         const lastTextMatch = remainingLine.match(/([^<]+)$/);
         if (lastTextMatch) {
@@ -317,7 +347,7 @@ export function parseSPL(content: string): string {
             words.push({
               word: lastWord,
               startTime: lastTime,
-              endTime: lastTime + 1000 // 为最后一个词设置默认持续时间
+              endTime: lineEndTime // 使用行结束时间而不是固定1秒
             });
           }
         }
@@ -329,17 +359,17 @@ export function parseSPL(content: string): string {
         words.push({
           word: text,
           startTime: lineStartTime,
-          endTime: lineStartTime + 1000 // 为整行设置默认持续时间
+          endTime: lineEndTime // 使用行结束时间而不是固定1秒
         });
       }
     }
-    
+
     // 如果有解析出的歌词词元，添加到结果中
     if (words.length > 0) {
       // 清理首尾空格
       words[0].word = (words[0].word ?? '').replace(/^\s+/, '');
       words[words.length - 1].word = (words[words.length - 1].word ?? '').replace(/\s+$/, '');
-      
+
       result.push({
         words,
         startTime: words[0].startTime,
@@ -351,10 +381,10 @@ export function parseSPL(content: string): string {
       } as unknown as RawLyricLine);
     }
   }
-  
+
   // 按时间排序
   result.sort((a, b) => a.startTime - b.startTime);
-  
+
   // 转换为TTML
   return convertToTTML(result);
 }
@@ -366,7 +396,7 @@ export function parseSPL(content: string): string {
 export function parseWalaoke(content: string): string {
   const lines = content.split("\n").filter((line) => line.trim().length > 0);
   const result: RawLyricLine[] = [];
-  
+
   for (const line of lines) {
     const trimmedLine = line.trim();
     // 匹配两种Walaoke格式，支持尖括号和方括号时间戳：
@@ -376,18 +406,18 @@ export function parseWalaoke(content: string): string {
     // 4. 支持两位毫秒：v1:[00:00.62]<00:00.62>ずっ<00:00.95>と <00:01.56>
     const match1 = trimmedLine.match(/^(W|F|D|v1|v2):\s*[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]](.*)$/);
     const match2 = trimmedLine.match(/^[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]]\s*(W|F|D|v1|v2):(.*)$/);
-    
+
     let match = match1;
     let isTimestampFirstFormat = false;
-    
+
     if (match2) {
       match = match2;
       isTimestampFirstFormat = true;
     }
-    
+
     if (match) {
       let singerTag, minutes, seconds, milliseconds, text;
-      
+
       if (isTimestampFirstFormat) {
         // match2格式：[, minutes, seconds, milliseconds, singerTag, text]
         [, minutes, seconds, milliseconds, singerTag, text] = match;
@@ -396,15 +426,15 @@ export function parseWalaoke(content: string): string {
         [, singerTag, minutes, seconds, milliseconds, text] = match;
       }
       const lineStartTime = parseInt(minutes) * 60000 + parseInt(seconds) * 1000 + parseInt(milliseconds);
-      
+
       // 处理行内时间戳格式 <00:00.000>
       let remainingText = text;
       const words: any[] = [];
       let lastTime = lineStartTime;
-      
+
       // 检查是否有行内时间戳（支持尖括号和方括号格式）
       const hasInlineTimestamps = remainingText.includes('<') || remainingText.includes('[');
-      
+
       if (hasInlineTimestamps) {
         // 解析行内时间戳格式，支持：<00:00.629> 或 [00:00.629]
         // 首先检查开头是否有时间戳
@@ -414,16 +444,16 @@ export function parseWalaoke(content: string): string {
           lastTime = parseTimestampMs(`${firstTimestampMatch[1]}:${firstTimestampMatch[2]}.${firstTimestampMatch[3]}`);
           remainingText = remainingText.substring(firstTimestampMatch[0].length);
         }
-        
+
         // 解析文字和时间戳组合，包括行尾时间戳（支持尖括号和方括号）
         const inlineMatchRegex = /([^<\[]*?)[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]]/g;
         let inlineMatch;
         let lastMatchEnd = 0;
-        
+
         while ((inlineMatch = inlineMatchRegex.exec(remainingText)) !== null) {
           const wordText = inlineMatch[1].trim();
           const wordTime = parseTimestampMs(`${inlineMatch[2]}:${inlineMatch[3]}.${inlineMatch[4]}`);
-          
+
           // 如果有文本内容，添加到words数组
           if (wordText) {
             words.push({
@@ -433,21 +463,21 @@ export function parseWalaoke(content: string): string {
             });
             lastTime = wordTime;
           }
-          
+
           lastMatchEnd = inlineMatch.index + inlineMatch[0].length;
         }
-        
+
         // 处理最后一个时间戳后的文本（如果有）
         let remainingAfterLastMatch = remainingText.substring(lastMatchEnd).trim();
-        
+
         // 检查剩余文本是否包含行尾时间戳（支持尖括号和方括号）
         const endTimestampMatch = remainingAfterLastMatch.match(/^(.*)[<\[](\d{2}):(\d{2})\.(\d{2,3})[>\]]$/);
-        
+
         if (endTimestampMatch) {
           // 有行尾时间戳的情况
           const lastWord = endTimestampMatch[1].trim();
           const endTime = parseTimestampMs(`${endTimestampMatch[2]}:${endTimestampMatch[3]}.${endTimestampMatch[4]}`);
-          
+
           if (lastWord) {
             words.push({
               word: lastWord,
@@ -479,11 +509,11 @@ export function parseWalaoke(content: string): string {
           });
         }
       }
-      
+
       // 根据歌手标记设置isDuet标志和agent信息
       let isDuet = false;
       let agent = '';
-      
+
       switch (singerTag) {
         case 'W':
           // W: 添加第一声部标记
@@ -514,13 +544,13 @@ export function parseWalaoke(content: string): string {
           agent = 'v2';
           break;
       }
-      
+
       // 如果有解析出的歌词词元，添加到结果中
       if (words.length > 0) {
         // 清理首尾空格
         words[0].word = (words[0].word ?? '').replace(/^\s+/, '');
         words[words.length - 1].word = (words[words.length - 1].word ?? '').replace(/\s+$/, '');
-        
+
         result.push({
           words,
           startTime: words[0].startTime,
@@ -534,10 +564,10 @@ export function parseWalaoke(content: string): string {
       }
     }
   }
-  
+
   // 按时间排序
   result.sort((a, b) => a.startTime - b.startTime);
-  
+
   // 转换为TTML
   return convertToTTML(result);
 }
@@ -701,8 +731,8 @@ function formatTime(ms: number): string {
   return `${hours.toString().padStart(2, "0")}:${minutes
     .toString()
     .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${milliseconds
-    .toString()
-    .padStart(3, "0")}`;
+      .toString()
+      .padStart(3, "0")}`;
 }
 
 /**

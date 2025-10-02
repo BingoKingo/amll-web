@@ -48,6 +48,7 @@ export interface Translations {
   invertColors: string;
   showFPS: string;
   enableMarquee: string;
+  controlPointCode: string;
   roundedCover: string;
   coverRotation: string;
   renderScale: string;
@@ -98,6 +99,7 @@ export interface Translations {
   scaleSpringStiffness: string;
   scaleSpringSoft: string;
   backgroundFPS: string;
+  dominantColor: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -111,7 +113,7 @@ export const translations: Record<Language, Translations> = {
     resetPlayer: "Reset Player",
     sourceFile: "Source",
     musicUrl: "Enter music URL",
-    lyricsUrl: "Enter lyrics URL",
+    lyricsUrl: "Enter lyrics or lyrics URL",
     coverUrl: "Enter cover image URL",
     extractedFromFilename: "Extracted song info from filename",
     extractedSongInfo: "Extracted song info successfully",
@@ -153,7 +155,7 @@ export const translations: Record<Language, Translations> = {
     solidBackground: "Solid Background",
     coverBlurLevel: "Blur Level",
     colorMask: "Color Mask",
-    invertColors: "Invert Colors",
+    invertColors: "Invert",
     showFPS: "Show Performance Monitor",
     enableMarquee: "Title Marquee Effect",
     roundedCover: "Cover Rounded Corners",
@@ -198,9 +200,11 @@ export const translations: Record<Language, Translations> = {
     posYSpringStiffness: "Vertical Spring Stiffness",
     posYSpringSoft: "Soft Vertical Spring",
     scaleSpringMass: "Scale Spring Mass",
+    controlPointCode: "Control Point Code",
     scaleSpringDamping: "Scale Spring Damping",
     scaleSpringStiffness: "Scale Spring Stiffness",
     scaleSpringSoft: "Soft Scale Spring",
+    dominantColor: "Dominant Colors",
   },
   zh: {
     artist: "艺术家",
@@ -212,7 +216,7 @@ export const translations: Record<Language, Translations> = {
     resetPlayer: "重置播放器",
     sourceFile: "播放源",
     musicUrl: "输入音乐文件URL",
-    lyricsUrl: "输入歌词文件URL",
+    lyricsUrl: "输入歌词或歌词文件URL",
     coverUrl: "输入封面图片URL",
     extractedFromFilename: "从文件名解析歌曲信息",
     extractedSongInfo: "从文件名解析歌曲信息成功",
@@ -254,7 +258,7 @@ export const translations: Record<Language, Translations> = {
     solidBackground: "纯色背景",
     coverBlurLevel: "模糊程度",
     colorMask: "颜色蒙版",
-    invertColors: "反转色",
+    invertColors: "反转",
     showFPS: "显示性能监控",
     enableMarquee: "标题跑马灯效果",
     roundedCover: "封面圆角",
@@ -298,11 +302,13 @@ export const translations: Record<Language, Translations> = {
     posYSpringDamping: "垂直弹簧阻尼",
     posYSpringStiffness: "垂直弹簧刚度",
     posYSpringSoft: "柔软垂直弹簧",
+    controlPointCode: "控制点代码",
     scaleSpringMass: "缩放弹簧质量",
     scaleSpringDamping: "缩放弹簧阻尼",
     scaleSpringStiffness: "缩放弹簧刚度",
     scaleSpringSoft: "柔软缩放弹簧",
-  },
+    dominantColor: "主色调",
+  }
 };
 
 export function getCurrentLanguage(): Language {

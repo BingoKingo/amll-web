@@ -18,11 +18,11 @@ import {
   parseSPL,
   parseWalaoke,
   convertToTTML,
-} from "./lyric-parsers";
-import { isAssFormat, parseAss, assToTTML } from "./ass-parser";
-import { isLqeFormat, parseLqe, lqeToTTML } from "./lqe-parser";
-import { isLylFormat, parseLyl, lylToTTML } from "./lyl-parser";
-import { isSrtFormat, parseSrt, srtToTTML } from "./srt-parser";
+} from "./lyric/lyric-parsers";
+import { isAssFormat, parseAss, assToTTML } from "./lyric/ass-parser";
+import { isLqeFormat, parseLqe, lqeToTTML } from "./lyric/lqe-parser";
+import { isLylFormat, parseLyl, lylToTTML } from "./lyric/lyl-parser";
+import { isSrtFormat, parseSrt, srtToTTML } from "./lyric/srt-parser";
 
 // 导入测试脚本（仅在开发环境中使用）
 import { getCurrentLanguage, getTranslations, t } from "./i18n";
@@ -39,11 +39,10 @@ import {
   DomLyricPlayer as BaseDomLyricPlayer,
   type LyricLineMouseEvent,
 } from "@applemusic-like-lyrics/core";
-
 import type { spring } from "@applemusic-like-lyrics/core";
 type SpringParams = spring.SpringParams;
-
 (window as any).lyrics = lyrics;
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 interface PlayerState {
   musicUrl: string;
@@ -63,7 +62,11 @@ interface PlayerState {
   backgroundColorMask: boolean;
   backgroundMaskColor: string;
   invertColors: boolean;
+  originalInvertColors: boolean;
   coverBlurLevel: number;
+  manualDominantColor: string | null;
+  manualDominantColorLight: string | null;
+  manualDominantColorDark: string | null;
   backgroundMaskOpacity: number;
   showFPS: boolean;
   marqueeEnabled: boolean;
@@ -98,6 +101,9 @@ interface PlayerState {
   scaleSpringDamping: number;
   scaleSpringStiffness: number;
   scaleSpringSoft: boolean;
+  isRangeMode: boolean;
+  rangeStartTime: number;
+  rangeEndTime: number;
 }
 
 class WebLyricsPlayer {
@@ -107,6 +113,10 @@ class WebLyricsPlayer {
   private coverBlurBackground: HTMLDivElement;
   private stats: Stats;
   private state: PlayerState;
+  private rangeStartLine: HTMLElement | null = null;
+  private rangeEndLine: HTMLElement | null = null;
+  private rangeProgressBar: HTMLElement | null = null;
+  private rangeSelectionCount = 0;
   private isInitialized = false;
   private hasLyrics = false;
   private gui: GUI | null = null;
@@ -126,10 +136,11 @@ class WebLyricsPlayer {
       timeout = window.setTimeout(later, wait);
     };
   }
-  private dominantColor: string = 'rgb(253, 156, 155)';
+  private dominantColor: string = '#fd9c9b';
   private marqueeObserver: MutationObserver | null = null;
   private handleResizeBound: (() => void) | null = null;
   private titleMarqueeInterval: number | null = null;
+  private mediaSessionRefreshTimeout: number | null = null;
   private originalTitle: string = '';
   private originalLyricLines: any[] = [];
   private processedLyricLines: LyricLine[] = [];
@@ -175,12 +186,16 @@ class WebLyricsPlayer {
   private coverBlurLevel: HTMLInputElement | null = null;
   private coverBlurLevelValue: HTMLElement | null = null;
   private invertColorsCheckbox: HTMLInputElement | null = null;
+  private dominantColorInput: HTMLInputElement | null = null;
+  private dominantColorLightInput: HTMLInputElement | null = null;
+  private dominantColorDarkInput: HTMLInputElement | null = null;
   private enableMarqueeCheckbox: HTMLInputElement | null = null;
   private bgRenderScale: HTMLInputElement | null = null;
   private fluidDesc: HTMLElement | null = null;
   private coverDesc: HTMLElement | null = null;
   private solidDesc: HTMLElement | null = null;
   private solidOptions: NodeListOf<HTMLElement> | null = null;
+  private recordOptions: NodeListOf<HTMLElement> | null = null;
   private bgRenderScaleValue: HTMLElement | null = null;
   private bgFPS: HTMLInputElement | null = null;
   private bgFPSValue: HTMLElement | null = null;
@@ -215,7 +230,7 @@ class WebLyricsPlayer {
   private volumeHighIcon: HTMLElement | null = null;
   private loopPlayCheckbox: HTMLInputElement | null = null;
   private musicUrl: HTMLInputElement | null = null;
-  private lyricUrl: HTMLInputElement | null = null;
+  private lyricUrl: HTMLTextAreaElement | null = null;
   private coverUrl: HTMLInputElement | null = null;
   private albumSidePanel: HTMLElement | null = null;
   private loadFromUrlBtn: HTMLElement | null = null;
@@ -255,6 +270,7 @@ class WebLyricsPlayer {
   private springScaleMassValue: HTMLElement | null = null;
   private springScaleDampingValue: HTMLElement | null = null;
   private springScaleStiffnessValue: HTMLElement | null = null;
+  private controlPointCodeInput: HTMLInputElement | null = null;
 
   private initI18n() {
     document.documentElement.lang = getCurrentLanguage();
@@ -335,21 +351,7 @@ class WebLyricsPlayer {
       this.roundedCoverValue.textContent = `${this.state.roundedCover}%`;
     }
 
-    const recordOptions = document.querySelectorAll('.record-option');
-
-    if (this.state.roundedCover === 100) {
-      recordOptions.forEach(option => {
-        (option as HTMLOptionElement).style.display = 'block';
-      });
-    } else {
-      recordOptions.forEach(option => {
-        (option as HTMLOptionElement).style.display = 'none';
-      });
-      if (this.coverStyleSelect && ['cd', 'vinyl', 'colored'].includes(this.coverStyleSelect.value)) {
-        this.coverStyleSelect.value = 'normal';
-        this.state.coverStyle = 'normal';
-      }
-    }
+    this.setOptionsVisibility(this.recordOptions, this.state.roundedCover === 100, ['cd', 'vinyl', 'colored']);
     this.applyCoverStyle();
   }
 
@@ -540,6 +542,7 @@ class WebLyricsPlayer {
         this.checkAndUpdateMarquee(songArtist);
       }
       this.updateWaveformCanvasSize();
+      this.updateLayoutByOrientation();
     }, 100);
 
     this.handleResizeBound = handleResize.bind(this);
@@ -605,6 +608,27 @@ class WebLyricsPlayer {
     });
   }
 
+  private setOptionsVisibility(options: NodeListOf<HTMLElement> | null, visible: boolean, resetValues: string[] = []) {
+    if (!options) return;
+
+    options.forEach((option: HTMLElement) => {
+      const optElement = option as HTMLOptionElement;
+      if (visible) {
+        optElement.disabled = false;
+        optElement.classList.remove('option-hidden');
+      } else {
+        optElement.disabled = true;
+        optElement.classList.add('option-hidden');
+      }
+    });
+
+    if (resetValues.length > 0 && this.coverStyleSelect && resetValues.includes(this.coverStyleSelect.value)) {
+      this.coverStyleSelect.value = 'normal';
+      this.state.coverStyle = 'normal';
+      this.applyCoverStyle();
+    }
+  }
+
   private initDOMCache() {
     this.musicFile = document.getElementById('musicFile') as HTMLInputElement;
     this.lyricFile = document.getElementById('lyricFile') as HTMLInputElement;
@@ -652,6 +676,9 @@ class WebLyricsPlayer {
     this.coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
     this.coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
     this.invertColorsCheckbox = document.getElementById('invertColors') as HTMLInputElement;
+    this.dominantColorInput = document.getElementById('dominantColor') as HTMLInputElement;
+    this.dominantColorLightInput = document.getElementById('dominantColorLight') as HTMLInputElement;
+    this.dominantColorDarkInput = document.getElementById('dominantColorDark') as HTMLInputElement;
     this.enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
     this.bgRenderScale = document.getElementById('bgRenderScale') as HTMLInputElement;
     this.bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
@@ -689,7 +716,7 @@ class WebLyricsPlayer {
     this.showRomanLyricCheckbox = document.getElementById('showRomanLyric') as HTMLInputElement;
     this.swapLyricPositionsCheckbox = document.getElementById('swapLyricPositions') as HTMLInputElement;
     this.musicUrl = document.getElementById('musicUrl') as HTMLInputElement;
-    this.lyricUrl = document.getElementById('lyricUrl') as HTMLInputElement;
+    this.lyricUrl = document.getElementById('lyricUrl') as HTMLTextAreaElement;
     this.coverUrl = document.getElementById('coverUrl') as HTMLInputElement;
     this.loadFromUrlBtn = document.getElementById('loadFromUrl');
     this.loadFilesBtn = document.getElementById('loadFiles');
@@ -711,6 +738,7 @@ class WebLyricsPlayer {
     this.springScaleStiffnessValue = document.getElementById('springScaleStiffnessValue') as HTMLElement;
     this.posYSpringSoftCheckbox = document.getElementById('posYSpringSoft') as HTMLInputElement;
     this.scaleSpringSoftCheckbox = document.getElementById('scaleSpringSoft') as HTMLInputElement;
+    this.controlPointCodeInput = document.getElementById('controlPointCode') as HTMLInputElement;
     this.amllLyricPlayer = document.getElementById('amll-lyric-player');
     this.lyricAreaHint = document.getElementById('lyricAreaHint');
     this.coverStyleDynamic = document.getElementById('coverStyleDynamic');
@@ -719,11 +747,12 @@ class WebLyricsPlayer {
     this.fluidDesc = document.getElementById('fluid-desc');
     this.coverDesc = document.getElementById('cover-desc');
     this.solidDesc = document.getElementById('solid-desc');
-    this.solidOptions = document.querySelectorAll('.solid-option') as NodeListOf<HTMLElement>;
     this.landscapeTimeDisplay = document.querySelector('.landscape-time') as HTMLElement;
     this.landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
     this.landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
     this.playControls = document.getElementById('playControls');
+    this.solidOptions = document.querySelectorAll('.solid-option');
+    this.recordOptions = document.querySelectorAll('.record-option');
   }
 
   constructor() {
@@ -757,18 +786,25 @@ class WebLyricsPlayer {
       backgroundType: 'fluid',
       backgroundDynamic: true,
       backgroundFlowSpeed: 4,
-      backgroundColorMask: false,
+      backgroundColorMask: true,
       backgroundMaskColor: '#FFFFFF',
-      backgroundMaskOpacity: 30,
+      backgroundMaskOpacity: 70,
       showFPS: false,
-      coverBlurLevel: 40,
+      coverBlurLevel: 100,
+      isRangeMode: false,
+      rangeStartTime: 0,
+      rangeEndTime: 0,
       invertColors: false,
+      originalInvertColors: false,
+      manualDominantColor: null,
+      manualDominantColorLight: null,
+      manualDominantColorDark: null,
       marqueeEnabled: true,
       roundedCover: 16,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
       backgroundFPS: 60,
-      lyricAlignPosition: 0.5,
+      lyricAlignPosition: 0.4,
       hidePassedLyrics: false,
       enableLyricBlur: true,
       enableLyricScale: true,
@@ -816,8 +852,6 @@ class WebLyricsPlayer {
     this.initUI();
     this.initLyricDisplayControls();
     this.updateMarqueeSettings();
-    // 初始化系统暗色模式支持
-    this.initSystemDarkMode();
   }
 
   private setupWheelControl(inputId: string, valueId: string, step: number) {
@@ -1013,7 +1047,8 @@ class WebLyricsPlayer {
     this.bgRenderScale?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundRenderScale = value;
-      this.background.setRenderScale(value);
+      const dpr = window.devicePixelRatio || 1;
+      this.background.setRenderScale(value * dpr);
       if (this.bgRenderScaleValue) {
         this.bgRenderScaleValue.textContent = value.toFixed(2);
       }
@@ -1248,6 +1283,10 @@ class WebLyricsPlayer {
       this.invertColors((e.target as HTMLInputElement).checked);
     });
 
+    this.dominantColorInput?.addEventListener('change', () => this.onDominantColorChange());
+    this.dominantColorLightInput?.addEventListener('change', () => this.onDominantColorLightChange());
+    this.dominantColorDarkInput?.addEventListener('change', () => this.onDominantColorDarkChange());
+
     this.enableMarqueeCheckbox?.addEventListener('change', (e) => {
       this.state.marqueeEnabled = (e.target as HTMLInputElement).checked;
       this.updateMarqueeSettings();
@@ -1422,6 +1461,18 @@ class WebLyricsPlayer {
     this.setupWheelControl('springScaleMass', 'springScaleMassValue', 0.1);
     this.setupWheelControl('springScaleDamping', 'springScaleDampingValue', 0.1);
     this.setupWheelControl('springScaleStiffness', 'springScaleStiffnessValue', 1);
+
+    if (this.controlPointCodeInput) {
+      this.controlPointCodeInput.addEventListener('change', () => {
+        this.applyControlPointCode();
+      });
+
+      this.controlPointCodeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          this.applyControlPointCode();
+        }
+      });
+    }
 
     this.bgLowFreqVolume?.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -1755,7 +1806,6 @@ class WebLyricsPlayer {
     this.bgFlowSpeed?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundFlowSpeed = value;
-      // 只有在AMLL背景模式下才应用流动速度
       if (this.state.backgroundType === 'fluid') {
         if (value === 0) {
           this.background.setStaticMode(true);
@@ -1772,6 +1822,7 @@ class WebLyricsPlayer {
     this.bgColorMask?.addEventListener('change', (e) => {
       this.state.backgroundColorMask = (e.target as HTMLInputElement).checked;
       this.updateBackground();
+      this.updateBackgroundUI();
       this.saveBackgroundSettings();
     });
 
@@ -1785,6 +1836,7 @@ class WebLyricsPlayer {
       const value = parseInt((e.target as HTMLInputElement).value);
       this.state.backgroundMaskOpacity = value;
       this.updateBackground();
+      this.updateBackgroundUI();
       this.bgMaskOpacityValue!.textContent = value + '%';
       this.saveBackgroundSettings();
     });
@@ -1806,15 +1858,42 @@ class WebLyricsPlayer {
       }
     });
 
+    if (this.lyricUrl) {
+      const adjustTextareaHeight = () => {
+        const textarea = this.lyricUrl as HTMLTextAreaElement;
+        const scrollTop = textarea.scrollTop;
+        textarea.style.height = 'auto';
+        const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight, 10);
+        const padding = parseInt(window.getComputedStyle(textarea).paddingTop, 10) +
+          parseInt(window.getComputedStyle(textarea).paddingBottom, 10);
+        const rows = Math.max(1, Math.min(10, Math.ceil((textarea.scrollHeight - padding) / lineHeight)));
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        textarea.rows = rows;
+        textarea.scrollTop = scrollTop;
+      };
+      adjustTextareaHeight();
+      this.lyricUrl.addEventListener('input', adjustTextareaHeight);
+      this.lyricUrl.addEventListener('keyup', adjustTextareaHeight);
+      this.lyricUrl.addEventListener('paste', () => {
+        setTimeout(adjustTextareaHeight, 0);
+      });
+    }
+
     this.lyricUrl?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        if (this.lyricUrl) {
+          this.processLyricInput(this.lyricUrl.value);
+        }
+      } else if (e.key === "Enter" && !e.shiftKey) {
         this.loadFromURLs();
       }
     });
 
     this.coverUrl?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
-        this.loadFromURLs();
+        if (this.coverUrl) {
+          this.processCoverInput(this.coverUrl.value);
+        }
       }
     });
 
@@ -1885,6 +1964,24 @@ class WebLyricsPlayer {
     this.progressBar?.addEventListener("click", (e) => {
       this.seekToPosition(e);
     });
+
+    if (this.progressBar) {
+      this.addLongPressAndRightClickHandler(this.progressBar, (e?: MouseEvent | TouchEvent) => {
+        if (e) {
+          this.handleRangeSelection(e);
+        }
+      });
+    }
+    if (this.timeDisplay) {
+      this.addLongPressAndRightClickHandler(this.timeDisplay, () => {
+        this.exitRangeMode();
+      });
+    }
+    if (this.landscapeTimeDisplay) {
+      this.addLongPressAndRightClickHandler(this.landscapeTimeDisplay, () => {
+        this.exitRangeMode();
+      });
+    }
 
     this.progressBar?.addEventListener("wheel", (e) => {
       e.preventDefault();
@@ -2082,14 +2179,12 @@ class WebLyricsPlayer {
 
   private async generateWaveformData() {
     if (!this.audio.src || !this.waveformCanvas) {
-      console.warn('No audio source or waveform canvas available');
       return;
     }
 
     try {
       this.cachedWaveform = null;
       this.audioBuffer = null;
-      console.log('Generating waveform data for:', this.audio.src);
       const response = await fetch(this.audio.src);
       const arrayBuffer = await response.arrayBuffer();
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -2142,8 +2237,10 @@ class WebLyricsPlayer {
     const minWidth = 0;
     const canvasWidth = Math.max(minWidth, parseFloat(getComputedStyle(this.progressBar).width));
     const oldWidth = this.waveformCanvas.width;
-    this.waveformCanvas.width = canvasWidth;
-    this.waveformCanvas.height = this.progressBar.getBoundingClientRect().height;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.progressBar.getBoundingClientRect();
+    this.waveformCanvas.width = canvasWidth * dpr;
+    this.waveformCanvas.height = rect.height * dpr;
     this.waveformCanvas.style.position = 'absolute';
     this.waveformCanvas.style.top = '0';
     this.waveformCanvas.style.left = '0';
@@ -2153,6 +2250,7 @@ class WebLyricsPlayer {
     this.waveformCanvas.style.pointerEvents = 'none';
     this.waveformCanvas.style.opacity = '0';
     this.waveformCanvas.style.transition = 'opacity 0.3s ease';
+    this.waveformCanvas.style.imageRendering = 'pixelated'; // 优化图像渲染
     if (this.cachedWaveform && this.audioBuffer && oldWidth > 0 && Math.abs(canvasWidth - oldWidth) > oldWidth * 0.1) {
       this.cachedWaveform = this.createWaveformData(this.audioBuffer);
     }
@@ -2168,8 +2266,10 @@ class WebLyricsPlayer {
     const canvas = this.waveformCanvas;
     const ctx = this.waveformContext;
     const waveform = this.cachedWaveform;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.scale(dpr, dpr);
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
     if (waveform.length > 0) {
       const firstAmplitude = waveform[0];
@@ -2187,12 +2287,12 @@ class WebLyricsPlayer {
 
     const waveformColor = getComputedStyle(document.documentElement).getPropertyValue('--waveform-color').trim();
     ctx.strokeStyle = waveformColor || this.originalDominant;
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 1.8 / dpr; // 调整线条宽度以适应高DPI屏幕
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
     const centerY = height / 2;
     const step = width / waveform.length;
 
@@ -2206,16 +2306,27 @@ class WebLyricsPlayer {
       ctx.lineTo(x, centerY + amplitude);
     }
     ctx.stroke();
+    ctx.scale(1 / dpr, 1 / dpr);
   }
 
   private tooltip: HTMLElement | null = null;
   private verticalLine: HTMLElement | null = null;
   private tooltipTimer: number | null = null;
+  private diffUpdateTimer: number | null = null;
   private showTooltip(progressBar: HTMLElement, x: number) {
     const rect = progressBar.getBoundingClientRect();
-    const percentage = (x - rect.left) / rect.width;
+    let percentage = (x - rect.left) / rect.width;
     const timeInSeconds = percentage * this.state.duration;
+    if (this.progressFill) {
+      const progressWidth = parseFloat(this.progressFill.style.width || '0%');
+      const snapThreshold = 0.5;
+      if (Math.abs(percentage * 100 - progressWidth) < snapThreshold) {
+        percentage = progressWidth / 100;
+      }
+    }
+
     const linePosition = `${percentage * 100}%`;
+
     if (!this.verticalLine) {
       this.verticalLine = document.createElement('div');
       this.verticalLine.style.position = 'absolute';
@@ -2251,7 +2362,33 @@ class WebLyricsPlayer {
     const formattedTime = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
 
     if (!(formattedTime == '00:00.000' || timeInSeconds < 0 || !isFinite(this.state.duration))) {
-      this.tooltip.textContent = formattedTime;
+      const updateTooltipDiff = () => {
+        const diffInSeconds = timeInSeconds - this.state.currentTime;
+        const diffMins = Math.floor(Math.abs(diffInSeconds) / 60);
+        const diffSecs = Math.floor(Math.abs(diffInSeconds) % 60);
+        const diffMs = Math.floor((Math.abs(diffInSeconds) % 1) * 1000);
+        let formattedDiff = '';
+        const sign = diffInSeconds >= 0 ? '+' : '-';
+        if (diffMins > 0) {
+          formattedDiff = `${sign}${diffMins}:${diffSecs}.${diffMs}`;
+        } else if (diffSecs > 0) {
+          formattedDiff = `${sign}${diffSecs}.${diffMs}`;
+        } else {
+          formattedDiff = `${sign}${diffMs}`;
+        }
+        if (this.tooltip) {
+          if (Math.abs(diffInSeconds) < 0.1) {
+            this.tooltip.textContent = formattedTime;
+          } else {
+            this.tooltip.textContent = `${formattedTime} (${formattedDiff})`;
+          }
+        }
+      };
+      updateTooltipDiff();
+      if (this.diffUpdateTimer) {
+        clearInterval(this.diffUpdateTimer);
+      }
+      this.diffUpdateTimer = window.setInterval(updateTooltipDiff, 100);
 
       const lineRect = this.verticalLine.getBoundingClientRect();
       this.tooltip.style.left = `${lineRect.right - 6}px`;
@@ -2270,6 +2407,11 @@ class WebLyricsPlayer {
       }
 
       this.tooltipTimer = window.setTimeout(() => {
+        if (this.diffUpdateTimer) {
+          clearInterval(this.diffUpdateTimer);
+          this.diffUpdateTimer = null;
+        }
+
         if (this.tooltip) {
           this.tooltip.style.transform = 'translateY(4px)';
           this.tooltip.style.opacity = '0';
@@ -2301,7 +2443,6 @@ class WebLyricsPlayer {
 
   private setupWaveformEvents() {
     if (!this.progressBar || !this.waveformCanvas) {
-      console.warn('Waveform canvas or progress bar not found');
       return;
     }
 
@@ -2347,14 +2488,14 @@ class WebLyricsPlayer {
         this.redrawWaveform();
         this.seekToPosition(e);
       }
-    });
+    }, { passive: false });
 
     this.progressBar.addEventListener('touchmove', (e) => {
       e.preventDefault();
       if (this.progressBar && this.state.duration > 0 && e.touches.length > 0) {
         this.showTooltip(this.progressBar, e.touches[0].clientX);
       }
-    });
+    }, { passive: false });
 
     this.progressBar.addEventListener('touchend', () => {
       if (this.waveformCanvas && this.progressBar) {
@@ -2386,7 +2527,8 @@ class WebLyricsPlayer {
   private initBackground() {
     this.background = BackgroundRender.new(MeshGradientRenderer);
     this.background.setFPS(this.state.backgroundFPS || 60);
-    this.background.setRenderScale(this.state.backgroundRenderScale || 1);
+    const dpr = window.devicePixelRatio || 1;
+    this.background.setRenderScale((this.state.backgroundRenderScale || 1) * dpr);
     this.background.setStaticMode(!this.state.backgroundDynamic);
     this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
     this.background.getElement().style.position = "absolute";
@@ -2478,9 +2620,9 @@ class WebLyricsPlayer {
     let dominant = getComputedStyle(document.documentElement).getPropertyValue('--dominant-color').trim();
     let waveform = getComputedStyle(document.documentElement).getPropertyValue('--waveform-color').trim();
 
-    this.originalDark = dark || 'rgb(100, 3, 2)';
-    this.originalLight = light || 'rgb(255, 207, 206)';
-    this.originalDominant = dominant || 'rgb(253, 156, 155)';
+    this.originalDark = dark || '#640302';
+    this.originalLight = light || '#ffcfce';
+    this.originalDominant = dominant || '#fd9c9b';
     if (!waveform) {
       document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
     }
@@ -2489,14 +2631,14 @@ class WebLyricsPlayer {
   }
 
   private setDefaultColors(): void {
-    document.documentElement.style.setProperty('--dominant-color', 'rgb(253, 156, 155)');
-    document.documentElement.style.setProperty('--dominant-color-light', 'rgb(255, 207, 206)');
-    document.documentElement.style.setProperty('--dominant-color-dark', 'rgb(100, 3, 2)');
-    document.documentElement.style.setProperty('--waveform-color', 'rgb(253, 156, 155)');
+    document.documentElement.style.setProperty('--dominant-color', '#fd9c9b');
+    document.documentElement.style.setProperty('--dominant-color-light', '#ffcfce');
+    document.documentElement.style.setProperty('--dominant-color-dark', '#640302');
+    document.documentElement.style.setProperty('--waveform-color', '#fd9c9b');
 
-    this.originalDominant = 'rgb(253, 156, 155)';
-    this.originalLight = 'rgb(255, 207, 206)';
-    this.originalDark = 'rgb(100, 3, 2)';
+    this.originalDominant = '#fd9c9b';
+    this.originalLight = '#ffcfce';
+    this.originalDark = '#640302';
     this.isColorsInitialized = true;
 
     if (this.invertColorsCheckbox) {
@@ -2504,23 +2646,45 @@ class WebLyricsPlayer {
     }
   }
 
-  private initSystemDarkMode(): void {
-    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (isDarkMode) {
-      this.state.invertColors = true;
-      if (this.invertColorsCheckbox) {
-        this.invertColorsCheckbox.checked = true;
-        this.invertColors(true);
-      }
+  private onDominantColorChange(): void {
+    if (!this.dominantColorInput) return;
+    this.state.manualDominantColor = this.dominantColorInput.value;
+    this.applyManualColors();
+    this.saveBackgroundSettings();
+  }
+
+  private onDominantColorLightChange(): void {
+    if (!this.dominantColorLightInput) return;
+    this.state.manualDominantColorLight = this.dominantColorLightInput.value;
+    this.applyManualColors();
+    this.saveBackgroundSettings();
+  }
+
+  private onDominantColorDarkChange(): void {
+    if (!this.dominantColorDarkInput) return;
+    this.state.manualDominantColorDark = this.dominantColorDarkInput.value;
+    this.applyManualColors();
+    this.saveBackgroundSettings();
+  }
+
+  private applyManualColors(): void {
+    const isInverted = this.invertColorsCheckbox?.checked || false;
+    const dominantColor = this.state.manualDominantColor || this.originalDominant;
+    const lightColor = this.state.manualDominantColorLight || this.originalLight;
+    const darkColor = this.state.manualDominantColorDark || this.originalDark;
+
+    if (isInverted) {
+      document.documentElement.style.setProperty('--dominant-color', lightColor);
+      document.documentElement.style.setProperty('--dominant-color-light', darkColor);
+      document.documentElement.style.setProperty('--dominant-color-dark', dominantColor);
+      document.documentElement.style.setProperty('--waveform-color', darkColor);
+    } else {
+      document.documentElement.style.setProperty('--dominant-color', dominantColor);
+      document.documentElement.style.setProperty('--dominant-color-light', lightColor);
+      document.documentElement.style.setProperty('--dominant-color-dark', darkColor);
+      document.documentElement.style.setProperty('--waveform-color', dominantColor);
     }
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      const isDarkMode = e.matches;
-      this.state.invertColors = isDarkMode;
-      if (this.invertColorsCheckbox) {
-        this.invertColorsCheckbox.checked = isDarkMode;
-        this.invertColors(isDarkMode);
-      }
-    });
+    this.redrawWaveform();
   }
 
   private invertColors(checked: boolean): void {
@@ -2530,21 +2694,9 @@ class WebLyricsPlayer {
       this.initColors();
     }
 
-    if (checked) {
-      document.documentElement.style.setProperty('--dominant-color', this.originalLight);
-      document.documentElement.style.setProperty('--dominant-color-light', this.originalDark);
-      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDominant);
-      document.documentElement.style.setProperty('--waveform-color', this.originalDark);
-    } else {
-      document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
-      document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
-      document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
-      document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
-    }
-
     this.state.invertColors = checked;
+    this.applyManualColors();
     this.saveBackgroundSettings();
-    this.redrawWaveform();
   }
 
   private applyDominantColorAsCSSVariable(): void {
@@ -2555,6 +2707,16 @@ class WebLyricsPlayer {
       this.originalLight = this.lightenColor(this.dominantColor, 0.2);
       this.originalDark = this.darkenColor(this.dominantColor, 0.5);
       this.isColorsInitialized = true;
+      if (this.dominantColorInput && !this.state.manualDominantColor) {
+        this.dominantColorInput.value = this.dominantColor;
+      }
+      if (this.dominantColorLightInput && !this.state.manualDominantColorLight) {
+        this.dominantColorLightInput.value = this.originalLight;
+      }
+      if (this.dominantColorDarkInput && !this.state.manualDominantColorDark) {
+        this.dominantColorDarkInput.value = this.originalDark;
+      }
+
       this.invertColors(isInverted || false);
     }
   }
@@ -2562,25 +2724,17 @@ class WebLyricsPlayer {
   private switchBackgroundStyle(style: string) {
     if (!this.background) return;
 
+    const currentStyle = this.state.backgroundType;
     if (this.fluidDesc) this.fluidDesc.style.display = style === "fluid" ? "block" : "none";
     if (this.coverDesc) this.coverDesc.style.display = style === "cover" ? "block" : "none";
     if (this.solidDesc) this.solidDesc.style.display = style === "solid" ? "block" : "none";
 
     if (this.solidOptions) {
-      if (style === 'solid') {
-        this.solidOptions.forEach(option => {
-          (option as HTMLOptionElement).style.display = 'block';
-        });
-      } else {
-        this.solidOptions.forEach(option => {
-          (option as HTMLOptionElement).style.display = 'none';
-        });
-      }
+      const showSolidOptions = style === 'cover' && this.state.backgroundColorMask && this.state.backgroundMaskOpacity === 0;
+      this.setOptionsVisibility(this.solidOptions, showSolidOptions, ['neumorphismA', 'neumorphismB']);
     }
-    if (this.coverStyleSelect && ['neumorphismA', 'neumorphismB'].includes(this.coverStyleSelect.value)) {
-      this.coverStyleSelect.value = 'normal';
-      this.state.coverStyle = 'normal';
-      this.applyCoverStyle();
+    if (currentStyle === 'cover' && style !== 'cover' && this.invertColorsCheckbox) {
+      this.state.originalInvertColors = this.invertColorsCheckbox.checked;
     }
 
     switch (style) {
@@ -2607,24 +2761,61 @@ class WebLyricsPlayer {
         this.updateBackground();
         this.updateBackgroundUI();
         this.saveBackgroundSettings();
-        if (this.invertColorsCheckbox) {
-          const isChecked = this.invertColorsCheckbox.checked;
-          this.invertColorsCheckbox.onchange = () => {
-            if (this.invertColorsCheckbox) {
-              this.invertColors(this.invertColorsCheckbox.checked);
-            }
-          };
-          if (isChecked) {
-            this.invertColors(isChecked);
-          }
-        }
         break;
       default:
         break;
     }
+
+    if (style !== 'cover' && this.invertColorsCheckbox) {
+      this.invertColorsCheckbox.checked = false;
+      this.invertColors(false);
+    }
+
+    if (style === 'cover' && currentStyle !== 'cover' && this.invertColorsCheckbox) {
+      const invertState = this.state.originalInvertColors !== null && this.state.originalInvertColors !== undefined ?
+        this.state.originalInvertColors : this.state.invertColors;
+      this.invertColorsCheckbox.checked = invertState;
+      this.invertColors(invertState);
+    }
+
+    if (this.invertColorsCheckbox) {
+      const isChecked = this.invertColorsCheckbox.checked;
+      this.invertColorsCheckbox.onchange = () => {
+        if (this.invertColorsCheckbox) {
+          this.invertColors(this.invertColorsCheckbox.checked);
+        }
+      };
+      if (isChecked && style === 'cover') {
+        this.invertColors(isChecked);
+      }
+    }
   }
 
   private setupAudioEvents() {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    this.mediaSessionRefreshTimeout = null;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.refreshMediaSession();
+      }
+    });
+    window.addEventListener('pageshow', () => {
+      this.refreshMediaSession();
+    });
+    window.addEventListener('focus', () => {
+      this.refreshMediaSession();
+    });
+    if (isIOS) {
+      document.addEventListener('touchstart', () => {
+        if (!this.mediaSessionRefreshTimeout) {
+          this.mediaSessionRefreshTimeout = setTimeout(() => {
+            this.refreshMediaSession();
+            this.mediaSessionRefreshTimeout = null;
+          }, 100);
+        }
+      }, { passive: true });
+    }
+
     this.audio.addEventListener("loadedmetadata", () => {
       this.state.duration = this.audio.duration;
       this.updateTimeDisplay();
@@ -2643,6 +2834,13 @@ class WebLyricsPlayer {
 
     this.audio.addEventListener("timeupdate", () => {
       this.state.currentTime = this.audio.currentTime;
+      if (this.state.isRangeMode && this.state.rangeEndTime > this.state.rangeStartTime) {
+        if (this.audio.currentTime >= this.state.rangeEndTime) {
+          this.audio.currentTime = this.state.rangeStartTime;
+          this.state.currentTime = this.state.rangeStartTime;
+        }
+      }
+
       this.updateProgress();
       this.updateTimeDisplay();
       // 应用歌词延迟调整，将当前时间加上延迟值（毫秒转换为秒）
@@ -2701,6 +2899,9 @@ class WebLyricsPlayer {
         if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
           if (this.audio.src !== currentSrc) {
             currentSrc = this.audio.src;
+            if (this.state.isRangeMode) {
+              this.exitRangeMode();
+            }
             this.generateWaveformData();
           }
         }
@@ -2734,7 +2935,7 @@ class WebLyricsPlayer {
       this.lyricAreaHint = hintElement;
       hintElement.style.cssText = `
         position: absolute;
-        top: 50%;
+        top: 45%;
         left: 50%;
         transform: translate(-50%, -50%);
         color: var(--dominant-color-light);
@@ -2750,12 +2951,12 @@ class WebLyricsPlayer {
         user-select: none;
       `;
       hintElement.innerHTML = `
-        <div style="margin-bottom: 15px; font-size: 22px; font-weight: 500;">${t(
+        <div style="margin-bottom: 15px; font-size: var(--amll-lp-font-size, max(max(4vh, 2vw), 12px));">${t(
         "clickToAddLyrics"
       )}</div>
-        <div style="opacity: 0.6; line-height: 1.5;">*.ass, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
+        <div style="opacity: 0.6; line-height: 1.5; font-size: var(--amll-lp-font-size, max(max(3vh, 1.5vw), 12px));">*.ass, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
       `;
-      // <div style="opacity: 0.6; line-height: 1.5;">*.alrc, *.ass, *.json, *.krc, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.srt, *.ttml, *.yrc</div>
+      // *.alrc, *.ass, *.json, *.krc, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.srt, *.ttml, *.yrc
 
       hintElement.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2854,9 +3055,11 @@ class WebLyricsPlayer {
 
     const fileDisplay = document.createElement("span");
     fileDisplay.className = "control-value";
-    fileDisplay.style = `max-width: 100%; overflow: hidden; text-overflow: ellipsis;`;
+    fileDisplay.style = `max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;`;
     if (file instanceof File) {
       fileDisplay.textContent = `${file.name}`;
+    } else if (file === "Direct Input") {
+      fileDisplay.textContent = file;
     } else {
       try {
         const url = new URL(file);
@@ -3242,35 +3445,64 @@ class WebLyricsPlayer {
 
     if (lyricUrl) {
       this.state.lyricUrl = lyricUrl;
-      try {
-        const response = await fetch(lyricUrl);
-        const text = await response.text();
 
-        const isESFormat = isESLyRiCFormat(text);
-        const isA2Format = isLyRiCA2Format(text);
+      const urlPattern = /^https?:\/\/.+/;
+      if (urlPattern.test(lyricUrl.trim())) {
+        try {
+          const response = await fetch(lyricUrl);
+          const text = await response.text();
 
-        if (lyricUrl.endsWith(".lrc")) {
-          if (isESFormat || isA2Format) {
-            await this.loadLyricContent(text, lyricUrl);
+          const isESFormat = isESLyRiCFormat(text);
+          const isA2Format = isLyRiCA2Format(text);
+
+          if (lyricUrl.endsWith(".lrc")) {
+            if (isESFormat || isA2Format) {
+              await this.loadLyricContent(text, lyricUrl);
+            } else {
+              await this.loadLyricContent(text, lyricUrl);
+            }
           } else {
             await this.loadLyricContent(text, lyricUrl);
           }
-        } else {
-          await this.loadLyricContent(text, lyricUrl);
+          this.updateFileInputDisplay("lyricFile", lyricUrl);
+        } catch (error) {
+          this.showStatus(t("lyricsUrlLoadFailed"), true);
         }
-        this.updateFileInputDisplay("lyricFile", lyricUrl);
-      } catch (error) {
-        this.showStatus(t("lyricsUrlLoadFailed"), true);
+      } else {
+        await this.processLyricInput(lyricUrl);
       }
     }
 
     if (coverUrl) {
-      this.state.coverUrl = coverUrl;
-      this.updateBackground();
-      this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
-      await this.extractAndProcessCoverColor(coverUrl);
-      this.applyDominantColorAsCSSVariable();
-      this.updateFileInputDisplay("coverFile", coverUrl);
+      const urlPattern = /^https?:\/\/.+/;
+      if (urlPattern.test(coverUrl.trim())) {
+        this.state.coverUrl = coverUrl;
+        this.updateBackground();
+        this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+        await this.extractAndProcessCoverColor(coverUrl);
+        this.applyDominantColorAsCSSVariable();
+        this.updateFileInputDisplay("coverFile", coverUrl);
+      } else {
+        const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
+        const base64Match = coverUrl.trim().match(base64Pattern);
+        if (base64Match) {
+          const contentType = base64Match[1] || 'image/png';
+          const charset = base64Match[3] || 'utf-8';
+          this.state.coverUrl = coverUrl;
+          this.updateBackground();
+          this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+          await this.extractAndProcessCoverColor(coverUrl);
+          this.applyDominantColorAsCSSVariable();
+          this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
+        } else {
+          this.state.coverUrl = coverUrl;
+          this.updateBackground();
+          this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+          await this.extractAndProcessCoverColor(coverUrl);
+          this.applyDominantColorAsCSSVariable();
+          this.updateFileInputDisplay("coverFile", coverUrl);
+        }
+      }
     }
 
     this.updateSongInfo();
@@ -3316,6 +3548,93 @@ class WebLyricsPlayer {
 
     if (coverFile) {
       await this.loadCoverFromFile(coverFile);
+    }
+  }
+
+  private async processCoverInput(input: string) {
+    if (!input.trim()) {
+      return;
+    }
+
+    const urlPattern = /^https?:\/\/.+/;
+    if (urlPattern.test(input.trim())) {
+      this.state.coverUrl = input;
+      this.updateBackground();
+      this.background.setAlbum(input || "./assets/icon-512x512.png");
+      await this.extractAndProcessCoverColor(input);
+      this.applyDominantColorAsCSSVariable();
+      this.updateFileInputDisplay("coverFile", input);
+      return;
+    }
+
+    const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
+    const base64Match = input.trim().match(base64Pattern);
+    if (base64Match) {
+      const contentType = base64Match[1] || 'image/png';
+      const charset = base64Match[3] || 'utf-8';
+      this.state.coverUrl = input;
+      this.updateBackground();
+      this.background.setAlbum(input || "./assets/icon-512x512.png");
+      await this.extractAndProcessCoverColor(input);
+      this.applyDominantColorAsCSSVariable();
+      this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
+      return;
+    }
+
+    this.state.coverUrl = input;
+    this.updateBackground();
+    this.background.setAlbum(input || "./assets/icon-512x512.png");
+    await this.extractAndProcessCoverColor(input);
+    this.applyDominantColorAsCSSVariable();
+    this.updateFileInputDisplay("coverFile", input);
+  }
+
+  private async processLyricInput(input: string) {
+    if (!input.trim()) {
+      return;
+    }
+
+    const urlPattern = /^https?:\/\/.+/;
+    if (urlPattern.test(input.trim())) {
+      await this.loadFromURLs();
+      return;
+    }
+
+    const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
+    const base64Match = input.trim().match(base64Pattern);
+    if (base64Match) {
+      try {
+        const contentType = base64Match[1] || 'text/plain';
+        const charset = base64Match[3] || 'utf-8';
+        const base64Content = base64Match[4];
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        let decodedContent;
+        try {
+          decodedContent = new TextDecoder(charset).decode(bytes);
+        } catch (e) {
+          decodedContent = new TextDecoder('utf-8').decode(bytes);
+        }
+        await this.loadLyricContent(decodedContent, "direct-input.txt");
+        this.updateFileInputDisplay("lyricFile", `Base64 Encoded Input (${contentType})`);
+        this.showStatus(t("lyricsParseSuccess"));
+      } catch (error) {
+        console.error("Base64 decoding error:", error);
+        this.showStatus(t("lyricsParseFailed"), true);
+      }
+      return;
+    }
+
+    try {
+      await this.loadLyricContent(input, "direct-input.txt");
+      this.updateFileInputDisplay("lyricFile", "Direct Input");
+      this.showStatus(t("lyricsParseSuccess"));
+    } catch (error) {
+      console.error("Direct lyric input error:", error);
+      this.showStatus(t("lyricsParseFailed"), true);
     }
   }
 
@@ -3658,36 +3977,81 @@ class WebLyricsPlayer {
 
   private updateProgress() {
     if (this.state.duration > 0) {
-      const percentage = (this.state.currentTime / this.state.duration) * 100;
-      if (this.progressFill) {
-        this.progressFill.style.width = `${percentage}%`;
-      }
-      if (this.landscapeProgressFill) {
-        this.landscapeProgressFill.style.width = `${percentage}%`;
+
+      if (this.state.isRangeMode && this.state.rangeEndTime > this.state.rangeStartTime) {
+        const rangeDuration = this.state.rangeEndTime - this.state.rangeStartTime;
+        const currentTimeInRange = Math.max(0, Math.min(rangeDuration, this.state.currentTime - this.state.rangeStartTime));
+        const rangeProgressPercentage = (currentTimeInRange / rangeDuration) * 100;
+        const startPercentage = (this.state.rangeStartTime / this.state.duration) * 100;
+        const endPercentage = (this.state.rangeEndTime / this.state.duration) * 100;
+        const widthPercentage = endPercentage - startPercentage;
+        if (this.rangeProgressBar) {
+          this.rangeProgressBar.style.left = `${startPercentage}%`;
+          this.rangeProgressBar.style.width = `${widthPercentage}%`;
+        }
+        if (this.progressFill) {
+          this.progressFill.style.left = `${startPercentage}%`;
+          this.progressFill.style.width = `${rangeProgressPercentage * widthPercentage / 100}%`;
+        }
+        if (this.landscapeProgressFill) {
+          this.landscapeProgressFill.style.left = `${startPercentage}%`;
+          this.landscapeProgressFill.style.width = `${rangeProgressPercentage * widthPercentage / 100}%`;
+        }
+      } else {
+        const percentage = (this.state.currentTime / this.state.duration) * 100;
+        if (this.progressFill) {
+          this.progressFill.style.left = '0%';
+          this.progressFill.style.width = `${percentage}%`;
+        }
+        if (this.landscapeProgressFill) {
+          this.landscapeProgressFill.style.left = '0%';
+          this.landscapeProgressFill.style.width = `${percentage}%`;
+        }
       }
     }
   }
 
   private updateTimeDisplay() {
-    const currentTime = this.formatTime(this.state.currentTime);
-    const duration = this.formatTime(this.state.duration);
+    let currentTimeText, durationText, timeText;
 
-    let timeText;
-    if (!isFinite(this.state.duration) || isNaN(this.state.duration)) {
-      timeText = `${currentTime} / --:--`;
-    } else if (this.state.showRemainingTime && this.state.duration > 0) {
-      const remainingTime = this.formatTime(this.state.duration - this.state.currentTime);
-      timeText = `${currentTime} / -${remainingTime}`;
+    if (this.state.isRangeMode && this.state.rangeEndTime > this.state.rangeStartTime) {
+      const rangeDuration = this.state.rangeEndTime - this.state.rangeStartTime;
+      const currentTimeInRange = Math.max(0, Math.min(rangeDuration, this.state.currentTime - this.state.rangeStartTime));
+
+      currentTimeText = this.formatTime(currentTimeInRange);
+      durationText = this.formatTime(rangeDuration);
+
+      if (this.state.showRemainingTime) {
+        const remainingTimeInRange = this.formatTime(rangeDuration - currentTimeInRange);
+        timeText = `${currentTimeText} / -${remainingTimeInRange}`;
+      } else {
+        timeText = `${currentTimeText} / ${durationText}`;
+      }
     } else {
-      timeText = `${currentTime} / ${duration}`;
+      currentTimeText = this.formatTime(this.state.currentTime);
+      durationText = this.formatTime(this.state.duration);
+
+      if (!isFinite(this.state.duration) || isNaN(this.state.duration)) {
+        timeText = `${currentTimeText} / --:--`;
+      } else if (this.state.showRemainingTime && this.state.duration > 0) {
+        const remainingTime = this.formatTime(this.state.duration - this.state.currentTime);
+        timeText = `${currentTimeText} / -${remainingTime}`;
+      } else {
+        timeText = `${currentTimeText} / ${durationText}`;
+      }
     }
 
     if (this.timeDisplay) {
       this.timeDisplay.textContent = timeText;
     }
-
     if (this.landscapeTimeDisplay) {
       this.landscapeTimeDisplay.textContent = timeText;
+    }
+    if (this.timeDisplay) {
+      void this.timeDisplay.offsetHeight;
+    }
+    if (this.landscapeTimeDisplay) {
+      void this.landscapeTimeDisplay.offsetHeight;
     }
   }
 
@@ -3723,7 +4087,7 @@ class WebLyricsPlayer {
     switch (this.state.coverStyle) {
       case "normal":
         // 默认样式阴影
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "innerShadow":
         // 内阴影 - 使用伪元素实现，避免被图片覆盖，并随圆角变化
@@ -3742,7 +4106,7 @@ class WebLyricsPlayer {
             left: 0;
             right: 0;
             bottom: 0;
-            box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.5);
+            box-shadow: inset 0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18);
             pointer-events: none;
             z-index: 10;
             border-radius: ${borderRadius}%;
@@ -3756,7 +4120,7 @@ class WebLyricsPlayer {
         break;
       case "threeDShadow":
         // 立体投影效果（待实现）
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "longShadow":
         // 长投影效果，仿照div长阴影样式实现，使用transform-origin、skew变换和动画效果，支持动态圆角（待实现）
@@ -3844,19 +4208,19 @@ class WebLyricsPlayer {
         break;
       case "reflection":
         // 反射效果（待实现）
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "cd":
         // CD样式（待实现）
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "vinyl":
         // 黑胶唱片样式（待实现）
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "colored":
         // 彩色样式（待实现）
-        this.albumCoverContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
     }
   }
@@ -3866,13 +4230,21 @@ class WebLyricsPlayer {
     if (progressBar && this.state.duration > 0) {
       const rect = progressBar.getBoundingClientRect();
       let percentage = 0;
+      let x = 0;
       if (e instanceof MouseEvent) {
-        percentage = (e.clientX - rect.left) / rect.width;
+        x = e.clientX;
+        percentage = (x - rect.left) / rect.width;
       } else if (e instanceof TouchEvent && e.touches.length > 0) {
-        percentage = (e.touches[0].clientX - rect.left) / rect.width;
+        x = e.touches[0].clientX;
+        percentage = (x - rect.left) / rect.width;
+      }
+      this.showTooltip(progressBar, x);
+
+      let newTime = percentage * this.state.duration;
+      if (this.state.isRangeMode && this.state.rangeStartTime !== undefined && this.state.rangeEndTime !== undefined) {
+        newTime = Math.max(this.state.rangeStartTime, Math.min(this.state.rangeEndTime, newTime));
       }
 
-      const newTime = percentage * this.state.duration;
       this.audio.currentTime = newTime;
       this.state.currentTime = newTime;
       const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
@@ -4039,6 +4411,9 @@ class WebLyricsPlayer {
     this.audio.src = "";
     this.state.musicUrl = "";
     this.state.isPlaying = false;
+    this.state.manualDominantColor = null;
+    this.state.manualDominantColorLight = null;
+    this.state.manualDominantColorDark = null;
 
     if (this.playControls) {
       this.playControls.style.bottom = "10px";
@@ -4062,7 +4437,8 @@ class WebLyricsPlayer {
     this.state.roundedCover = 8;
     this.updateRoundedCover();
     this.state.backgroundRenderScale = 1.00;
-    this.background.setRenderScale(1.00);
+    const dpr = window.devicePixelRatio || 1;
+    this.background.setRenderScale(1.00 * dpr);
     this.state.lyricAlignPosition = 0.5;
     this.lyricPlayer.setAlignPosition(0.5);
     this.state.hidePassedLyrics = false;
@@ -4092,6 +4468,14 @@ class WebLyricsPlayer {
     this.state.songArtist = "";
     this.state.coverUrl = "";
     document.title = "AMLL Web Player";
+
+    if (this.controlPointCodeInput) {
+      this.controlPointCodeInput.value = '';
+    }
+    const renderer = this.background['renderer'];
+    if (renderer && renderer instanceof MeshGradientRenderer) {
+      renderer['manualControl'] = false;
+    }
 
     if (this.albumCoverLarge) {
       this.albumCoverLarge.src = "./assets/icon-512x512.png";
@@ -4203,6 +4587,18 @@ class WebLyricsPlayer {
       this.scaleSpringSoftCheckbox.checked = false;
     }
 
+    if (this.controlPointCodeInput) {
+      this.controlPointCodeInput.value = '';
+    }
+
+    if (this.background && this.background['renderer'] && typeof this.background['renderer']['setControlPoints'] === 'function') {
+      try {
+        this.background['renderer']['setControlPoints']([]);
+      } catch (error) {
+        console.error('Failed to reset control points:', error);
+      }
+    }
+
     if (this.playbackRateControl) {
       this.playbackRateControl.value = "1.00";
       this.audio.playbackRate = 1.0;
@@ -4276,18 +4672,22 @@ class WebLyricsPlayer {
       backgroundType: 'fluid',
       backgroundDynamic: true,
       backgroundFlowSpeed: 4,
-      backgroundColorMask: false,
+      backgroundColorMask: true,
       backgroundMaskColor: '#FFFFFF',
-      backgroundMaskOpacity: 30,
+      backgroundMaskOpacity: 70,
       showFPS: false,
-      coverBlurLevel: 40,
+      coverBlurLevel: 100,
       invertColors: false,
+      originalInvertColors: false,
+      manualDominantColor: null,
+      manualDominantColorLight: null,
+      manualDominantColorDark: null,
       marqueeEnabled: true,
       roundedCover: 16,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
       backgroundFPS: 60,
-      lyricAlignPosition: 0.5,
+      lyricAlignPosition: 0.4,
       hidePassedLyrics: false,
       enableLyricBlur: true,
       enableLyricScale: true,
@@ -4314,6 +4714,9 @@ class WebLyricsPlayer {
       scaleSpringDamping: 20,
       scaleSpringStiffness: 100,
       scaleSpringSoft: false,
+      isRangeMode: false,
+      rangeStartTime: 0,
+      rangeEndTime: 0,
     };
 
     // 清除localStorage中的BackgroundSettings
@@ -4349,48 +4752,64 @@ class WebLyricsPlayer {
 
       navigator.mediaSession.setActionHandler("seekbackward", (details) => {
         const skipTime = details.seekOffset || 10;
-        this.audio.currentTime = Math.max(this.audio.currentTime - skipTime, 0);
-        const nextLineStartTime = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        let newTime = Math.max(this.audio.currentTime - skipTime, 0);
+        if (this.state.isRangeMode && this.state.rangeStartTime !== undefined && this.state.rangeEndTime !== undefined) {
+          newTime = Math.max(this.state.rangeStartTime, Math.min(this.state.rangeEndTime, newTime));
+        }
+
+        this.audio.currentTime = newTime;
+        const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
         this.lyricPlayer.setCurrentTime(nextLineStartTime);
         setTimeout(() => {
-          const adjustedTime = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          const adjustedTime = newTime * 1000 + this.state.lyricDelay;
           this.lyricPlayer.setCurrentTime(adjustedTime);
         }, 50);
       });
 
       navigator.mediaSession.setActionHandler("seekforward", (details) => {
         const skipTime = details.seekOffset || 10;
-        this.audio.currentTime = Math.min(
+        let newTime = Math.min(
           this.audio.currentTime + skipTime,
           this.audio.duration
         );
-        const nextLineStartTime = this.findNextLyricLineStartTime(this.audio.currentTime * 1000);
+        if (this.state.isRangeMode && this.state.rangeStartTime !== undefined && this.state.rangeEndTime !== undefined) {
+          newTime = Math.max(this.state.rangeStartTime, Math.min(this.state.rangeEndTime, newTime));
+        }
+
+        this.audio.currentTime = newTime;
+        const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
         this.lyricPlayer.setCurrentTime(nextLineStartTime);
         setTimeout(() => {
-          const adjustedTime = this.audio.currentTime * 1000 + this.state.lyricDelay;
+          const adjustedTime = newTime * 1000 + this.state.lyricDelay;
           this.lyricPlayer.setCurrentTime(adjustedTime);
         }, 50);
       });
 
       navigator.mediaSession.setActionHandler("seekto", (details) => {
         if (details.seekTime !== undefined) {
-          this.audio.currentTime = details.seekTime;
-          const nextLineStartTime = this.findNextLyricLineStartTime(details.seekTime * 1000);
+          let newTime = details.seekTime;
+          if (this.state.isRangeMode && this.state.rangeStartTime !== undefined && this.state.rangeEndTime !== undefined) {
+            newTime = Math.max(this.state.rangeStartTime, Math.min(this.state.rangeEndTime, newTime));
+          }
+
+          this.audio.currentTime = newTime;
+          const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
           this.lyricPlayer.setCurrentTime(nextLineStartTime);
           setTimeout(() => {
-            const adjustedTime = details.seekTime! * 1000 + this.state.lyricDelay;
+            const adjustedTime = newTime * 1000 + this.state.lyricDelay;
             this.lyricPlayer.setCurrentTime(adjustedTime);
           }, 50);
         }
       });
 
       navigator.mediaSession.setActionHandler("previoustrack", () => {
-        this.audio.currentTime = 0;
+        const newTime = this.state.isRangeMode && this.state.rangeStartTime !== undefined ? this.state.rangeStartTime : 0;
+        this.audio.currentTime = newTime;
         if (this.processedLyricLines && this.processedLyricLines.length > 0) {
-          const firstLineStartTime = this.processedLyricLines[0].startTime;
-          this.lyricPlayer.setCurrentTime(firstLineStartTime);
+          const nextLineStartTime = this.findNextLyricLineStartTime(newTime * 1000);
+          this.lyricPlayer.setCurrentTime(nextLineStartTime);
           setTimeout(() => {
-            const adjustedTime = this.state.lyricDelay;
+            const adjustedTime = newTime * 1000 + this.state.lyricDelay;
             this.lyricPlayer.setCurrentTime(adjustedTime);
           }, 50);
         }
@@ -4421,6 +4840,29 @@ class WebLyricsPlayer {
     }
   }
 
+  private refreshMediaSession() {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.setActionHandler("play", null);
+      navigator.mediaSession.setActionHandler("pause", null);
+      navigator.mediaSession.setActionHandler("seekbackward", null);
+      navigator.mediaSession.setActionHandler("seekforward", null);
+      navigator.mediaSession.setActionHandler("seekto", null);
+      navigator.mediaSession.setActionHandler("previoustrack", null);
+      navigator.mediaSession.setActionHandler("nexttrack", null);
+      navigator.mediaSession.metadata = null;
+      // 分离调用以减少单个setTimeout处理函数的执行时间
+      setTimeout(() => {
+        this.updateMediaSessionMetadata();
+        if ("mediaSession" in navigator) {
+          navigator.mediaSession.playbackState = this.state.isPlaying ? "playing" : "paused";
+        }
+      }, 50);
+      setTimeout(() => {
+        this.setupMediaSessionHandlers();
+      }, 100);
+    }
+  }
+
   private updateSongInfo() {
     if (this.state.coverUrl && this.landscapeCover) {
       this.landscapeCover.style.backgroundImage = `url(${this.state.coverUrl})`;
@@ -4431,6 +4873,7 @@ class WebLyricsPlayer {
     this.updateAlbumSidePanel();
     this.adjustLyricPosition();
     this.updateMediaSessionMetadata();
+    this.updateMarqueeSettings();
     if (this.state.songTitle) {
       if (this.state.songArtist) {
         document.title = `${this.state.songArtist} - ${this.state.songTitle} | AMLL Web Player`;
@@ -4469,6 +4912,123 @@ class WebLyricsPlayer {
     }
   }
 
+  private handleRangeSelection(e: MouseEvent | TouchEvent) {
+    if (!this.progressBar || !this.state.duration) return;
+
+    let clientX: number;
+    if (e instanceof MouseEvent) {
+      clientX = e.clientX;
+    } else if (e instanceof TouchEvent && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+    } else {
+      return;
+    }
+    const rect = this.progressBar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const selectedTime = ratio * this.state.duration;
+    if (this.rangeSelectionCount >= 2) {
+      this.clearRangeSelection();
+    }
+    if (this.rangeSelectionCount === 0) {
+      this.state.rangeStartTime = selectedTime;
+      this.createRangeLine(true, selectedTime);
+    } else {
+      this.state.rangeEndTime = selectedTime;
+      this.createRangeLine(false, selectedTime);
+      if (this.state.rangeStartTime > this.state.rangeEndTime) {
+        const temp = this.state.rangeStartTime;
+        this.state.rangeStartTime = this.state.rangeEndTime;
+        this.state.rangeEndTime = temp;
+        if (this.rangeStartLine && this.rangeEndLine) {
+          const tempStyle = this.rangeStartLine.style.left;
+          this.rangeStartLine.style.left = this.rangeEndLine.style.left;
+          this.rangeEndLine.style.left = tempStyle;
+        }
+      }
+
+      this.state.isRangeMode = true;
+      this.createRangeProgressBar();
+      this.updateTimeDisplay();
+      if (this.audio) {
+        this.audio.currentTime = this.state.rangeStartTime;
+      }
+    }
+
+    this.rangeSelectionCount++;
+  }
+
+  private createRangeLine(isStart: boolean, time: number) {
+    if (!this.progressBar || !this.state.duration) return;
+    const percentage = (time / this.state.duration) * 100;
+    const line = document.createElement('div');
+    line.style.cssText = `
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background-color: ${isStart ? '#4CAF50' : '#FF5252'};
+      left: ${percentage}%;
+      cursor: pointer;
+    `;
+    line.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.exitRangeMode();
+    });
+    this.addLongPressAndRightClickHandler(line, () => {
+      this.exitRangeMode();
+    });
+    if (isStart) {
+      this.rangeStartLine = line;
+    } else {
+      this.rangeEndLine = line;
+    }
+    this.progressBar.appendChild(line);
+  }
+
+  private createRangeProgressBar() {
+    if (!this.progressBar || !this.state.duration || this.state.rangeEndTime <= this.state.rangeStartTime) return;
+    const startPercentage = (this.state.rangeStartTime / this.state.duration) * 100;
+    const endPercentage = (this.state.rangeEndTime / this.state.duration) * 100;
+    const widthPercentage = endPercentage - startPercentage;
+    const rangeBar = document.createElement('div');
+    rangeBar.style.cssText = `
+      position: absolute;
+      top: 0;
+      height: 100%;
+      left: ${startPercentage}%;
+      width: ${widthPercentage}%;
+      z-index: 5;
+    `;
+
+    this.rangeProgressBar = rangeBar;
+    this.progressBar.appendChild(rangeBar);
+  }
+
+  private clearRangeSelection() {
+    if (this.rangeStartLine && this.rangeStartLine.parentNode) {
+      this.rangeStartLine.parentNode.removeChild(this.rangeStartLine);
+      this.rangeStartLine = null;
+    }
+    if (this.rangeEndLine && this.rangeEndLine.parentNode) {
+      this.rangeEndLine.parentNode.removeChild(this.rangeEndLine);
+      this.rangeEndLine = null;
+    }
+    if (this.rangeProgressBar && this.rangeProgressBar.parentNode) {
+      this.rangeProgressBar.parentNode.removeChild(this.rangeProgressBar);
+      this.rangeProgressBar = null;
+    }
+    this.rangeSelectionCount = 0;
+  }
+
+  private exitRangeMode() {
+    this.state.isRangeMode = false;
+    this.clearRangeSelection();
+    this.state.rangeStartTime = 0;
+    this.state.rangeEndTime = 0;
+    this.updateProgress();
+    this.updateTimeDisplay();
+  }
+
   private async parseAudioMetadata(file: File) {
     try {
       console.log(
@@ -4480,14 +5040,12 @@ class WebLyricsPlayer {
 
       // 使用 jsmediatags 库解析音频元数据
       const jsmediatags = (window as any).jsmediatags;
-      console.log("jsmediatags库:", jsmediatags);
 
       if (jsmediatags) {
-        console.log("Calling jsmediatags.read...");
         jsmediatags.read(file, {
           onSuccess: (tag: any) => {
             console.log("Audio metadata parsed successfully, full data:", tag);
-            console.log("tags对象:", tag.tags);
+            console.log("tags:", tag.tags);
 
             let hasMetadata = false;
 
@@ -4499,8 +5057,6 @@ class WebLyricsPlayer {
               }
               console.log("Extracted song title:", tag.tags.title);
               hasMetadata = true;
-            } else {
-              console.log("No song title found");
             }
 
             if (tag.tags && tag.tags.artist) {
@@ -4510,8 +5066,6 @@ class WebLyricsPlayer {
               }
               console.log("Extracted song artist:", tag.tags.artist);
               hasMetadata = true;
-            } else {
-              console.log("No song artist found");
             }
 
             // 提取封面图片
@@ -4526,11 +5080,25 @@ class WebLyricsPlayer {
                 base64String
               )}`;
               this.state.coverUrl = base64;
+              if (this.coverUrl) {
+                const maxLength = 65536;
+                if (base64.length > maxLength) {
+                  const prefix = `data:${format};base64,`;
+                  const availableChars = maxLength - prefix.length;
+                  let truncatedBase64 = prefix + base64.substring(prefix.length, prefix.length + availableChars);
+                  while (truncatedBase64.length % 4 !== 0) {
+                    truncatedBase64 = truncatedBase64.substring(0, truncatedBase64.length - 1);
+                  }
+                  this.coverUrl.value = truncatedBase64;
+                } else {
+                  this.coverUrl.value = base64;
+                }
+              }
               this.background.setAlbum(base64 || "./assets/icon-512x512.png");
               this.extractAndProcessCoverColor(base64);
               this.applyDominantColorAsCSSVariable();
               this.updateBackground();
-              this.updateFileInputDisplay("coverFile", "Embedded in audio file (base64 encoded)");
+              this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (Embedded ${format})`);
               console.log(
                 "Extracted cover image, format:",
                 format,
@@ -4538,8 +5106,6 @@ class WebLyricsPlayer {
                 data.length
               );
               hasMetadata = true;
-            } else {
-              console.log("No cover image found");
             }
 
             this.updateSongInfo();
@@ -4548,12 +5114,10 @@ class WebLyricsPlayer {
             if (hasMetadata) {
               this.showStatus(t("metadataParseSuccess"));
             } else {
-              console.log("No metadata found, using fallback method");
               this.parseAudioMetadataFallback(file);
             }
           },
           onError: (error: any) => {
-            console.log("Audio metadata parsing failed:", error);
             this.showStatus(t("metadataParseFailed"), true);
             this.parseAudioMetadataFallback(file);
           },
@@ -4564,7 +5128,6 @@ class WebLyricsPlayer {
         this.parseAudioMetadataFallback(file);
       }
     } catch (error) {
-      console.log("Audio metadata parsing error:", error);
       this.showStatus(t("metadataParseError"), true);
       this.parseAudioMetadataFallback(file);
     }
@@ -4572,8 +5135,6 @@ class WebLyricsPlayer {
 
   private async parseAudioMetadataFallback(file: File) {
     try {
-      console.log("Using fallback method to parse file:", file.name);
-
       // 备用方案：从文件名提取信息
       const fileName = file.name;
       const nameWithoutExt = fileName.replace(/\.[^/.]+$/, ""); // 移除扩展名
@@ -4623,7 +5184,6 @@ class WebLyricsPlayer {
           if (this.songTitleInput) {
             this.songTitleInput.value = this.state.songTitle;
           }
-          console.log("Using filename as title:", this.state.songTitle);
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
           this.showStatus(t("usedFilenameAsTitle"));
@@ -4672,7 +5232,7 @@ class WebLyricsPlayer {
   // 辅助函数：为元素添加长按和右键功能（兼容Safari）
   private addLongPressAndRightClickHandler(
     element: HTMLElement,
-    callback: () => void,
+    callback: (e?: MouseEvent | TouchEvent) => void,
     longPressTime = 3000
   ) {
     if (!element) return;
@@ -4681,8 +5241,8 @@ class WebLyricsPlayer {
     let isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
     // 鼠标事件
-    element.addEventListener("mousedown", () => {
-      timer = window.setTimeout(callback, longPressTime);
+    element.addEventListener("mousedown", (e) => {
+      timer = window.setTimeout(() => callback(e), longPressTime);
     });
 
     element.addEventListener("mouseup", () => {
@@ -4696,7 +5256,7 @@ class WebLyricsPlayer {
     // 右键事件
     element.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      callback();
+      callback(e);
       return false; // 为Safari返回false
     });
 
@@ -4706,7 +5266,7 @@ class WebLyricsPlayer {
       let isLongPress = false;
       timer = window.setTimeout(() => {
         isLongPress = true;
-        callback();
+        callback(e);
       }, longPressTime);
       // 不再阻止默认事件，允许正常点击
     }, { passive: true });
@@ -4738,7 +5298,7 @@ class WebLyricsPlayer {
       font-size: 14px;
     `;
     hint.innerHTML = `
-      <div style="margin-bottom: 15px; font-size: 16px; font-weight: bold;">[INFO] 自动播放提示</div>
+      <div style="margin-bottom: 15px; font-size: 16px;">[INFO] 自动播放提示</div>
       <div style="margin-bottom: 15px;">由于浏览器安全策略，需要用户交互才能自动播放音频。</div>
       <div style="margin-bottom: 15px;">请点击播放按钮开始播放。</div>
       <button onclick="this.parentElement.remove()" title="Got it" style="
@@ -4779,6 +5339,7 @@ class WebLyricsPlayer {
       ? urlParams.get("loop") === "1" || urlParams.get("loop") === "true"
       : true;
     const currentTime = urlParams.get("t");
+    const endTime = urlParams.get("te");
     if (!music) {
       if (this.controlPanel) {
         this.controlPanel.style.width = "320px";
@@ -4873,13 +5434,20 @@ class WebLyricsPlayer {
           const time = parseFloat(currentTime);
           if (!isNaN(time) && time >= 0) {
             this.audio.currentTime = time;
+            this.state.rangeStartTime = time;
+          }
+        }
+
+        if (endTime) {
+          const te = parseFloat(endTime);
+          if (!isNaN(te) && te !== 0 && (!currentTime || parseFloat(currentTime) <= te)) {
+            this.state.rangeEndTime = te;
+            this.state.isRangeMode = true;
           }
         }
 
         if (autoPlay && this.audio) {
-          console.log("Auto-playing music");
           this.audio.play().catch((error) => {
-            console.log("Auto-play failed, requires user interaction:", error);
             this.showAutoPlayHint();
           });
         }
@@ -4906,6 +5474,7 @@ class WebLyricsPlayer {
     }
 
     this.isInitialized = true;
+    this.initAlbumCoverEffects();
   }
 
   private startAnimationLoop() {
@@ -4962,7 +5531,21 @@ class WebLyricsPlayer {
       hsl[2] = 0.8;
       const [newR, newG, newB] = this.hslToRgb(hsl[0], hsl[1], hsl[2]);
       this.dominantColor = this.rgbToHex(newR, newG, newB);
+      // 计算颜色亮度并自动决定是否需要反转使用相对亮度公式: L = (0.299*R + 0.587*G + 0.114*B)/255
+      const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const shouldInvert = brightness >= 0.5;
       this.applyDominantColorAsCSSVariable();
+      if (this.invertColorsCheckbox) {
+        if (this.state.backgroundType === 'cover') {
+          if (this.state.originalInvertColors === null && this.state.originalInvertColors === undefined) {
+            this.invertColorsCheckbox.checked = shouldInvert;
+            this.invertColors(shouldInvert);
+          } else {
+            this.invertColorsCheckbox.checked = this.state.originalInvertColors;
+            this.invertColors(this.state.originalInvertColors);
+          }
+        }
+      }
     } catch (error) {
       this.setDefaultColors();
       this.applyDominantColorAsCSSVariable();
@@ -5073,6 +5656,9 @@ class WebLyricsPlayer {
       showFPS: this.state.showFPS,
       coverBlurLevel: this.state.coverBlurLevel,
       invertColors: this.state.invertColors,
+      manualDominantColor: this.state.manualDominantColor,
+      manualDominantColorLight: this.state.manualDominantColorLight,
+      manualDominantColorDark: this.state.manualDominantColorDark,
       marqueeEnabled: this.state.marqueeEnabled,
       roundedCover: this.state.roundedCover,
       coverRotationSpeed: this.state.coverRotationSpeed,
@@ -5104,6 +5690,7 @@ class WebLyricsPlayer {
       scaleSpringDamping: this.state.scaleSpringDamping,
       scaleSpringStiffness: this.state.scaleSpringStiffness,
       scaleSpringSoft: this.state.scaleSpringSoft,
+      controlPointCode: this.controlPointCodeInput?.value || '',
     };
     localStorage.setItem('amll_background_settings', JSON.stringify(settings));
   }
@@ -5116,17 +5703,21 @@ class WebLyricsPlayer {
         this.state.backgroundType = settings.backgroundType || 'fluid';
         this.state.backgroundDynamic = settings.backgroundDynamic !== undefined ? settings.backgroundDynamic : true;
         this.state.backgroundFlowSpeed = settings.backgroundFlowSpeed || 4;
-        this.state.backgroundColorMask = settings.backgroundColorMask !== undefined ? settings.backgroundColorMask : false;
+        this.state.backgroundColorMask = settings.backgroundColorMask !== undefined ? settings.backgroundColorMask : true;
         this.state.backgroundMaskColor = settings.backgroundMaskColor || '#FFFFFF';
-        this.state.backgroundMaskOpacity = settings.backgroundMaskOpacity !== undefined ? settings.backgroundMaskOpacity : 30;
+        this.state.backgroundMaskOpacity = settings.backgroundMaskOpacity !== undefined ? settings.backgroundMaskOpacity : 70;
         this.state.showFPS = settings.showFPS !== undefined ? settings.showFPS : false;
-        this.state.coverBlurLevel = settings.coverBlurLevel !== undefined ? settings.coverBlurLevel : 40;
+        this.state.coverBlurLevel = settings.coverBlurLevel !== undefined ? settings.coverBlurLevel : 100;
         this.state.invertColors = settings.invertColors !== undefined ? settings.invertColors : false;
+        this.state.originalInvertColors = this.state.invertColors;
+        this.state.manualDominantColor = settings.manualDominantColor;
+        this.state.manualDominantColorLight = settings.manualDominantColorLight;
+        this.state.manualDominantColorDark = settings.manualDominantColorDark;
         this.state.roundedCover = settings.roundedCover !== undefined ? settings.roundedCover : 16;
         this.state.marqueeEnabled = settings.marqueeEnabled !== undefined ? settings.marqueeEnabled : true;
         this.state.coverRotationSpeed = settings.coverRotationSpeed !== undefined ? settings.coverRotationSpeed : 0;
         this.state.backgroundRenderScale = settings.backgroundRenderScale !== undefined ? settings.backgroundRenderScale : 1;
-        this.state.lyricAlignPosition = settings.lyricAlignPosition !== undefined ? settings.lyricAlignPosition : 0.5;
+        this.state.lyricAlignPosition = settings.lyricAlignPosition !== undefined ? settings.lyricAlignPosition : 0.4;
         this.state.hidePassedLyrics = settings.hidePassedLyrics !== undefined ? settings.hidePassedLyrics : false;
         this.state.enableLyricBlur = settings.enableLyricBlur !== undefined ? settings.enableLyricBlur : true;
         this.state.enableLyricScale = settings.enableLyricScale !== undefined ? settings.enableLyricScale : true;
@@ -5154,6 +5745,10 @@ class WebLyricsPlayer {
         this.state.scaleSpringStiffness = settings.scaleSpringStiffness !== undefined ? settings.scaleSpringStiffness : 100;
         this.state.scaleSpringSoft = settings.scaleSpringSoft !== undefined ? settings.scaleSpringSoft : false;
 
+        if (settings.controlPointCode && this.controlPointCodeInput) {
+          this.controlPointCodeInput.value = settings.controlPointCode;
+        }
+
         this.updateBackgroundUI();
         this.updateBackground();
         this.updateFPSDisplay();
@@ -5169,7 +5764,12 @@ class WebLyricsPlayer {
         this.lyricPlayer.setWordFadeWidth(this.state.wordFadeWidth);
         this.lyricPlayer.setLinePosYSpringParams({ mass: this.state.posYSpringMass, damping: this.state.posYSpringDamping, stiffness: this.state.posYSpringStiffness, soft: this.state.posYSpringSoft });
         this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: this.state.scaleSpringDamping, stiffness: this.state.scaleSpringStiffness, soft: this.state.scaleSpringSoft });
-        this.background.setRenderScale(this.state.backgroundRenderScale);
+        const dpr = window.devicePixelRatio || 1;
+        this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
+
+        if (settings.controlPointCode) {
+          this.applyControlPointCode();
+        }
       }
 
       if (this.lyricAlignPositionValue) {
@@ -5238,6 +5838,15 @@ class WebLyricsPlayer {
     if (this.coverBlurLevel) this.coverBlurLevel.value = this.state.coverBlurLevel.toString();
     if (this.coverBlurLevelValue) this.coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
     if (this.invertColorsCheckbox) this.invertColorsCheckbox.checked = this.state.invertColors;
+    if (this.dominantColorInput && this.isColorsInitialized) {
+      this.dominantColorInput.value = this.state.manualDominantColor || this.originalDominant;
+    }
+    if (this.dominantColorLightInput && this.isColorsInitialized) {
+      this.dominantColorLightInput.value = this.state.manualDominantColorLight || this.originalLight;
+    }
+    if (this.dominantColorDarkInput && this.isColorsInitialized) {
+      this.dominantColorDarkInput.value = this.state.manualDominantColorDark || this.originalDark;
+    }
     if (this.roundedCoverSlider) this.roundedCoverSlider.value = this.state.roundedCover.toString();
     if (this.roundedCoverValue) this.roundedCoverValue.textContent = `${this.state.roundedCover}%`;
     if (this.coverRotationSlider) this.coverRotationSlider.value = this.state.coverRotationSpeed.toString();
@@ -5269,20 +5878,8 @@ class WebLyricsPlayer {
     if (this.solidDesc) this.solidDesc.style.display = this.state.backgroundType === 'solid' ? 'block' : 'none';
 
     if (this.solidOptions) {
-      if (this.state.backgroundType === 'solid') {
-        this.solidOptions.forEach(option => {
-          (option as HTMLOptionElement).style.display = 'block';
-        });
-      } else {
-        this.solidOptions.forEach(option => {
-          (option as HTMLOptionElement).style.display = 'none';
-        });
-      }
-    }
-    if (this.coverStyleSelect && ['neumorphismA', 'neumorphismB'].includes(this.coverStyleSelect.value)) {
-      this.coverStyleSelect.value = 'normal';
-      this.state.coverStyle = 'normal';
-      this.applyCoverStyle();
+      const showSolidOptions = this.state.backgroundType === 'cover' && this.state.backgroundColorMask && this.state.backgroundMaskOpacity === 0;
+      this.setOptionsVisibility(this.solidOptions, showSolidOptions, ['neumorphismA', 'neumorphismB']);
     }
 
     if (this.showbgLyricCheckbox) {
@@ -5342,6 +5939,157 @@ class WebLyricsPlayer {
   }
 
   // 更新背景显示
+  private applyControlPointCode() {
+    if (!this.controlPointCodeInput || !this.background) {
+      return;
+    }
+
+    const code = this.controlPointCodeInput.value.trim();
+    if (!code) {
+      try {
+        const renderer = this.background['renderer'];
+        if (!renderer || !(renderer instanceof MeshGradientRenderer)) {
+          return;
+        }
+
+        renderer['manualControl'] = false;
+        renderer.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+      } catch (error) {
+        console.error('Failed to reset to default control points:', error);
+      }
+
+      return;
+    }
+
+    try {
+      const renderer = this.background['renderer'];
+      if (!renderer || !(renderer instanceof MeshGradientRenderer)) {
+        return;
+      }
+
+      let presetData;
+      try {
+        presetData = JSON.parse(code);
+      } catch (jsonError) {
+        try {
+          presetData = eval(`(${code})`);
+        } catch (evalError) {
+          console.error('Failed to parse control point code:', jsonError, evalError);
+          return;
+        }
+      }
+
+      if (!presetData) {
+        return;
+      }
+
+      let width = 4; // 默认值
+      let height = 4; // 默认值
+      let controlPointsData: any[] = [];
+
+      if (typeof presetData === 'object' && 'width' in presetData && 'height' in presetData && 'conf' in presetData) {
+        // 格式3: {width, height, conf: [...]} - CONTROL_POINT_PRESETS格式
+        width = presetData.width;
+        height = presetData.height;
+        controlPointsData = presetData.conf;
+      } else if (Array.isArray(presetData)) {
+        // 支持两种格式: [width, height, [cx, cy, x, y, ur, vr, up, vp], ...] 或 [[cx, cy, x, y, ur, vr, up, vp], ...]
+        if (typeof presetData[0] === 'number' && typeof presetData[1] === 'number') {
+          // 格式1: [width, height, [cx, cy, x, y, ur, vr, up, vp], ...]
+          width = presetData[0];
+          height = presetData[1];
+          controlPointsData = presetData.slice(2);
+        } else if (Array.isArray(presetData[0])) {
+          // 格式2: [[cx, cy, x, y, ur, vr, up, vp], ...]
+          controlPointsData = presetData;
+          // 从控制点数据中计算width和height
+          let maxCx = 0;
+          let maxCy = 0;
+          for (const cp of controlPointsData) {
+            if (Array.isArray(cp) && cp.length >= 2) {
+              maxCx = Math.max(maxCx, cp[0]);
+              maxCy = Math.max(maxCy, cp[1]);
+            }
+          }
+          width = maxCx + 1;
+          height = maxCy + 1;
+        } else {
+          return;
+        }
+      } else {
+        return;
+      }
+
+      renderer['manualControl'] = true;
+
+      if (!renderer['meshStates'] || renderer['meshStates'].length === 0) {
+        renderer.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+
+        if (!renderer['meshStates'] || renderer['meshStates'].length === 0) {
+          return;
+        }
+      }
+
+      const latestMeshState = renderer['meshStates'][renderer['meshStates'].length - 1];
+      if (!latestMeshState || !latestMeshState['mesh']) {
+        return;
+      }
+
+      const mesh = latestMeshState['mesh'];
+
+      width = Math.max(2, width);
+      height = Math.max(2, height);
+
+      if (mesh['resizeControlPoints']) {
+        try {
+          mesh['resizeControlPoints'](width, height);
+        } catch (error) {
+          return;
+        }
+
+        const uPower = 2 / (width - 1);
+        const vPower = 2 / (height - 1);
+        let appliedCount = 0;
+
+        for (let i = 0; i < controlPointsData.length; i++) {
+          const cpData = controlPointsData[i];
+          if (Array.isArray(cpData) && cpData.length >= 8) {
+            // 格式: [cx, cy, x, y, ur, vr, up, vp]
+            const cx = cpData[0];
+            const cy = cpData[1];
+            const x = cpData[2];
+            const y = cpData[3];
+            const ur = cpData[4];
+            const vr = cpData[5];
+            const up = cpData[6];
+            const vp = cpData[7];
+            if (cx >= 0 && cx < width && cy >= 0 && cy < height) {
+              const cp = mesh['getControlPoint'](cx, cy);
+              if (cp) {
+                try {
+                  cp['location'].x = x;
+                  cp['location'].y = y;
+                  cp['uRot'] = (ur * Math.PI) / 180; // 转换角度为弧度
+                  cp['vRot'] = (vr * Math.PI) / 180; // 转换角度为弧度
+                  cp['uScale'] = uPower * up;
+                  cp['vScale'] = vPower * vp;
+                  appliedCount++;
+                } catch (error) {
+                  console.warn(`Failed to apply control point at (${cx}, ${cy}):`, error);
+                }
+              }
+            } else {
+            }
+          }
+        }
+
+        mesh['updateMesh']();
+      }
+    } catch (error) {
+      console.error('Failed to apply control points:', error);
+    }
+  }
+
   private updateBackground() {
     const currentCover = this.state.coverUrl || "./assets/icon-512x512.png";
 
@@ -5363,6 +6111,7 @@ class WebLyricsPlayer {
 
       const mappedBlurLevel = (this.state.coverBlurLevel / 100) * 100;
       this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
+      this.invertColors(this.state.invertColors);
     } else if (this.state.backgroundType === 'solid') {
       this.background.getElement().style.display = "none";
       this.coverBlurBackground.style.display = "none";
@@ -5374,8 +6123,8 @@ class WebLyricsPlayer {
       this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
     }
 
-    this.background.setRenderScale(this.state.backgroundRenderScale);
-    this.invertColors(this.state.invertColors);
+    const dpr = window.devicePixelRatio || 1;
+    this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
   }
 
   private updateFPSDisplay() {
@@ -5411,6 +6160,86 @@ class WebLyricsPlayer {
     } else if (this.volumeHighIcon) {
       this.volumeHighIcon.style.display = 'block';
     }
+  }
+
+  private initAlbumCoverEffects() {
+    if (!this.albumCoverContainer) return;
+
+    this.albumCoverContainer.addEventListener('mouseenter', this.handleAlbumCoverHover.bind(this));
+    this.albumCoverContainer.addEventListener('mousemove', this.handleAlbumCoverHover.bind(this));
+    this.albumCoverContainer.addEventListener('mouseleave', this.resetAlbumCoverEffects.bind(this));
+    this.albumCoverContainer.addEventListener('touchstart', this.handleAlbumCoverTouch.bind(this), { passive: true });
+    this.albumCoverContainer.addEventListener('touchmove', this.handleAlbumCoverTouch.bind(this), { passive: true });
+    this.albumCoverContainer.addEventListener('touchend', this.resetAlbumCoverEffects.bind(this));
+  }
+
+  private handleAlbumCoverHover(e: MouseEvent) {
+    if (!this.albumCoverContainer) return;
+
+    const rect = this.albumCoverContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    let tiltX = -((y - centerY) / centerY) * 20;
+    let tiltY = -((centerX - x) / centerX) * 20;
+    const isTop = y < centerY;
+    const isLeft = x < centerX;
+    const decayFactor = 0.6;
+    if (isTop && isLeft) {
+      tiltX *= decayFactor;
+    } else if (isTop && !isLeft) {
+      tiltX *= decayFactor;
+      tiltY *= decayFactor;
+    } else if (!isTop && isLeft) {
+    } else {
+      tiltY *= decayFactor;
+    }
+
+    this.applyLiquifyEffect(tiltX, tiltY, 0.95);
+  }
+
+  private handleAlbumCoverTouch(e: TouchEvent) {
+    if (!this.albumCoverContainer || e.touches.length === 0) return;
+
+    const touch = e.touches[0];
+    const rect = this.albumCoverContainer.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    let tiltX = -((y - centerY) / centerY) * 20;
+    let tiltY = -((centerX - x) / centerX) * 20;
+    const isTop = y < centerY;
+    const isLeft = x < centerX;
+    const decayFactor = 0.6;
+    if (isTop && isLeft) {
+      tiltX *= decayFactor;
+    } else if (isTop && !isLeft) {
+      tiltX *= decayFactor;
+      tiltY *= decayFactor;
+    } else if (!isTop && isLeft) {
+    } else {
+      tiltY *= decayFactor;
+    }
+
+    this.applyLiquifyEffect(tiltX, tiltY, 0.95);
+  }
+
+  private applyLiquifyEffect(tiltX: number, tiltY: number, scale: number) {
+    if (!this.albumCoverContainer) return;
+
+    this.albumCoverContainer.style.transform = `perspective(800px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale(${scale})`;
+
+    this.albumCoverContainer.style.boxShadow = `0 25px 35px rgba(0, 0, 0, 0.25), 0 15px 20px rgba(0, 0, 0, 0.2)`;
+  }
+
+  private resetAlbumCoverEffects() {
+    if (!this.albumCoverContainer) return;
+    this.albumCoverContainer.style.transform = '';
+    this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
   }
 }
 
