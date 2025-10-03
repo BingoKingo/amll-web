@@ -44,6 +44,12 @@ pnpm preview
 
    Base URL: `https://amlw.vercel.app/`
 
+   You can load music, lyrics, and cover image directly through URL parameters:
+
+   ```
+   https://amlw.vercel.app/?music=音乐链接&lyric=歌词链接&cover=封面链接&title=歌曲名&artist=艺术家
+   ```
+
    | Parameter | Type | Range | Default | Description |
    | - | - | - | - | - |
    | `music` | String | URL | | Audio file |
