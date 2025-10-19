@@ -1,0 +1,23 @@
+/* 新拟态B - 浅色背景的凹陷效果，使用伪元素实现，避免被图片覆盖，并随圆角变化 */
+#albumCoverContainer {
+  position: relative;
+}
+
+#albumCoverContainer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-shadow: 0 0 0 var(--dominant-color-dark), 0 0 0 var(--dominant-color-light), inset -7px -7px 12px var(--dominant-color-light), inset 7px 7px 12px var(--dominant-color-dark);
+  pointer-events: none;
+  z-index: 10;
+  border-radius: var(--border-radius, 0%);
+}
+
+#albumCoverLarge {
+  position: relative;
+  z-index: 5;
+  border-radius: var(--border-radius, 0%);
+}

@@ -1,0 +1,190 @@
+/* Arrows by Jeroen Franse from http://twitter.com/jroenf */
+/* 伪元素记得移除 */
+body.arrows {
+  background-color: var(--dominant-color-dark);
+}
+
+body.arrows::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(0, 0, 0) 22px, transparent 22px) 32px
+      32px,
+    linear-gradient(
+      45deg,
+      rgba(0, 0, 0) 22px,
+      transparent 22px,
+      transparent 45px,
+      var(--dominant-color-dark) 45px,
+      var(--dominant-color-dark) 67px,
+      transparent 67px
+    ),
+    linear-gradient(
+      -45deg,
+      rgba(0, 0, 0) 11px,
+      transparent 11px,
+      transparent 34px,
+      rgba(0, 0, 0) 34px,
+      rgba(0, 0, 0) 56px,
+      transparent 56px,
+      transparent 79px,
+      rgba(0, 0, 0) 79px
+    );
+  background-size: 64px 64px;
+  mix-blend-mode: multiply;
+  filter: brightness(5);
+  opacity: 0.3;
+}
+
+/* Blueprint Grid by Lea Verou from http://lea.verou.me/ */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.blueprint-grid {
+  background-image: linear-gradient(
+      rgba(255, 255, 255, 0.2) 2px,
+      transparent 2px
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.2) 2px, transparent 2px),
+    linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+  background-position: -2px -2px, -2px -2px, -1px -1px, -1px -1px;
+  background-color: var(--dominant-color-dark);
+}
+
+/* Checkerboard by Lea Verou from http://lea.verou.me/ */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.checkerboard {
+  --pattern-size: 50px;
+  --pattern-angle: 90deg;
+  background: repeating-conic-gradient(
+    from var(--pattern-angle),
+    rgba(255, 255, 255, 0.1) 0% 25%,
+    var(--dominant-color-dark) 0% 50%
+  );
+  background-size: var(--pattern-size) var(--pattern-size);
+  background-color: var(--dominant-color-dark);
+}
+
+/* Cicada stripes by Randy Merrill from http://forthedeveloper.com/ */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.cicada-stripes {
+  background-color: var(--dominant-color-dark);
+  background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.07) 50%,
+      transparent 50%
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.13) 50%, transparent 50%),
+    linear-gradient(90deg, transparent 50%, rgba(255, 255, 255, 0.17) 50%),
+    linear-gradient(90deg, transparent 50%, rgba(255, 255, 255, 0.19) 50%);
+  background-size: 13px, 29px, 37px, 53px;
+}
+
+/* Half-Rombes by Valentin Agachi from http://agachi.name/ */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.half-rombes {
+  --pattern-size: 15px;
+  background: repeating-conic-gradient(
+    from 30deg,
+    rgba(255, 255, 255, 0.05) 0% 60deg,
+    rgba(255, 255, 255, 0.1) 0% 120deg
+  );
+  background-size: var(--pattern-size) calc(var(--pattern-size) * tan(60deg));
+  background-color: var(--dominant-color-dark);
+}
+
+/* Matted by Miansari */
+body.matted {
+  background: repeating-linear-gradient(
+      45deg,
+      rgba(102, 102, 102, 0.2),
+      rgba(238, 233, 233, 0.2) 50%,
+      rgba(172, 168, 168, 0.2) 100%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      rgba(102, 102, 102, 0.2),
+      rgba(238, 233, 233, 0.2) 50%,
+      rgba(172, 168, 168, 0.2) 100%
+    );
+  background-size: 50px 50px;
+  background-color: var(--dominant-color-dark);
+}
+
+/* Microbial Mat by Logan McBroom from http://logan.mcbroom.me */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.microbial-mat {
+  background-color: var(--dominant-color-dark);
+  background: radial-gradient(
+        circle at 0% 50%,
+        rgba(255, 255, 255, 0) 9px,
+        rgba(255, 255, 255, 0.2) 10px,
+        rgba(255, 255, 255, 0) 11px
+      )
+      0px 10px,
+    radial-gradient(
+      at 100% 100%,
+      rgba(255, 255, 255, 0) 9px,
+      rgba(255, 255, 255, 0.2) 10px,
+      rgba(255, 255, 255, 0) 11px
+    ),
+    var(--dominant-color-dark);
+  background-size: 20px 20px;
+}
+
+/* None */
+body.none {
+  background-color: var(--dominant-color-dark);
+}
+
+/* Stairs by Logan McBroom from http://logan.mcbroom.me */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.stairs {
+  background-color: var(--dominant-color-dark);
+  background: linear-gradient(
+        63deg,
+        rgba(255, 255, 255, 0.1) 23%,
+        transparent 23%
+      )
+      7px 0,
+    linear-gradient(63deg, transparent 74%, rgba(255, 255, 255, 0.1) 78%),
+    linear-gradient(
+      63deg,
+      transparent 34%,
+      rgba(255, 255, 255, 0.1) 38%,
+      rgba(255, 255, 255, 0.1) 58%,
+      transparent 62%
+    ),
+    var(--dominant-color-dark);
+  background-size: 16px 48px;
+}
+
+/* Stripes by Lea Verou from http://lea.verou.me/ */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.stripes {
+  --pattern-angle: 90deg;
+  --pattern-size: 3px;
+  background-image: repeating-linear-gradient(
+    var(--pattern-angle),
+    transparent,
+    transparent var(--pattern-size),
+    rgba(255, 255, 255, 0) var(--pattern-size),
+    rgba(255, 255, 255, 0.2) calc(var(--pattern-size) * 2)
+  );
+  background-color: var(--dominant-color-dark);
+}
+
+/* Zig-Zag by eCSSpert from http://twitter.com/ecsspert */
+/* invertColors 需要反转 255,255,255 为 0,0,0 */
+body.zig-zag {
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%) -25px
+      0,
+    linear-gradient(225deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%) -25px 0,
+    linear-gradient(315deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+    linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%);
+  background-color: var(--dominant-color-dark);
+  background-size: 50px 50px;
+}

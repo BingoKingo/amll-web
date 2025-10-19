@@ -1,0 +1,4 @@
+/* CD样式 */
+#albumCoverContainer {
+  box-shadow: 0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18);
+}

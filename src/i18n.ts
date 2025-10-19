@@ -4,18 +4,12 @@ export interface Translations {
   songInfo: string;
   title: string;
   loopPlay: string;
-  loadFromUrl: string;
-  loadFiles: string;
-  resetPlayer: string;
   sourceFile: string;
   musicUrl: string;
   lyricsUrl: string;
   coverUrl: string;
-  extractedFromFilename: string;
   extractedSongInfo: string;
   usedFilenameAsTitle: string;
-  showControlPanel: string;
-  hideControlPanel: string;
   clickToAddLyrics: string;
   supportedLyricFormats: string;
   musicLoadSuccess: string;
@@ -41,12 +35,12 @@ export interface Translations {
   volume: string;
   playbackControl: string;
   amllBackground: string;
-  coverBackground: string;
+  cssBackground: string;
   solidBackground: string;
-  coverBlurLevel: string;
-  colorMask: string;
+  imageBlurLevel: string;
+  imageColorMask: string;
   invertColors: string;
-  showFPS: string;
+  showStats: string;
   enableMarquee: string;
   controlPointCode: string;
   roundedCover: string;
@@ -108,19 +102,13 @@ export const translations: Record<Language, Translations> = {
     songInfo: "Metadata",
     title: "Title",
     loopPlay: "Loop Playback",
-    loadFromUrl: "Load from URL",
-    loadFiles: "Load Files",
-    resetPlayer: "Reset Player",
     sourceFile: "Source",
     musicUrl: "Enter music URL",
     lyricsUrl: "Enter lyrics or lyrics URL",
     coverUrl: "Enter cover image URL",
-    extractedFromFilename: "Extracted song info from filename",
     extractedSongInfo: "Extracted song info successfully",
     usedFilenameAsTitle: "Used filename as song title",
-    showControlPanel: "Show Control Panel",
-    hideControlPanel: "Hide Control Panel",
-    clickToAddLyrics: "Click or drag & drop here to add lyrics",
+    clickToAddLyrics: "Click or drag & drop here to add synced lyrics",
     supportedLyricFormats:
       "Supports LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) formats",
     musicLoadSuccess: "Music file loaded successfully",
@@ -151,12 +139,12 @@ export const translations: Record<Language, Translations> = {
     volume: "Volume",
     playbackControl: "Playback Control",
     amllBackground: "AMLL Background",
-    coverBackground: "Cover Background",
+    cssBackground: "Cover Background",
     solidBackground: "Solid Background",
-    coverBlurLevel: "Blur Level",
-    colorMask: "Color Mask",
+    imageBlurLevel: "Image Blur Level",
+    imageColorMask: "Image Color Mask",
     invertColors: "Invert",
-    showFPS: "Show Performance Monitor",
+    showStats: "Show Performance Monitor",
     enableMarquee: "Title Marquee Effect",
     roundedCover: "Cover Rounded Corners",
     coverRotation: "Cover Rotation Speed",
@@ -182,7 +170,7 @@ export const translations: Record<Language, Translations> = {
     advanceLyricTiming: "Compact Gap (±400ms)",
     lowFreqVolume: "Low Frequency Volume",
     singleLyrics: "Single Lyrics",
-    coverStyle: "Cover Style",
+    coverStyle: "Cover Preset",
     normalShadow: "Shadow",
     innerShadow: "Inner Shadow",
     threeDShadow: "3D Shadow",
@@ -211,19 +199,13 @@ export const translations: Record<Language, Translations> = {
     songInfo: "元数据",
     title: "标题",
     loopPlay: "循环播放",
-    loadFromUrl: "从URL加载",
-    loadFiles: "加载文件",
-    resetPlayer: "重置播放器",
     sourceFile: "播放源",
     musicUrl: "输入音乐文件URL",
     lyricsUrl: "输入歌词或歌词文件URL",
     coverUrl: "输入封面图片URL",
-    extractedFromFilename: "从文件名解析歌曲信息",
     extractedSongInfo: "从文件名解析歌曲信息成功",
     usedFilenameAsTitle: "使用文件名作为歌曲标题",
-    showControlPanel: "显示控制面板",
-    hideControlPanel: "隐藏控制面板",
-    clickToAddLyrics: "点击或拖拽至此区域添加歌词",
+    clickToAddLyrics: "点击或拖拽至此区域添加同步歌词",
     supportedLyricFormats:
       "支持 LyRiC / LyRiC A2 / LyRiC Walaoke / ESLyRiC / Salt Player ESLyRiC (*.lrc, *.spl), Apple Music (*.ttml, *.json), Netease Music (*.yrc), Lyricify (*.lys, *.lyl, *.lqe), QQMusic (*.qrc), KuGou (*.krc), ALRC (*.alrc, *.json), SubRip (*.srt), Aegisub (*.ass), Musixmatch (*.json) 格式",
     musicLoadSuccess: "音乐文件加载成功",
@@ -254,12 +236,12 @@ export const translations: Record<Language, Translations> = {
     volume: "音量",
     playbackControl: "播放控制",
     amllBackground: "AMLL 背景",
-    coverBackground: "封面背景",
+    cssBackground: "封面背景",
     solidBackground: "纯色背景",
-    coverBlurLevel: "模糊程度",
-    colorMask: "颜色蒙版",
+    imageBlurLevel: "图像模糊程度",
+    imageColorMask: "图像颜色蒙版",
     invertColors: "反转",
-    showFPS: "显示性能监控",
+    showStats: "显示性能监控",
     enableMarquee: "标题跑马灯效果",
     roundedCover: "封面圆角",
     coverRotation: "封面旋转速度",
@@ -285,7 +267,7 @@ export const translations: Record<Language, Translations> = {
     advanceLyricTiming: "紧凑间隙 (±400ms)",
     lowFreqVolume: "低音频率",
     singleLyrics: "单行歌词",
-    coverStyle: "封面样式",
+    coverStyle: "封面预设",
     normalShadow: "阴影",
     innerShadow: "内阴影",
     threeDShadow: "立体投影",
@@ -314,7 +296,7 @@ export const translations: Record<Language, Translations> = {
 export function getCurrentLanguage(): Language {
   const browserLang = navigator.language.toLowerCase();
 
-  if (browserLang.startsWith("zh")) {
+  if (browserLang.indexOf("zh") === 0) {
     return "zh";
   }
 

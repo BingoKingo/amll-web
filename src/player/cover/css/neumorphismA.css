@@ -1,0 +1,5 @@
+/* 新拟态A - 浅色背景的凸起效果，支持动态圆角 */
+#albumCoverContainer {
+  box-shadow: 7px 7px 12px var(--dominant-color-dark), -7px -7px 12px var(--dominant-color-light), inset 0 0 0 var(--dominant-color-light), inset 0 0 0 var(--dominant-color-dark);
+  border-radius: var(--border-radius, 0%);
+}
