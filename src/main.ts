@@ -239,6 +239,7 @@ class WebLyricsPlayer {
   private toggleControlsBtn: HTMLElement | null = null;
   private lyricAlignAnchorSelect: HTMLSelectElement | null = null;
   private lyricDelayInput: HTMLInputElement | null = null;
+  private pendingLyricDelay: number | null = null;
   private amllLyricPlayer: HTMLElement | null = null;
   private lyricAreaHint: HTMLElement | null = null;
   private coverStyleDynamic: HTMLElement | null = null;
@@ -723,7 +724,7 @@ class WebLyricsPlayer {
     this.resetPlayerBtn = document.getElementById('resetPlayer');
     this.toggleControlsBtn = document.getElementById('toggleControls');
     this.lyricAlignAnchorSelect = document.getElementById('lyricAlignAnchor') as HTMLSelectElement;
-    this.lyricDelayInput = document.getElementById('lyricDelay') as HTMLInputElement;
+    this.lyricDelayInput = document.getElementById('lyricDelayInput') as HTMLInputElement;
     this.posYSpringMassInput = document.getElementById('springPosYMass') as HTMLInputElement;
     this.posYSpringDampingInput = document.getElementById('springPosYDamping') as HTMLInputElement;
     this.posYSpringStiffnessInput = document.getElementById('springPosYStiffness') as HTMLInputElement;
@@ -800,7 +801,7 @@ class WebLyricsPlayer {
       manualDominantColorLight: null,
       manualDominantColorDark: null,
       marqueeEnabled: true,
-      roundedCover: 16,
+      roundedCover: 55,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
       backgroundFPS: 60,
@@ -1773,7 +1774,7 @@ class WebLyricsPlayer {
       this.lyricDelayInput.addEventListener("input", (e) => {
         const value = parseInt((e.target as HTMLInputElement).value);
         if (!isNaN(value)) {
-          this.state.lyricDelay = value;
+          this.applyLyricDelay(value);
         }
       });
 
@@ -1786,7 +1787,7 @@ class WebLyricsPlayer {
             const delta = e.deltaY < 0 ? 50 : -50;
             const newValue = parseInt(lyricDelayInput.value || "0") + delta;
             lyricDelayInput.value = newValue.toString();
-            this.state.lyricDelay = newValue;
+            this.applyLyricDelay(newValue);
           },
           { passive: false }
         );
@@ -1797,7 +1798,7 @@ class WebLyricsPlayer {
             const delta = e.key === "ArrowUp" ? 50 : -50;
             const newValue = parseInt(lyricDelayInput.value || "0") + delta;
             lyricDelayInput.value = newValue.toString();
-            this.state.lyricDelay = newValue;
+            this.applyLyricDelay(newValue);
           }
         });
       }
@@ -3359,8 +3360,8 @@ class WebLyricsPlayer {
       if (!isNaN(delay)) {
         if (this.lyricDelayInput) {
           this.lyricDelayInput.value = delay.toString();
-          this.state.lyricDelay = delay;
         }
+        this.applyLyricDelay(delay);
       }
     }
 
@@ -3843,8 +3844,10 @@ class WebLyricsPlayer {
     const nextLineStartTime = this.findNextLyricLineStartTime(currentTimeMs);
     this.lyricPlayer.setCurrentTime(nextLineStartTime);
     setTimeout(() => {
-      const adjustedTime = currentTimeMs + this.state.lyricDelay;
-      this.lyricPlayer.setCurrentTime(adjustedTime);
+      const latestTimeMs = this.audio.currentTime * 1000;
+      const delayToApply = this.pendingLyricDelay ?? this.state.lyricDelay;
+      this.lyricPlayer.setCurrentTime(latestTimeMs + delayToApply);
+      this.pendingLyricDelay = null;
     }, 50);
   }
 
@@ -4434,7 +4437,7 @@ class WebLyricsPlayer {
     this.setDefaultColors();
     this.isColorsInitialized = false;
     this.initColors();
-    this.state.roundedCover = 8;
+    this.state.roundedCover = 55;
     this.updateRoundedCover();
     this.state.backgroundRenderScale = 1.00;
     const dpr = window.devicePixelRatio || 1;
@@ -4683,7 +4686,7 @@ class WebLyricsPlayer {
       manualDominantColorLight: null,
       manualDominantColorDark: null,
       marqueeEnabled: true,
-      roundedCover: 16,
+      roundedCover: 55,
       coverRotationSpeed: 0,
       backgroundRenderScale: 1,
       backgroundFPS: 60,
@@ -5392,8 +5395,8 @@ class WebLyricsPlayer {
       if (!isNaN(delay)) {
         if (this.lyricDelayInput) {
           this.lyricDelayInput.value = delay.toString();
-          this.state.lyricDelay = delay;
         }
+        this.applyLyricDelay(delay);
       }
     }
 
@@ -5713,7 +5716,7 @@ class WebLyricsPlayer {
         this.state.manualDominantColor = settings.manualDominantColor;
         this.state.manualDominantColorLight = settings.manualDominantColorLight;
         this.state.manualDominantColorDark = settings.manualDominantColorDark;
-        this.state.roundedCover = settings.roundedCover !== undefined ? settings.roundedCover : 16;
+        this.state.roundedCover = settings.roundedCover !== undefined ? settings.roundedCover : 55;
         this.state.marqueeEnabled = settings.marqueeEnabled !== undefined ? settings.marqueeEnabled : true;
         this.state.coverRotationSpeed = settings.coverRotationSpeed !== undefined ? settings.coverRotationSpeed : 0;
         this.state.backgroundRenderScale = settings.backgroundRenderScale !== undefined ? settings.backgroundRenderScale : 1;
@@ -6160,6 +6163,29 @@ class WebLyricsPlayer {
     } else if (this.volumeHighIcon) {
       this.volumeHighIcon.style.display = 'block';
     }
+  }
+
+  private applyLyricDelay(value: number) {
+    this.state.lyricDelay = value;
+    this.pendingLyricDelay = value;
+
+    if (!this.lyricPlayer) {
+      return;
+    }
+
+    if (!this.audio) {
+      this.lyricPlayer.setCurrentTime(value);
+      this.pendingLyricDelay = null;
+      return;
+    }
+
+    if (this.processedLyricLines.length === 0) {
+      return;
+    }
+
+    const adjustedTime = this.audio.currentTime * 1000 + value;
+    this.lyricPlayer.setCurrentTime(adjustedTime);
+    this.pendingLyricDelay = null;
   }
 
   private initAlbumCoverEffects() {
