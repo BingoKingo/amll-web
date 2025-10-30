@@ -37,11 +37,16 @@ amll-web/
 
 ### Install Dependencies
 ```bash
+# If you encounter "packages field missing or empty" error, first remove pnpm-workspace.yaml:
+rm pnpm-workspace.yaml
+
+# Then install dependencies:
 pnpm install
 ```
 
 ### Run Development Server
 ```bash
+# Start the development server (will automatically use another port if 5173 is in use)
 pnpm dev
 ```
 
@@ -54,6 +59,22 @@ pnpm build
 ```bash
 pnpm preview
 ```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **"packages field missing or empty" error during pnpm install**:
+   - This is often caused by an incorrectly configured `pnpm-workspace.yaml` file
+   - Solution: Remove the `pnpm-workspace.yaml` file and run `pnpm install` again
+
+2. **Port 5173 is in use**:
+   - Vite will automatically try another port (typically 5174)
+   - Check the terminal output for the actual URL where the server is running
+
+3. **Module not found errors**:
+   - Ensure all dependencies are properly installed with `pnpm install`
+   - Restart the development server after installing dependencies
 
 ## Code Architecture
 
