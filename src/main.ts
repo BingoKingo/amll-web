@@ -224,6 +224,100 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
 
 const cloneDefaultState = (): PlayerState => JSON.parse(JSON.stringify(DEFAULT_PLAYER_STATE));
 
+const BOOLEAN_TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const BOOLEAN_FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+function parseBooleanParam(raw: string): boolean {
+  const normalized = raw.trim().toLowerCase();
+  if (BOOLEAN_TRUE_VALUES.has(normalized)) {
+    return true;
+  }
+  if (BOOLEAN_FALSE_VALUES.has(normalized)) {
+    return false;
+  }
+  return normalized.length > 0;
+}
+
+function parseUrlParamValue(raw: string, defaultValue: any): any | undefined {
+  if (typeof defaultValue === 'boolean') {
+    return parseBooleanParam(raw);
+  }
+  if (typeof defaultValue === 'number') {
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed)) {
+      return undefined;
+    }
+    return parsed;
+  }
+  if (defaultValue === null) {
+    return raw;
+  }
+  return raw;
+}
+
+function parseVolumeAlias(raw: string): number | undefined {
+  const volInput = Number(raw);
+  if (Number.isNaN(volInput)) {
+    return undefined;
+  }
+  if (volInput > 1 && volInput <= 100) {
+    return Math.round(volInput);
+  }
+  if (volInput >= 0 && volInput <= 1) {
+    return Math.round(volInput * 100);
+  }
+  if (volInput > 100) {
+    return 100;
+  }
+  if (volInput < 0) {
+    return 0;
+  }
+  return undefined;
+}
+
+const URL_METADATA_STATE_KEYS: (keyof PlayerState)[] = [
+  'musicUrl',
+  'lyricUrl',
+  'coverUrl',
+  'songTitle',
+  'songArtist',
+  'currentTime',
+  'duration',
+  'isPlaying'
+];
+
+const STYLE_PARAM_KEYS = (Object.keys(DEFAULT_PLAYER_STATE) as (keyof PlayerState)[]).filter(
+  (key) => !URL_METADATA_STATE_KEYS.includes(key)
+);
+
+const URL_ALIAS_CONFIG: Record<
+  string,
+  { property: keyof PlayerState; parse?: (raw: string, defaultValue: any) => any }
+> = {
+  ms: { property: 'lyricDelay' },
+  x: { property: 'playbackRate' },
+  vol: {
+    property: 'volume',
+    parse: (raw) => parseVolumeAlias(raw)
+  },
+  loop: { property: 'loopPlay', parse: (raw) => parseBooleanParam(raw) },
+  auto: { property: 'autoPlay', parse: (raw) => parseBooleanParam(raw) },
+  t: {
+    property: 'rangeStartTime',
+    parse: (raw) => {
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+  },
+  te: {
+    property: 'rangeEndTime',
+    parse: (raw) => {
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+  }
+};
+
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: BaseDomLyricPlayer;
@@ -355,6 +449,7 @@ class WebLyricsPlayer {
   private loadFromUrlBtn: HTMLElement | null = null;
   private hasAutoLoadedFromUrl = false;
   private urlLyricDelayOverride: number | null = null;
+  private pendingControlPointCodeFromUrl: string | null = null;
   private loadFilesBtn: HTMLElement | null = null;
   private resetPlayerBtn: HTMLElement | null = null;
   private toggleControlsBtn: HTMLElement | null = null;
@@ -3898,6 +3993,69 @@ class WebLyricsPlayer {
     return this.processedLyricLines[this.processedLyricLines.length - 1].startTime;
   }
 
+  private applyUrlStyleSideEffects(property: keyof PlayerState, value: any) {
+    switch (property) {
+      case 'lyricDelay': {
+        const numeric = Math.round(Number(value));
+        if (Number.isNaN(numeric)) {
+          return;
+        }
+        this.state.lyricDelay = numeric;
+        this.pendingLyricDelay = numeric;
+        this.urlLyricDelayOverride = numeric;
+        if (this.lyricDelayInput) {
+          this.lyricDelayInput.value = numeric.toString();
+        }
+        break;
+      }
+      case 'playbackRate': {
+        const numeric = Number(value);
+        if (Number.isNaN(numeric) || numeric <= 0) {
+          return;
+        }
+        this.state.playbackRate = numeric;
+        if (this.playbackRateControl) {
+          this.playbackRateControl.value = numeric.toString();
+        }
+        if (this.playbackRateValue) {
+          this.playbackRateValue.textContent = `${numeric.toFixed(2)}x`;
+        }
+        this.updatePlaybackRateIcon(numeric);
+        break;
+      }
+      case 'volume': {
+        let numeric = Number(value);
+        if (Number.isNaN(numeric)) {
+          return;
+        }
+        numeric = Math.max(0, Math.min(100, Math.round(numeric)));
+        this.state.volume = numeric;
+        if (this.volumeControl) {
+          this.volumeControl.value = numeric.toString();
+        }
+        if (this.volumeValue) {
+          this.volumeValue.textContent = `${numeric}%`;
+        }
+        this.updateVolumeIcon(numeric);
+        break;
+      }
+      case 'loopPlay': {
+        const boolValue = Boolean(value);
+        this.state.loopPlay = boolValue;
+        if (this.loopPlayCheckbox) {
+          this.loopPlayCheckbox.checked = boolValue;
+        }
+        break;
+      }
+      case 'autoPlay': {
+        this.state.autoPlay = Boolean(value);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   private updateLyricsDisplay() {
     if (!this.hasLyrics) return;
     const lines = this.originalLyricLines.map(line => ({ ...line }));
@@ -5409,15 +5567,32 @@ class WebLyricsPlayer {
     const hasAutoParam = urlParams.has("auto");
     const autoPlay =
       urlParams.get("auto") === "1" || urlParams.get("auto") === "true";
-    const playbackSpeed = urlParams.get("x");
-    const lyricDelayMs = urlParams.get("ms");
-    const volume = urlParams.get("vol");
-    const hasLoopParam = urlParams.has("loop");
-    const loopPlay = hasLoopParam
-      ? urlParams.get("loop") === "1" || urlParams.get("loop") === "true"
-      : true;
     const currentTime = urlParams.get("t");
     const endTime = urlParams.get("te");
+
+    let styleParamsChanged = false;
+
+    const processStyleParam = (
+      queryKey: string,
+      config: { property: keyof PlayerState; parse?: (raw: string, defaultValue: any) => any }
+    ) => {
+      const raw = urlParams.get(queryKey);
+      if (raw === null) {
+        return;
+      }
+      const { property, parse } = config;
+      const defaultValue = DEFAULT_PLAYER_STATE[property];
+      const parsed =
+        parse ? parse(raw, defaultValue) : parseUrlParamValue(raw, defaultValue);
+      if (parsed === undefined) {
+        return;
+      }
+      (this.state as any)[property] = parsed;
+      this.urlOverrides.add(property);
+      this.applyUrlStyleSideEffects(property, parsed);
+      styleParamsChanged = true;
+    };
+
     if (!music) {
       if (this.controlPanel) {
         this.controlPanel.style.width = "320px";
@@ -5469,74 +5644,26 @@ class WebLyricsPlayer {
       this.state.songArtist = artist;
     }
 
-    if (playbackSpeed) {
-      const speed = parseFloat(playbackSpeed);
-      if (!isNaN(speed) && speed > 0) {
-        if (this.playbackRateControl) {
-          this.playbackRateControl.value = speed.toString();
-          if (this.audio) {
-            this.audio.playbackRate = speed;
-          }
-          if (this.playbackRateValue) {
-            this.playbackRateValue.textContent = speed.toFixed(2) + "x";
-          }
-          this.updatePlaybackRateIcon(speed);
-          this.state.playbackRate = speed;
-          this.urlOverrides.add("playbackRate");
-        }
-      }
+    Object.entries(URL_ALIAS_CONFIG).forEach(([queryKey, config]) => {
+      processStyleParam(queryKey, config);
+    });
+
+    for (const property of STYLE_PARAM_KEYS) {
+      processStyleParam(property as string, { property });
     }
 
-    if (lyricDelayMs) {
-      const delay = parseInt(lyricDelayMs);
-      if (!isNaN(delay)) {
-        if (this.lyricDelayInput) {
-          this.lyricDelayInput.value = delay.toString();
-        }
-        this.urlLyricDelayOverride = delay;
-        this.applyLyricDelay(delay, { skipSave: true });
-        this.urlOverrides.add("lyricDelay");
+    const controlPointCode = urlParams.get('controlPointCode');
+    if (controlPointCode !== null) {
+      this.urlOverrides.add('controlPointCode');
+      this.pendingControlPointCodeFromUrl = controlPointCode;
+      if (this.controlPointCodeInput) {
+        this.controlPointCodeInput.value = controlPointCode;
       }
+      styleParamsChanged = true;
     }
 
-    if (volume) {
-      const volInput = parseFloat(volume);
-      if (!isNaN(volInput)) {
-        let vol;
-        if (volInput > 1 && volInput <= 100) {
-          vol = volInput / 100;
-        } else if (volInput >= 0 && volInput <= 1) {
-          vol = volInput;
-        } else {
-          vol = 0.5;
-        }
-
-        if (this.volumeControl) {
-          this.volumeControl.value = Math.round(vol * 100).toString();
-          if (this.audio) {
-            this.audio.volume = vol;
-          }
-          if (this.volumeValue) {
-            this.volumeValue.textContent = Math.round(vol * 100) + "%";
-          }
-          this.updateVolumeIcon(Math.round(vol * 100));
-          this.state.volume = Math.round(vol * 100);
-          this.urlOverrides.add("volume");
-        }
-      }
-    }
-
-    if (hasLoopParam) {
-      if (this.loopPlayCheckbox) {
-        this.loopPlayCheckbox.checked = loopPlay;
-        this.state.loopPlay = loopPlay;
-        this.urlOverrides.add("loopPlay");
-      }
-    }
-
-    if (hasAutoParam) {
-      this.state.autoPlay = autoPlay;
-      this.urlOverrides.add("autoPlay");
+    if (styleParamsChanged) {
+      this.saveBackgroundSettings();
     }
 
     if (currentTime) {
@@ -5614,6 +5741,14 @@ class WebLyricsPlayer {
       }
       this.applyLyricDelay(this.urlLyricDelayOverride, { skipSave: true });
       this.urlLyricDelayOverride = null;
+    }
+
+    if (this.pendingControlPointCodeFromUrl) {
+      if (this.controlPointCodeInput) {
+        this.controlPointCodeInput.value = this.pendingControlPointCodeFromUrl;
+      }
+      this.applyControlPointCode();
+      this.pendingControlPointCodeFromUrl = null;
     }
 
     if (!this.hasAutoLoadedFromUrl) {
