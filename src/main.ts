@@ -4051,6 +4051,29 @@ class WebLyricsPlayer {
         this.state.autoPlay = Boolean(value);
         break;
       }
+      case 'lyricAlignAnchor': {
+        if (typeof value === 'string') {
+          const normalized = value === 'top' || value === 'bottom' ? value : 'center';
+          this.state.lyricAlignAnchor = normalized as PlayerState['lyricAlignAnchor'];
+          if (this.lyricAlignAnchorSelect) {
+            this.lyricAlignAnchorSelect.value = normalized;
+          }
+        }
+        break;
+      }
+      case 'lyricAlignPosition': {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          this.state.lyricAlignPosition = numeric;
+          if (this.lyricAlignPosition) {
+            this.lyricAlignPosition.value = numeric.toString();
+          }
+          if (this.lyricAlignPositionValue) {
+            this.lyricAlignPositionValue.textContent = numeric.toFixed(1);
+          }
+        }
+        break;
+      }
       default:
         break;
     }
