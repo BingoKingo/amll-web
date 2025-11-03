@@ -44,6 +44,54 @@ type SpringParams = spring.SpringParams;
 (window as any).lyrics = lyrics;
 import { SpeedInsights } from "@vercel/speed-insights/next"
 
+declare global {
+  interface Window {
+    __AMLL_DEFAULT_ALBUM__?: string;
+  }
+}
+
+const DEFAULT_AMLL_COVER_URL = (() => {
+  if (typeof window !== "undefined") {
+    const override = window.__AMLL_DEFAULT_ALBUM__;
+    if (typeof override === "string" && override.trim()) {
+      return override;
+    }
+  }
+  return "./icons/icon-512x512.png";
+})();
+
+const originalFetch = typeof window !== "undefined" ? window.fetch.bind(window) : null;
+
+function normalizeBackendUrl(input: string): string {
+  if (!input || input[0] !== ":") {
+    return input;
+  }
+
+  const match = /^:(\d+)(\/.*)?$/.exec(input);
+  if (!match) {
+    return input;
+  }
+
+  const [, port, rest = ""] = match;
+  const protocol = window.location?.protocol || "http:";
+  const hostname = window.location?.hostname || "127.0.0.1";
+  return `${protocol}//${hostname}:${port}${rest}`;
+}
+
+if (originalFetch) {
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === "string") {
+      input = normalizeBackendUrl(input);
+    }
+    return originalFetch(input, init);
+  }) as typeof window.fetch;
+}
+
+function resolveDefaultCover(input?: string | null): string {
+  const candidate = typeof input === "string" ? input.trim() : "";
+  return candidate ? candidate : DEFAULT_AMLL_COVER_URL;
+}
+
 interface PlayerState {
   musicUrl: string;
   lyricUrl: string;
@@ -190,6 +238,7 @@ class WebLyricsPlayer {
   private isInitialized = false;
   private hasLyrics = false;
   private gui: GUI | null = null;
+  private urlOverrides = new Set<string>();
   private colorThief: ColorThief;
   private static debounce(func: Function, wait: number) {
     let timeout: number | null = null;
@@ -959,6 +1008,7 @@ class WebLyricsPlayer {
       this.timeDisplay.addEventListener("click", () => {
         this.state.showRemainingTime = !this.state.showRemainingTime;
         this.updateTimeDisplay();
+        this.saveBackgroundSettings();
       });
       this.timeDisplay.style.cursor = "pointer";
     }
@@ -967,6 +1017,7 @@ class WebLyricsPlayer {
       this.landscapeTimeDisplay.addEventListener("click", () => {
         this.state.showRemainingTime = !this.state.showRemainingTime;
         this.updateTimeDisplay();
+        this.saveBackgroundSettings();
       });
       this.landscapeTimeDisplay.style.cursor = "pointer";
     }
@@ -1687,12 +1738,14 @@ class WebLyricsPlayer {
       ?.addEventListener("input", (e) => {
         this.state.songTitle = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
+        this.saveBackgroundSettings();
       });
 
     this.songArtistInput
       ?.addEventListener("input", (e) => {
         this.state.songArtist = (e.target as HTMLInputElement).value;
         this.updateSongInfo();
+        this.saveBackgroundSettings();
       });
 
     this.songTitleInput
@@ -1702,6 +1755,7 @@ class WebLyricsPlayer {
         if (this.songTitle) {
           this.checkAndUpdateMarquee(this.songTitle);
         }
+        this.saveBackgroundSettings();
       });
 
     this.songTitleInput
@@ -1718,6 +1772,7 @@ class WebLyricsPlayer {
         if (this.songArtist) {
           this.checkAndUpdateMarquee(this.songArtist);
         }
+        this.saveBackgroundSettings();
       });
 
     this.songArtistInput
@@ -1878,6 +1933,9 @@ class WebLyricsPlayer {
         this.loadFromURLs();
       }
     });
+    this.musicUrl?.addEventListener("input", () => {
+      this.saveBackgroundSettings();
+    });
 
     if (this.lyricUrl) {
       const adjustTextareaHeight = () => {
@@ -1898,6 +1956,9 @@ class WebLyricsPlayer {
       this.lyricUrl.addEventListener('paste', () => {
         setTimeout(adjustTextareaHeight, 0);
       });
+      this.lyricUrl.addEventListener('input', () => {
+        this.saveBackgroundSettings();
+      });
     }
 
     this.lyricUrl?.addEventListener("keydown", (e) => {
@@ -1916,6 +1977,9 @@ class WebLyricsPlayer {
           this.processCoverInput(this.coverUrl.value);
         }
       }
+    });
+    this.coverUrl?.addEventListener("input", () => {
+      this.saveBackgroundSettings();
     });
 
     this.loadFilesBtn?.addEventListener("click", () => {
@@ -2768,7 +2832,7 @@ class WebLyricsPlayer {
         this.saveBackgroundSettings();
         break;
       case "cover":
-        this.background.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+        this.background.setAlbum(resolveDefaultCover(this.state.coverUrl));
         if (this.player) this.player.style.background = "";
         this.state.backgroundType = 'cover';
         this.updateBackground();
@@ -3255,7 +3319,7 @@ class WebLyricsPlayer {
 
     this.initCoverBlurBackground();
     this.updateBackground();
-    this.background.setAlbum("./assets/icon-512x512.png");
+    this.background.setAlbum(DEFAULT_AMLL_COVER_URL);
     this.setDefaultColors();
 
     if (this.controlPanel) {
@@ -3345,7 +3409,7 @@ class WebLyricsPlayer {
       const url = URL.createObjectURL(file);
       this.state.coverUrl = url;
       this.updateBackground();
-      this.background.setAlbum(url || "./assets/icon-512x512.png");
+      this.background.setAlbum(resolveDefaultCover(url));
       await this.extractAndProcessCoverColor(url);
       this.applyDominantColorAsCSSVariable();
       this.updateBackground();
@@ -3364,35 +3428,27 @@ class WebLyricsPlayer {
 
     // 如果输入框为空，尝试从URL参数获取
     const urlParams = new URLSearchParams(window.location.search);
+    let shouldPersistSettings = false;
 
-    if (!musicUrl) {
-      const urlMusic = urlParams.get("music");
-      if (urlMusic && this.musicUrl) {
-        musicUrl = urlMusic;
-        this.musicUrl.value = musicUrl;
-        if (this.state.autoPlay) {
-          this.togglePlayPause();
-        } else {
-          this.state.isPlaying = false;
-          this.updatePlayButton();
-        }
-      }
+    const urlMusic = urlParams.get("music");
+    if (urlMusic && this.musicUrl) {
+      musicUrl = urlMusic;
+      this.musicUrl.value = urlMusic;
+      shouldPersistSettings = true;
     }
 
-    if (!lyricUrl) {
-      const urlLyric = urlParams.get("lyric");
-      if (urlLyric && this.lyricUrl) {
-        lyricUrl = urlLyric;
-        this.lyricUrl.value = lyricUrl;
-      }
+    const urlLyric = urlParams.get("lyric");
+    if (urlLyric && this.lyricUrl) {
+      lyricUrl = urlLyric;
+      this.lyricUrl.value = lyricUrl;
+      shouldPersistSettings = true;
     }
 
-    if (!coverUrl) {
-      const urlCover = urlParams.get("cover");
-      if (urlCover && this.coverUrl) {
-        coverUrl = urlCover;
-        this.coverUrl.value = coverUrl;
-      }
+    const urlCover = urlParams.get("cover");
+    if (urlCover && this.coverUrl) {
+      coverUrl = urlCover;
+      this.coverUrl.value = urlCover;
+      shouldPersistSettings = true;
     }
 
     const playbackSpeed = urlParams.get("x");
@@ -3401,7 +3457,6 @@ class WebLyricsPlayer {
     const loopPlay =
       urlParams.get("loop") === "1" || urlParams.get("loop") === "true";
     const currentTime = urlParams.get("t");
-    let shouldPersistSettings = false;
 
     if (playbackSpeed) {
       const speed = parseFloat(playbackSpeed);
@@ -3466,20 +3521,18 @@ class WebLyricsPlayer {
       }
     }
 
-    if (this.songTitleInput && !this.songTitleInput.value) {
-      const urlTitle = urlParams.get("title");
-      if (urlTitle) {
-        this.songTitleInput.value = urlTitle;
-        this.state.songTitle = urlTitle;
-      }
+    const urlTitle = urlParams.get("title");
+    if (urlTitle && this.songTitleInput) {
+      this.songTitleInput.value = urlTitle;
+      this.state.songTitle = urlTitle;
+      shouldPersistSettings = true;
     }
 
-    if (this.songArtistInput && !this.songArtistInput.value) {
-      const urlArtist = urlParams.get("artist");
-      if (urlArtist) {
-        this.songArtistInput.value = urlArtist;
-        this.state.songArtist = urlArtist;
-      }
+    const urlArtist = urlParams.get("artist");
+    if (urlArtist && this.songArtistInput) {
+      this.songArtistInput.value = urlArtist;
+      this.state.songArtist = urlArtist;
+      shouldPersistSettings = true;
     }
 
     if (this.state.songTitle) {
@@ -3548,7 +3601,7 @@ class WebLyricsPlayer {
       if (urlPattern.test(coverUrl.trim())) {
         this.state.coverUrl = coverUrl;
         this.updateBackground();
-        this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+        this.background.setAlbum(resolveDefaultCover(coverUrl));
         await this.extractAndProcessCoverColor(coverUrl);
         this.applyDominantColorAsCSSVariable();
         this.updateFileInputDisplay("coverFile", coverUrl);
@@ -3560,14 +3613,14 @@ class WebLyricsPlayer {
           const charset = base64Match[3] || 'utf-8';
           this.state.coverUrl = coverUrl;
           this.updateBackground();
-          this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+          this.background.setAlbum(resolveDefaultCover(coverUrl));
           await this.extractAndProcessCoverColor(coverUrl);
           this.applyDominantColorAsCSSVariable();
           this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
         } else {
           this.state.coverUrl = coverUrl;
           this.updateBackground();
-          this.background.setAlbum(coverUrl || "./assets/icon-512x512.png");
+          this.background.setAlbum(resolveDefaultCover(coverUrl));
           await this.extractAndProcessCoverColor(coverUrl);
           this.applyDominantColorAsCSSVariable();
           this.updateFileInputDisplay("coverFile", coverUrl);
@@ -3600,6 +3653,7 @@ class WebLyricsPlayer {
       }
     }
 
+    this.saveBackgroundSettings();
     this.showStatus(t("loadFromUrlComplete"));
   }
 
@@ -3630,7 +3684,7 @@ class WebLyricsPlayer {
     if (urlPattern.test(input.trim())) {
       this.state.coverUrl = input;
       this.updateBackground();
-      this.background.setAlbum(input || "./assets/icon-512x512.png");
+      this.background.setAlbum(resolveDefaultCover(input));
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", input);
@@ -3644,7 +3698,7 @@ class WebLyricsPlayer {
       const charset = base64Match[3] || 'utf-8';
       this.state.coverUrl = input;
       this.updateBackground();
-      this.background.setAlbum(input || "./assets/icon-512x512.png");
+      this.background.setAlbum(resolveDefaultCover(input));
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
@@ -3653,7 +3707,7 @@ class WebLyricsPlayer {
 
     this.state.coverUrl = input;
     this.updateBackground();
-    this.background.setAlbum(input || "./assets/icon-512x512.png");
+    this.background.setAlbum(resolveDefaultCover(input));
     await this.extractAndProcessCoverColor(input);
     this.applyDominantColorAsCSSVariable();
     this.updateFileInputDisplay("coverFile", input);
@@ -3926,6 +3980,7 @@ class WebLyricsPlayer {
       this.showTranslatedLyricCheckbox.addEventListener('change', (e) => {
         this.state.showTranslatedLyric = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
       });
     }
 
@@ -3934,6 +3989,7 @@ class WebLyricsPlayer {
       this.showRomanLyricCheckbox.addEventListener('change', (e) => {
         this.state.showRomanLyric = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
       });
     }
 
@@ -3942,6 +3998,7 @@ class WebLyricsPlayer {
       this.swapLyricPositionsCheckbox.addEventListener('change', (e) => {
         this.state.swapLyricPositions = (e.target as HTMLInputElement).checked;
         this.updateLyricsDisplay();
+        this.saveBackgroundSettings();
       });
     }
 
@@ -4503,7 +4560,7 @@ class WebLyricsPlayer {
     this.updateFileInputDisplay("coverFile", "");
     this.updateFileInputDisplay("lyricFile", "");
 
-    this.background.setAlbum("./assets/icon-512x512.png");
+    this.background.setAlbum(DEFAULT_AMLL_COVER_URL);
    this.setDefaultColors();
    this.isColorsInitialized = false;
    this.initColors();
@@ -4551,7 +4608,7 @@ class WebLyricsPlayer {
     }
 
     if (this.albumCoverLarge) {
-      this.albumCoverLarge.src = "./assets/icon-512x512.png";
+      this.albumCoverLarge.src = DEFAULT_AMLL_COVER_URL;
     }
 
     if (this.songTitle) {
@@ -4842,7 +4899,7 @@ class WebLyricsPlayer {
   // 更新媒体会话元数据
   private updateMediaSessionMetadata() {
     if ("mediaSession" in navigator) {
-      const coverUrl = this.state.coverUrl || "./assets/icon-512x512.png";
+      const coverUrl = resolveDefaultCover(this.state.coverUrl);
 
       navigator.mediaSession.metadata = new MediaMetadata({
         title: this.state.songTitle || t("title"),
@@ -4924,7 +4981,7 @@ class WebLyricsPlayer {
       if (this.state.coverUrl) {
         this.albumCoverLarge.src = this.state.coverUrl;
       } else {
-        this.albumCoverLarge.src = "./assets/icon-512x512.png";
+        this.albumCoverLarge.src = DEFAULT_AMLL_COVER_URL;
       }
       this.songTitle.textContent = this.state.songTitle || t("title");
       this.songArtist.textContent = this.state.songArtist || t("artist");
@@ -5114,7 +5171,7 @@ class WebLyricsPlayer {
                   this.coverUrl.value = base64;
                 }
               }
-              this.background.setAlbum(base64 || "./assets/icon-512x512.png");
+              this.background.setAlbum(resolveDefaultCover(base64));
               this.extractAndProcessCoverColor(base64);
               this.applyDominantColorAsCSSVariable();
               this.updateBackground();
@@ -5340,6 +5397,7 @@ class WebLyricsPlayer {
   }
 
   public loadFromURLParams() {
+    this.urlOverrides.clear();
     const urlParams = new URLSearchParams(window.location.search);
     const music = urlParams.get("music");
     const lyric = urlParams.get("lyric");
@@ -5347,10 +5405,8 @@ class WebLyricsPlayer {
     const title = urlParams.get("title");
     const artist = urlParams.get("artist");
     const hasAutoParam = urlParams.has("auto");
-    const autoPlay = hasAutoParam
-      ? urlParams.get("auto") === "1" || urlParams.get("auto") === "true"
-      : true;
-    this.state.autoPlay = autoPlay;
+    const autoPlay =
+      urlParams.get("auto") === "1" || urlParams.get("auto") === "true";
     const playbackSpeed = urlParams.get("x");
     const lyricDelayMs = urlParams.get("ms");
     const volume = urlParams.get("vol");
@@ -5360,7 +5416,6 @@ class WebLyricsPlayer {
       : true;
     const currentTime = urlParams.get("t");
     const endTime = urlParams.get("te");
-    let shouldPersistSettings = false;
     if (!music) {
       if (this.controlPanel) {
         this.controlPanel.style.width = "320px";
@@ -5369,16 +5424,33 @@ class WebLyricsPlayer {
       }
     }
 
-    if (music && this.musicUrl) {
-      this.musicUrl.value = music;
+    if (music) {
+      this.urlOverrides.add("musicUrl");
+      this.urlOverrides.add("musicUrlInput");
+      this.state.musicUrl = music;
+      if (this.musicUrl) {
+        this.musicUrl.value = music;
+      }
     }
-    if (lyric && this.lyricUrl) {
-      this.lyricUrl.value = lyric;
+    if (lyric) {
+      this.urlOverrides.add("lyricUrl");
+      this.urlOverrides.add("lyricUrlInput");
+      this.state.lyricUrl = lyric;
+      if (this.lyricUrl) {
+        this.lyricUrl.value = lyric;
+      }
     }
-    if (cover && this.coverUrl) {
-      this.coverUrl.value = cover;
+    if (cover) {
+      this.urlOverrides.add("coverUrl");
+      this.urlOverrides.add("coverUrlInput");
+      this.state.coverUrl = cover;
+      if (this.coverUrl) {
+        this.coverUrl.value = cover;
+      }
     }
     if (title) {
+      this.urlOverrides.add("songTitle");
+      this.urlOverrides.add("songTitleInput");
       if (this.songTitleInput) this.songTitleInput.value = title;
       this.state.songTitle = title;
 
@@ -5389,6 +5461,8 @@ class WebLyricsPlayer {
       }
     }
     if (artist) {
+      this.urlOverrides.add("songArtist");
+      this.urlOverrides.add("songArtistInput");
       if (this.songArtistInput) this.songArtistInput.value = artist;
       this.state.songArtist = artist;
     }
@@ -5406,7 +5480,7 @@ class WebLyricsPlayer {
           }
           this.updatePlaybackRateIcon(speed);
           this.state.playbackRate = speed;
-          shouldPersistSettings = true;
+          this.urlOverrides.add("playbackRate");
         }
       }
     }
@@ -5418,6 +5492,7 @@ class WebLyricsPlayer {
           this.lyricDelayInput.value = delay.toString();
         }
         this.applyLyricDelay(delay, { skipSave: true });
+        this.urlOverrides.add("lyricDelay");
       }
     }
 
@@ -5443,7 +5518,7 @@ class WebLyricsPlayer {
           }
           this.updateVolumeIcon(Math.round(vol * 100));
           this.state.volume = Math.round(vol * 100);
-          shouldPersistSettings = true;
+          this.urlOverrides.add("volume");
         }
       }
     }
@@ -5452,8 +5527,25 @@ class WebLyricsPlayer {
       if (this.loopPlayCheckbox) {
         this.loopPlayCheckbox.checked = loopPlay;
         this.state.loopPlay = loopPlay;
-        shouldPersistSettings = true;
+        this.urlOverrides.add("loopPlay");
       }
+    }
+
+    if (hasAutoParam) {
+      this.state.autoPlay = autoPlay;
+      this.urlOverrides.add("autoPlay");
+    }
+
+    if (currentTime) {
+      this.urlOverrides.add("rangeStartTime");
+    }
+    if (endTime) {
+      this.urlOverrides.add("rangeEndTime");
+      this.urlOverrides.add("isRangeMode");
+    }
+
+    if (music || lyric || cover || title || artist) {
+      this.updateSongInfo();
     }
 
     if (music || lyric || cover) {
@@ -5474,16 +5566,20 @@ class WebLyricsPlayer {
           }
         }
 
-        if (autoPlay && this.audio) {
-          this.audio.play().catch((error) => {
+        if ((hasAutoParam ? autoPlay : this.state.autoPlay) && this.audio) {
+          this.audio.play().catch(() => {
             this.showAutoPlayHint();
           });
         }
       });
+      return;
     }
 
-    if (shouldPersistSettings) {
-      this.saveBackgroundSettings();
+    if (currentTime && this.audio) {
+      const time = parseFloat(currentTime);
+      if (!isNaN(time) && time >= 0) {
+        this.audio.currentTime = time;
+      }
     }
   }
 
@@ -5726,6 +5822,21 @@ class WebLyricsPlayer {
       playbackRate: this.state.playbackRate,
       volume: this.state.volume,
       loopPlay: this.state.loopPlay,
+      showRemainingTime: this.state.showRemainingTime,
+      autoPlay: this.state.autoPlay,
+      musicUrl: this.state.musicUrl,
+      lyricUrl: this.state.lyricUrl,
+      coverUrl: this.state.coverUrl,
+      songTitle: this.state.songTitle,
+      songArtist: this.state.songArtist,
+      musicUrlInput: this.musicUrl?.value || '',
+      lyricUrlInput: this.lyricUrl?.value || '',
+      coverUrlInput: this.coverUrl?.value || '',
+      songTitleInput: this.songTitleInput?.value || '',
+      songArtistInput: this.songArtistInput?.value || '',
+      isRangeMode: this.state.isRangeMode,
+      rangeStartTime: this.state.rangeStartTime,
+      rangeEndTime: this.state.rangeEndTime,
       controlPointCode: this.controlPointCodeInput?.value || '',
     };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
@@ -5737,68 +5848,219 @@ class WebLyricsPlayer {
       if (saved) {
         const settings = JSON.parse(saved);
         const defaults = DEFAULT_PLAYER_STATE;
-        this.state.backgroundType = typeof settings.backgroundType === 'string' ? settings.backgroundType : defaults.backgroundType;
-        this.state.backgroundDynamic = typeof settings.backgroundDynamic === 'boolean' ? settings.backgroundDynamic : defaults.backgroundDynamic;
-        this.state.backgroundFlowSpeed = typeof settings.backgroundFlowSpeed === 'number' ? settings.backgroundFlowSpeed : defaults.backgroundFlowSpeed;
-        this.state.backgroundColorMask = typeof settings.backgroundColorMask === 'boolean' ? settings.backgroundColorMask : defaults.backgroundColorMask;
-        this.state.backgroundMaskColor = typeof settings.backgroundMaskColor === 'string' ? settings.backgroundMaskColor : defaults.backgroundMaskColor;
-        this.state.backgroundMaskOpacity = typeof settings.backgroundMaskOpacity === 'number' ? settings.backgroundMaskOpacity : defaults.backgroundMaskOpacity;
-        this.state.showFPS = typeof settings.showFPS === 'boolean' ? settings.showFPS : defaults.showFPS;
-        this.state.coverBlurLevel = typeof settings.coverBlurLevel === 'number' ? settings.coverBlurLevel : defaults.coverBlurLevel;
-        this.state.invertColors = typeof settings.invertColors === 'boolean' ? settings.invertColors : defaults.invertColors;
+        const hasSetting = (key: string) => Object.prototype.hasOwnProperty.call(settings, key);
+
+        if (hasSetting('backgroundType')) {
+          this.state.backgroundType = typeof settings.backgroundType === 'string' ? settings.backgroundType : defaults.backgroundType;
+        }
+        if (hasSetting('backgroundDynamic')) {
+          this.state.backgroundDynamic = typeof settings.backgroundDynamic === 'boolean' ? settings.backgroundDynamic : defaults.backgroundDynamic;
+        }
+        if (hasSetting('backgroundFlowSpeed')) {
+          this.state.backgroundFlowSpeed = typeof settings.backgroundFlowSpeed === 'number' ? settings.backgroundFlowSpeed : defaults.backgroundFlowSpeed;
+        }
+        if (hasSetting('backgroundColorMask')) {
+          this.state.backgroundColorMask = typeof settings.backgroundColorMask === 'boolean' ? settings.backgroundColorMask : defaults.backgroundColorMask;
+        }
+        if (hasSetting('backgroundMaskColor')) {
+          this.state.backgroundMaskColor = typeof settings.backgroundMaskColor === 'string' ? settings.backgroundMaskColor : defaults.backgroundMaskColor;
+        }
+        if (hasSetting('backgroundMaskOpacity')) {
+          this.state.backgroundMaskOpacity = typeof settings.backgroundMaskOpacity === 'number' ? settings.backgroundMaskOpacity : defaults.backgroundMaskOpacity;
+        }
+        if (hasSetting('showFPS')) {
+          this.state.showFPS = typeof settings.showFPS === 'boolean' ? settings.showFPS : defaults.showFPS;
+        }
+        if (hasSetting('coverBlurLevel')) {
+          this.state.coverBlurLevel = typeof settings.coverBlurLevel === 'number' ? settings.coverBlurLevel : defaults.coverBlurLevel;
+        }
+        if (hasSetting('invertColors')) {
+          this.state.invertColors = typeof settings.invertColors === 'boolean' ? settings.invertColors : defaults.invertColors;
+        }
+        if (hasSetting('manualDominantColor')) {
+          this.state.manualDominantColor = typeof settings.manualDominantColor === 'string' ? settings.manualDominantColor : defaults.manualDominantColor;
+        }
+        if (hasSetting('manualDominantColorLight')) {
+          this.state.manualDominantColorLight = typeof settings.manualDominantColorLight === 'string' ? settings.manualDominantColorLight : defaults.manualDominantColorLight;
+        }
+        if (hasSetting('manualDominantColorDark')) {
+          this.state.manualDominantColorDark = typeof settings.manualDominantColorDark === 'string' ? settings.manualDominantColorDark : defaults.manualDominantColorDark;
+        }
+        if (hasSetting('roundedCover')) {
+          this.state.roundedCover = typeof settings.roundedCover === 'number' ? settings.roundedCover : defaults.roundedCover;
+        }
+        if (hasSetting('marqueeEnabled')) {
+          this.state.marqueeEnabled = typeof settings.marqueeEnabled === 'boolean' ? settings.marqueeEnabled : defaults.marqueeEnabled;
+        }
+        if (hasSetting('coverRotationSpeed')) {
+          this.state.coverRotationSpeed = typeof settings.coverRotationSpeed === 'number' ? settings.coverRotationSpeed : defaults.coverRotationSpeed;
+        }
+        if (hasSetting('backgroundRenderScale')) {
+          this.state.backgroundRenderScale = typeof settings.backgroundRenderScale === 'number' ? settings.backgroundRenderScale : defaults.backgroundRenderScale;
+        }
+        if (hasSetting('lyricAlignPosition')) {
+          this.state.lyricAlignPosition = typeof settings.lyricAlignPosition === 'number' ? settings.lyricAlignPosition : defaults.lyricAlignPosition;
+        }
+        if (hasSetting('lyricDelay')) {
+          this.state.lyricDelay = typeof settings.lyricDelay === 'number' ? settings.lyricDelay : defaults.lyricDelay;
+        }
+        if (hasSetting('hidePassedLyrics')) {
+          this.state.hidePassedLyrics = typeof settings.hidePassedLyrics === 'boolean' ? settings.hidePassedLyrics : defaults.hidePassedLyrics;
+        }
+        if (hasSetting('enableLyricBlur')) {
+          this.state.enableLyricBlur = typeof settings.enableLyricBlur === 'boolean' ? settings.enableLyricBlur : defaults.enableLyricBlur;
+        }
+        if (hasSetting('enableLyricScale')) {
+          this.state.enableLyricScale = typeof settings.enableLyricScale === 'boolean' ? settings.enableLyricScale : defaults.enableLyricScale;
+        }
+        if (hasSetting('enableLyricSpring')) {
+          this.state.enableLyricSpring = typeof settings.enableLyricSpring === 'boolean' ? settings.enableLyricSpring : defaults.enableLyricSpring;
+        }
+        if (hasSetting('wordFadeWidth')) {
+          this.state.wordFadeWidth = typeof settings.wordFadeWidth === 'number' ? settings.wordFadeWidth : defaults.wordFadeWidth;
+        }
+        if (hasSetting('lyricAlignAnchor')) {
+          this.state.lyricAlignAnchor = typeof settings.lyricAlignAnchor === 'string' ? settings.lyricAlignAnchor : defaults.lyricAlignAnchor;
+        }
+        if (hasSetting('showTranslatedLyric')) {
+          this.state.showTranslatedLyric = typeof settings.showTranslatedLyric === 'boolean' ? settings.showTranslatedLyric : defaults.showTranslatedLyric;
+        }
+        if (hasSetting('showRomanLyric')) {
+          this.state.showRomanLyric = typeof settings.showRomanLyric === 'boolean' ? settings.showRomanLyric : defaults.showRomanLyric;
+        }
+        if (hasSetting('swapLyricPositions')) {
+          this.state.swapLyricPositions = typeof settings.swapLyricPositions === 'boolean' ? settings.swapLyricPositions : defaults.swapLyricPositions;
+        }
+        if (hasSetting('showbgLyric')) {
+          this.state.showbgLyric = typeof settings.showbgLyric === 'boolean' ? settings.showbgLyric : defaults.showbgLyric;
+        }
+        if (hasSetting('swapDuetsPositions')) {
+          this.state.swapDuetsPositions = typeof settings.swapDuetsPositions === 'boolean' ? settings.swapDuetsPositions : defaults.swapDuetsPositions;
+        }
+        if (hasSetting('advanceLyricTiming')) {
+          this.state.advanceLyricTiming = typeof settings.advanceLyricTiming === 'boolean' ? settings.advanceLyricTiming : defaults.advanceLyricTiming;
+        }
+        if (hasSetting('singleLyrics')) {
+          this.state.singleLyrics = typeof settings.singleLyrics === 'boolean' ? settings.singleLyrics : defaults.singleLyrics;
+        }
+        if (hasSetting('backgroundLowFreqVolume')) {
+          this.state.backgroundLowFreqVolume = typeof settings.backgroundLowFreqVolume === 'number' ? settings.backgroundLowFreqVolume : defaults.backgroundLowFreqVolume;
+        }
+        if (hasSetting('coverStyle')) {
+          this.state.coverStyle = typeof settings.coverStyle === 'string' ? settings.coverStyle : defaults.coverStyle;
+        }
+        if (hasSetting('fftDataRangeMin')) {
+          this.state.fftDataRangeMin = typeof settings.fftDataRangeMin === 'number' ? settings.fftDataRangeMin : defaults.fftDataRangeMin;
+        }
+        if (hasSetting('fftDataRangeMax')) {
+          this.state.fftDataRangeMax = typeof settings.fftDataRangeMax === 'number' ? settings.fftDataRangeMax : defaults.fftDataRangeMax;
+        }
+        if (hasSetting('posYSpringMass')) {
+          this.state.posYSpringMass = typeof settings.posYSpringMass === 'number' ? settings.posYSpringMass : defaults.posYSpringMass;
+        }
+        if (hasSetting('backgroundFPS')) {
+          this.state.backgroundFPS = typeof settings.backgroundFPS === 'number' ? settings.backgroundFPS : defaults.backgroundFPS;
+        }
+        if (hasSetting('posYSpringDamping')) {
+          this.state.posYSpringDamping = typeof settings.posYSpringDamping === 'number' ? settings.posYSpringDamping : defaults.posYSpringDamping;
+        }
+        if (hasSetting('posYSpringStiffness')) {
+          this.state.posYSpringStiffness = typeof settings.posYSpringStiffness === 'number' ? settings.posYSpringStiffness : defaults.posYSpringStiffness;
+        }
+        if (hasSetting('posYSpringSoft')) {
+          this.state.posYSpringSoft = typeof settings.posYSpringSoft === 'boolean' ? settings.posYSpringSoft : defaults.posYSpringSoft;
+        }
+        if (hasSetting('scaleSpringMass')) {
+          this.state.scaleSpringMass = typeof settings.scaleSpringMass === 'number' ? settings.scaleSpringMass : defaults.scaleSpringMass;
+        }
+        if (hasSetting('scaleSpringDamping')) {
+          this.state.scaleSpringDamping = typeof settings.scaleSpringDamping === 'number' ? settings.scaleSpringDamping : defaults.scaleSpringDamping;
+        }
+        if (hasSetting('scaleSpringStiffness')) {
+          this.state.scaleSpringStiffness = typeof settings.scaleSpringStiffness === 'number' ? settings.scaleSpringStiffness : defaults.scaleSpringStiffness;
+        }
+        if (hasSetting('scaleSpringSoft')) {
+          this.state.scaleSpringSoft = typeof settings.scaleSpringSoft === 'boolean' ? settings.scaleSpringSoft : defaults.scaleSpringSoft;
+        }
+        if (hasSetting('playbackRate')) {
+          this.state.playbackRate = typeof settings.playbackRate === 'number' ? settings.playbackRate : defaults.playbackRate;
+        }
+        if (hasSetting('volume')) {
+          this.state.volume = typeof settings.volume === 'number' ? settings.volume : defaults.volume;
+        }
+        if (hasSetting('loopPlay')) {
+          this.state.loopPlay = typeof settings.loopPlay === 'boolean' ? settings.loopPlay : defaults.loopPlay;
+        }
+        if (hasSetting('showRemainingTime')) {
+          this.state.showRemainingTime = typeof settings.showRemainingTime === 'boolean' ? settings.showRemainingTime : defaults.showRemainingTime;
+        }
+        if (hasSetting('autoPlay')) {
+          this.state.autoPlay = typeof settings.autoPlay === 'boolean' ? settings.autoPlay : defaults.autoPlay;
+        }
+        if (hasSetting('musicUrl') && !this.urlOverrides.has('musicUrl')) {
+          this.state.musicUrl = typeof settings.musicUrl === 'string' ? settings.musicUrl : defaults.musicUrl;
+        }
+        if (hasSetting('lyricUrl') && !this.urlOverrides.has('lyricUrl')) {
+          this.state.lyricUrl = typeof settings.lyricUrl === 'string' ? settings.lyricUrl : defaults.lyricUrl;
+        }
+        if (hasSetting('coverUrl') && !this.urlOverrides.has('coverUrl')) {
+          this.state.coverUrl = typeof settings.coverUrl === 'string' ? settings.coverUrl : defaults.coverUrl;
+        }
+        if (hasSetting('songTitle') && !this.urlOverrides.has('songTitle')) {
+          this.state.songTitle = typeof settings.songTitle === 'string' ? settings.songTitle : defaults.songTitle;
+        }
+        if (hasSetting('songArtist') && !this.urlOverrides.has('songArtist')) {
+          this.state.songArtist = typeof settings.songArtist === 'string' ? settings.songArtist : defaults.songArtist;
+        }
+        if (hasSetting('isRangeMode')) {
+          this.state.isRangeMode = typeof settings.isRangeMode === 'boolean' ? settings.isRangeMode : defaults.isRangeMode;
+        }
+        if (hasSetting('rangeStartTime')) {
+          this.state.rangeStartTime = typeof settings.rangeStartTime === 'number' ? settings.rangeStartTime : defaults.rangeStartTime;
+        }
+        if (hasSetting('rangeEndTime')) {
+          this.state.rangeEndTime = typeof settings.rangeEndTime === 'number' ? settings.rangeEndTime : defaults.rangeEndTime;
+        }
+
         this.state.originalInvertColors = this.state.invertColors;
-        this.state.manualDominantColor = typeof settings.manualDominantColor === 'string' ? settings.manualDominantColor : defaults.manualDominantColor;
-        this.state.manualDominantColorLight = typeof settings.manualDominantColorLight === 'string' ? settings.manualDominantColorLight : defaults.manualDominantColorLight;
-        this.state.manualDominantColorDark = typeof settings.manualDominantColorDark === 'string' ? settings.manualDominantColorDark : defaults.manualDominantColorDark;
-        this.state.roundedCover = typeof settings.roundedCover === 'number' ? settings.roundedCover : defaults.roundedCover;
-        this.state.marqueeEnabled = typeof settings.marqueeEnabled === 'boolean' ? settings.marqueeEnabled : defaults.marqueeEnabled;
-        this.state.coverRotationSpeed = typeof settings.coverRotationSpeed === 'number' ? settings.coverRotationSpeed : defaults.coverRotationSpeed;
-        this.state.backgroundRenderScale = typeof settings.backgroundRenderScale === 'number' ? settings.backgroundRenderScale : defaults.backgroundRenderScale;
-        this.state.lyricAlignPosition = typeof settings.lyricAlignPosition === 'number' ? settings.lyricAlignPosition : defaults.lyricAlignPosition;
-        this.state.lyricDelay = typeof settings.lyricDelay === 'number' ? settings.lyricDelay : defaults.lyricDelay;
-        this.state.hidePassedLyrics = typeof settings.hidePassedLyrics === 'boolean' ? settings.hidePassedLyrics : defaults.hidePassedLyrics;
-        this.state.enableLyricBlur = typeof settings.enableLyricBlur === 'boolean' ? settings.enableLyricBlur : defaults.enableLyricBlur;
-        this.state.enableLyricScale = typeof settings.enableLyricScale === 'boolean' ? settings.enableLyricScale : defaults.enableLyricScale;
-        this.state.enableLyricSpring = typeof settings.enableLyricSpring === 'boolean' ? settings.enableLyricSpring : defaults.enableLyricSpring;
-        this.state.wordFadeWidth = typeof settings.wordFadeWidth === 'number' ? settings.wordFadeWidth : defaults.wordFadeWidth;
-        this.state.lyricAlignAnchor = typeof settings.lyricAlignAnchor === 'string' ? settings.lyricAlignAnchor : defaults.lyricAlignAnchor;
-        this.state.showTranslatedLyric = typeof settings.showTranslatedLyric === 'boolean' ? settings.showTranslatedLyric : defaults.showTranslatedLyric;
-        this.state.showRomanLyric = typeof settings.showRomanLyric === 'boolean' ? settings.showRomanLyric : defaults.showRomanLyric;
-        this.state.swapLyricPositions = typeof settings.swapLyricPositions === 'boolean' ? settings.swapLyricPositions : defaults.swapLyricPositions;
-        this.state.showbgLyric = typeof settings.showbgLyric === 'boolean' ? settings.showbgLyric : defaults.showbgLyric;
-        this.state.swapDuetsPositions = typeof settings.swapDuetsPositions === 'boolean' ? settings.swapDuetsPositions : defaults.swapDuetsPositions;
-        this.state.advanceLyricTiming = typeof settings.advanceLyricTiming === 'boolean' ? settings.advanceLyricTiming : defaults.advanceLyricTiming;
-        this.state.singleLyrics = typeof settings.singleLyrics === 'boolean' ? settings.singleLyrics : defaults.singleLyrics;
-        this.state.backgroundLowFreqVolume = typeof settings.backgroundLowFreqVolume === 'number' ? settings.backgroundLowFreqVolume : defaults.backgroundLowFreqVolume;
-        this.state.coverStyle = typeof settings.coverStyle === 'string' ? settings.coverStyle : defaults.coverStyle;
-        this.state.fftDataRangeMin = typeof settings.fftDataRangeMin === 'number' ? settings.fftDataRangeMin : defaults.fftDataRangeMin;
-        this.state.fftDataRangeMax = typeof settings.fftDataRangeMax === 'number' ? settings.fftDataRangeMax : defaults.fftDataRangeMax;
-        this.state.posYSpringMass = typeof settings.posYSpringMass === 'number' ? settings.posYSpringMass : defaults.posYSpringMass;
-        this.state.backgroundFPS = typeof settings.backgroundFPS === 'number' ? settings.backgroundFPS : defaults.backgroundFPS;
-        this.state.posYSpringDamping = typeof settings.posYSpringDamping === 'number' ? settings.posYSpringDamping : defaults.posYSpringDamping;
-        this.state.posYSpringStiffness = typeof settings.posYSpringStiffness === 'number' ? settings.posYSpringStiffness : defaults.posYSpringStiffness;
-        this.state.posYSpringSoft = typeof settings.posYSpringSoft === 'boolean' ? settings.posYSpringSoft : defaults.posYSpringSoft;
-        this.state.scaleSpringMass = typeof settings.scaleSpringMass === 'number' ? settings.scaleSpringMass : defaults.scaleSpringMass;
-        this.state.scaleSpringDamping = typeof settings.scaleSpringDamping === 'number' ? settings.scaleSpringDamping : defaults.scaleSpringDamping;
-        this.state.scaleSpringStiffness = typeof settings.scaleSpringStiffness === 'number' ? settings.scaleSpringStiffness : defaults.scaleSpringStiffness;
-        this.state.scaleSpringSoft = typeof settings.scaleSpringSoft === 'boolean' ? settings.scaleSpringSoft : defaults.scaleSpringSoft;
-        this.state.playbackRate = typeof settings.playbackRate === 'number' ? settings.playbackRate : defaults.playbackRate;
-        this.state.volume = typeof settings.volume === 'number' ? settings.volume : defaults.volume;
-        this.state.loopPlay = typeof settings.loopPlay === 'boolean' ? settings.loopPlay : defaults.loopPlay;
         this.audio.playbackRate = this.state.playbackRate;
         this.audio.volume = this.state.volume / 100;
 
-      if (settings.controlPointCode && this.controlPointCodeInput) {
-        this.controlPointCodeInput.value = settings.controlPointCode;
-      }
+        if (hasSetting('musicUrlInput') && this.musicUrl && typeof settings.musicUrlInput === 'string' && !this.urlOverrides.has('musicUrlInput')) {
+          this.musicUrl.value = settings.musicUrlInput;
+        }
+        if (hasSetting('lyricUrlInput') && this.lyricUrl && typeof settings.lyricUrlInput === 'string' && !this.urlOverrides.has('lyricUrlInput')) {
+          this.lyricUrl.value = settings.lyricUrlInput;
+        }
+        if (hasSetting('coverUrlInput') && this.coverUrl && typeof settings.coverUrlInput === 'string' && !this.urlOverrides.has('coverUrlInput')) {
+          this.coverUrl.value = settings.coverUrlInput;
+        }
+        if (hasSetting('songTitleInput') && this.songTitleInput && typeof settings.songTitleInput === 'string' && !this.urlOverrides.has('songTitleInput')) {
+          this.songTitleInput.value = settings.songTitleInput;
+        }
+        if (hasSetting('songArtistInput') && this.songArtistInput && typeof settings.songArtistInput === 'string' && !this.urlOverrides.has('songArtistInput')) {
+          this.songArtistInput.value = settings.songArtistInput;
+        }
 
-      if (this.lyricDelayInput) {
-        this.lyricDelayInput.value = this.state.lyricDelay.toString();
-      }
-      this.applyLyricDelay(this.state.lyricDelay, { skipSave: true });
+        this.updateSongInfo();
+        if (this.songTitle) {
+          this.checkAndUpdateMarquee(this.songTitle);
+        }
+        if (this.songArtist) {
+          this.checkAndUpdateMarquee(this.songArtist);
+        }
 
-      this.updateBackgroundUI();
-      this.updateBackground();
+        if (hasSetting('controlPointCode') && this.controlPointCodeInput && !this.urlOverrides.has('controlPointCode') && typeof settings.controlPointCode === 'string') {
+          this.controlPointCodeInput.value = settings.controlPointCode;
+        }
+
+        if (this.lyricDelayInput) {
+          this.lyricDelayInput.value = this.state.lyricDelay.toString();
+        }
+        this.applyLyricDelay(this.state.lyricDelay, { skipSave: true });
+
+        this.updateBackgroundUI();
+        this.updateBackground();
         this.updateFPSDisplay();
         this.updateRoundedCover();
         this.updateCoverStyle();
@@ -5814,8 +6076,9 @@ class WebLyricsPlayer {
         this.lyricPlayer.setLineScaleSpringParams({ mass: this.state.scaleSpringMass, damping: this.state.scaleSpringDamping, stiffness: this.state.scaleSpringStiffness, soft: this.state.scaleSpringSoft });
         const dpr = window.devicePixelRatio || 1;
         this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
+        this.updateTimeDisplay();
 
-        if (settings.controlPointCode) {
+        if (hasSetting('controlPointCode') && !this.urlOverrides.has('controlPointCode') && typeof settings.controlPointCode === 'string') {
           this.applyControlPointCode();
         }
       }
@@ -5869,6 +6132,7 @@ class WebLyricsPlayer {
       if (this.swapDuetsPositionsCheckbox) {
         this.swapDuetsPositionsCheckbox.checked = this.state.swapDuetsPositions;
       }
+      this.urlOverrides.clear();
     } catch (error) {
       console.log('加载背景设置失败:', error);
     }
@@ -6012,6 +6276,8 @@ class WebLyricsPlayer {
       return;
     }
 
+    this.saveBackgroundSettings();
+
     const code = this.controlPointCodeInput.value.trim();
     if (!code) {
       try {
@@ -6021,7 +6287,7 @@ class WebLyricsPlayer {
         }
 
         renderer['manualControl'] = false;
-        renderer.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+        renderer.setAlbum(resolveDefaultCover(this.state.coverUrl));
       } catch (error) {
         console.error('Failed to reset to default control points:', error);
       }
@@ -6091,7 +6357,7 @@ class WebLyricsPlayer {
       renderer['manualControl'] = true;
 
       if (!renderer['meshStates'] || renderer['meshStates'].length === 0) {
-        renderer.setAlbum(this.state.coverUrl || "./assets/icon-512x512.png");
+        renderer.setAlbum(resolveDefaultCover(this.state.coverUrl));
 
         if (!renderer['meshStates'] || renderer['meshStates'].length === 0) {
           return;
@@ -6159,7 +6425,7 @@ class WebLyricsPlayer {
   }
 
   private updateBackground() {
-    const currentCover = this.state.coverUrl || "./assets/icon-512x512.png";
+    const currentCover = resolveDefaultCover(this.state.coverUrl);
 
     if (this.state.backgroundType === 'cover') {
       this.background.getElement().style.display = "none";
@@ -6186,7 +6452,7 @@ class WebLyricsPlayer {
     } else {
       this.background.getElement().style.display = "block";
       this.coverBlurBackground.style.display = "none";
-      this.background.setAlbum(currentCover || "./assets/icon-512x512.png");
+      this.background.setAlbum(currentCover);
       this.background.setStaticMode(!this.state.backgroundDynamic);
       this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
     }
