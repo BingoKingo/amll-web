@@ -353,6 +353,8 @@ class WebLyricsPlayer {
   private coverUrl: HTMLInputElement | null = null;
   private albumSidePanel: HTMLElement | null = null;
   private loadFromUrlBtn: HTMLElement | null = null;
+  private hasAutoLoadedFromUrl = false;
+  private urlLyricDelayOverride: number | null = null;
   private loadFilesBtn: HTMLElement | null = null;
   private resetPlayerBtn: HTMLElement | null = null;
   private toggleControlsBtn: HTMLElement | null = null;
@@ -5491,6 +5493,7 @@ class WebLyricsPlayer {
         if (this.lyricDelayInput) {
           this.lyricDelayInput.value = delay.toString();
         }
+        this.urlLyricDelayOverride = delay;
         this.applyLyricDelay(delay, { skipSave: true });
         this.urlOverrides.add("lyricDelay");
       }
@@ -5549,6 +5552,7 @@ class WebLyricsPlayer {
     }
 
     if (music || lyric || cover) {
+      this.hasAutoLoadedFromUrl = true;
       this.loadFromURLs().then(() => {
         if (currentTime && this.audio) {
           const time = parseFloat(currentTime);
@@ -5603,6 +5607,21 @@ class WebLyricsPlayer {
 
     this.isInitialized = true;
     this.initAlbumCoverEffects();
+
+    if (this.urlLyricDelayOverride !== null) {
+      if (this.lyricDelayInput) {
+        this.lyricDelayInput.value = this.urlLyricDelayOverride.toString();
+      }
+      this.applyLyricDelay(this.urlLyricDelayOverride, { skipSave: true });
+      this.urlLyricDelayOverride = null;
+    }
+
+    if (!this.hasAutoLoadedFromUrl) {
+      setTimeout(() => {
+        this.hasAutoLoadedFromUrl = true;
+        this.loadFromUrlBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }, 0);
+    }
   }
 
   private startAnimationLoop() {
