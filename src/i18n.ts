@@ -53,6 +53,7 @@ export interface Translations {
   coverRotation: string;
   renderScale: string;
   lyricAlignPosition: string;
+  lyricFontSize: string;
   hidePassedLyrics: string;
   lyricDelay: string;
   enableLyricBlur: string;
@@ -90,6 +91,7 @@ export interface Translations {
   lyricSettings: string;
   backgroundSettings: string;
   visualizationSettings: string;
+  backgroundBeat: string;
   posYSpringMass: string;
   posYSpringDamping: string;
   posYSpringStiffness: string;
@@ -130,6 +132,7 @@ export const translations: Record<Language, Translations> = {
     lyricSettings: "Lyrics",
     backgroundSettings: "Background",
     visualizationSettings: "Visualization",
+    backgroundBeat: "Background Beat",
     lyricsLoadSuccess: "Lyrics file loaded successfully",
     lyricsLoadFailed: "Failed to load lyrics file",
     coverLoadSuccess: "Cover image loaded successfully",
@@ -163,6 +166,7 @@ export const translations: Record<Language, Translations> = {
     renderScale: "Render Scale",
     backgroundFPS: "Background FPS",
     lyricAlignPosition: "Vertical Align",
+    lyricFontSize: "Font Size",
     hidePassedLyrics: "Hide Passed Lyrics",
     lyricDelay: "Lyrics Delay",
     enableLyricBlur: "Lyrics Blur Effect",
@@ -233,6 +237,7 @@ export const translations: Record<Language, Translations> = {
     lyricSettings: "歌词",
     backgroundSettings: "背景",
     visualizationSettings: "可视化",
+    backgroundBeat: "背景跳动",
     lyricsLoadSuccess: "歌词文件加载成功",
     lyricsLoadFailed: "歌词文件加载失败",
     coverLoadSuccess: "封面图片加载成功",
@@ -266,6 +271,7 @@ export const translations: Record<Language, Translations> = {
     renderScale: "渲染比例",
     backgroundFPS: "背景帧率",
     lyricAlignPosition: "垂直位置",
+    lyricFontSize: "字体大小",
     hidePassedLyrics: "隐藏已播歌词",
     lyricDelay: "歌词延迟",
     enableLyricBlur: "歌词模糊效果",

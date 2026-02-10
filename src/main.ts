@@ -125,6 +125,7 @@ interface PlayerState {
   backgroundRenderScale: number;
   backgroundFPS: number;
   lyricAlignPosition: number;
+  lyricFontSize: number;
   hidePassedLyrics: boolean;
   enableLyricBlur: boolean;
   enableLyricScale: boolean;
@@ -140,9 +141,8 @@ interface PlayerState {
   advanceLyricTiming: boolean;
   singleLyrics: boolean;
   backgroundLowFreqVolume: number;
+  backgroundBeatEnabled: boolean;
   coverStyle: 'normal' | 'innerShadow' | 'threeDShadow' | 'longShadow' | 'neumorphismA' | 'neumorphismB' | 'reflection' | 'cd' | 'vinyl' | 'colored';
-  fftDataRangeMin: number;
-  fftDataRangeMax: number;
   posYSpringMass: number;
   posYSpringDamping: number;
   posYSpringStiffness: number;
@@ -191,6 +191,7 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   backgroundRenderScale: 1,
   backgroundFPS: 60,
   lyricAlignPosition: 0.4,
+  lyricFontSize: 100,
   hidePassedLyrics: false,
   enableLyricBlur: true,
   enableLyricScale: true,
@@ -206,9 +207,8 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   advanceLyricTiming: false,
   singleLyrics: false,
   backgroundLowFreqVolume: 1,
+  backgroundBeatEnabled: false,
   coverStyle: 'normal',
-  fftDataRangeMin: 1,
-  fftDataRangeMax: 22050,
   posYSpringMass: 1,
   posYSpringDamping: 15,
   posYSpringStiffness: 100,
@@ -226,6 +226,92 @@ const cloneDefaultState = (): PlayerState => JSON.parse(JSON.stringify(DEFAULT_P
 
 const BOOLEAN_TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const BOOLEAN_FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+const AMLL_PALETTE_PIXELATE = 10;
+const AMLL_PALETTE_TARGET = 16;
+const AMLL_LIGHTNESS_MIN_DELTA = -25;
+const AMLL_LIGHTNESS_MAX_DELTA = 100;
+const AMLL_NOISE_SCALE = 15;
+const AMLL_DARKEN_MAX = 40;
+const AMLL_BEAT_CURVE_MAGIC = 'AMBG';
+const AMLL_BEAT_CURVE_MAGIC_LEVELS = 'AMBC';
+const AMLL_GAIN_MIN = 0.6;
+const AMLL_GAIN_MAX = 3.0;
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(Math.max(value, min), max);
+
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+const hexToHsl = (hex: string) => {
+  if (!hex || typeof hex !== 'string') return null;
+  let normalized = hex.trim().replace('#', '');
+  if (normalized.length === 3) {
+    normalized = normalized.split('').map((c) => c + c).join('');
+  }
+  if (normalized.length !== 6) return null;
+  const r = parseInt(normalized.slice(0, 2), 16) / 255;
+  const g = parseInt(normalized.slice(2, 4), 16) / 255;
+  const b = parseInt(normalized.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  const delta = max - min;
+  if (delta !== 0) {
+    s = delta / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r:
+        h = ((g - b) / delta) % 6;
+        break;
+      case g:
+        h = (b - r) / delta + 2;
+        break;
+      default:
+        h = (r - g) / delta + 4;
+        break;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return {
+    h: Math.round(h),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100)
+  };
+};
+
+const hslToRgb = (h: number, s: number, l: number) => {
+  const sat = clamp(s, 0, 100) / 100;
+  const lig = clamp(l, 0, 100) / 100;
+  const c = (1 - Math.abs(2 * lig - 1)) * sat;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = lig - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h >= 0 && h < 60) {
+    r = c;
+    g = x;
+  } else if (h < 120) {
+    r = x;
+    g = c;
+  } else if (h < 180) {
+    g = c;
+    b = x;
+  } else if (h < 240) {
+    g = x;
+    b = c;
+  } else if (h < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  return { r: r + m, g: g + m, b: b + m };
+};
 
 function parseBooleanParam(raw: string): boolean {
   const normalized = raw.trim().toLowerCase();
@@ -323,6 +409,32 @@ class WebLyricsPlayer {
   private lyricPlayer: BaseDomLyricPlayer;
   private background: BackgroundRender<PixiRenderer | MeshGradientRenderer>;
   private coverBlurBackground: HTMLDivElement;
+  private beatCurvePollTimer: number | null = null;
+  private beatCurveRequestInFlight = false;
+  private beatCurvePath: string | null = null;
+  private beatState = {
+    basePaletteHsl: [] as Array<{ h: number; l: number; baseS: number; origS?: number }>,
+    analyser: null as AnalyserNode | null,
+    audioContext: null as AudioContext | null,
+    freqData: null as Uint8Array | null,
+    rafId: null as number | null,
+    renderer: null as any,
+    enabled: false,
+    lastColors: null as Array<{ r: number; g: number; b: number }> | null,
+    smoothing: 0.12,
+    originalMeshColors: null as Array<[number, number, number] | null> | null,
+    originalMeshSize: null as { width: number; height: number } | null,
+    bandStats: [] as Array<{ ema: number; dev: number }>,
+    globalEnergy: 0,
+    beatCurve: null as {
+      bandCount: number;
+      frameMs: number;
+      frameCount: number;
+      data: Uint8Array;
+      mode: 'levels' | 'gain';
+    } | null
+  };
+  private coverBlurBaseScale = 1.1;
   private stats: Stats;
   private state: PlayerState;
   private rangeStartLine: HTMLElement | null = null;
@@ -414,13 +526,12 @@ class WebLyricsPlayer {
   private bgFPSValue: HTMLElement | null = null;
   private lyricAlignPosition: HTMLInputElement | null = null;
   private lyricAlignPositionValue: HTMLElement | null = null;
+  private lyricFontSize: HTMLInputElement | null = null;
+  private lyricFontSizeValue: HTMLElement | null = null;
   private hidePassedLyricsCheckbox: HTMLInputElement | null = null;
   private bgLowFreqVolume: HTMLInputElement | null = null;
   private bgLowFreqVolumeValue: HTMLElement | null = null;
-  private fftDataRangeMin: HTMLInputElement | null = null;
-  private fftDataRangeMinValue: HTMLElement | null = null;
-  private fftDataRangeMax: HTMLInputElement | null = null;
-  private fftDataRangeMaxValue: HTMLElement | null = null;
+  private backgroundBeatCheckbox: HTMLInputElement | null = null;
   private enableLyricBlur: HTMLInputElement | null = null;
   private enableLyricScale: HTMLInputElement | null = null;
   private enableLyricSpring: HTMLInputElement | null = null;
@@ -571,6 +682,64 @@ class WebLyricsPlayer {
 
     this.setOptionsVisibility(this.recordOptions, this.state.roundedCover === 100, ['cd', 'vinyl', 'colored']);
     this.applyCoverStyle();
+  }
+
+  private updateLyricFontSize() {
+    // 将字体大小百分比应用到歌词播放器
+    const fontSizeScale = this.state.lyricFontSize / 100;
+    console.log('Setting font size scale to:', fontSizeScale, 'from value:', this.state.lyricFontSize);
+
+    // 获取当前视口大小来计算基础字体大小
+    const isMobile = window.innerWidth <= 768;
+    let baseFontSizeValue: number;
+
+    if (isMobile) {
+      // 移动端：max(8vw, 12px)
+      const vwValue = window.innerWidth * 0.08;
+      baseFontSizeValue = Math.max(vwValue, 12);
+    } else {
+      // 桌面端：max(max(4.7vh, 3.2vw), 12px)
+      const vhValue = window.innerHeight * 0.047;
+      const vwValue = window.innerWidth * 0.032;
+      baseFontSizeValue = Math.max(vhValue, vwValue, 12);
+    }
+
+    // 应用缩放后的值
+    const scaledFontSize = baseFontSizeValue * fontSizeScale;
+
+    // 在所有歌词播放器元素上设置 --amll-lp-font-size CSS 变量
+    const lyricPlayerElements = document.querySelectorAll('.amll-lyric-player') as NodeListOf<HTMLElement>;
+    console.log(`Found ${lyricPlayerElements.length} lyric player elements`);
+
+    lyricPlayerElements.forEach((element, index) => {
+      element.style.setProperty('--amll-lp-font-size', `${scaledFontSize}px`);
+      console.log(`Set --amll-lp-font-size on lyric player element ${index}: ${scaledFontSize}px`);
+    });
+
+    if (this.lyricFontSize) {
+      this.lyricFontSize.value = this.state.lyricFontSize.toString();
+    }
+
+    if (this.lyricFontSizeValue) {
+      this.lyricFontSizeValue.textContent = `${this.state.lyricFontSize}%`;
+    }
+
+    // 验证第一个歌词播放器的实际字体大小
+    if (lyricPlayerElements.length > 0) {
+      const firstPlayer = lyricPlayerElements[0];
+      const computedFontSize = getComputedStyle(firstPlayer).fontSize;
+      console.log('Computed font size on first lyric player:', computedFontSize);
+    }
+  }
+
+  private extractComputedFontSize(fontSizeStr: string): number {
+    // 从 "XXpx" 字符串中提取数值
+    const match = fontSizeStr.match(/([\d.]+)px/);
+    if (match) {
+      return parseFloat(match[1]);
+    }
+    // 如果无法解析，返回默认值
+    return 16;
   }
 
   private updateCoverRotation() {
@@ -767,13 +936,6 @@ class WebLyricsPlayer {
     window.addEventListener('resize', this.handleResizeBound);
   }
 
-  private updateFFTDataRange() {
-    // 这里可以添加实际的FFT数据范围更新逻辑
-    if (this.background && typeof (this.background as any).setFrequencyRange === 'function') {
-      (this.background as any).setFrequencyRange(this.state.fftDataRangeMin, this.state.fftDataRangeMax);
-    }
-  }
-
   private updateLayoutByOrientation() {
     const isPortrait = window.matchMedia("(orientation: portrait)").matches;
     const songInfoContainer = this.albumSidePanel?.querySelector('.song-info-container');
@@ -848,6 +1010,11 @@ class WebLyricsPlayer {
   }
 
   private initDOMCache() {
+    // 添加调试信息到页面标题（带时间戳确保是最新的）
+    if (document.title) {
+      document.title = `[DEBUG ${Date.now()}] ` + document.title;
+    }
+
     this.musicFile = document.getElementById('musicFile') as HTMLInputElement;
     this.lyricFile = document.getElementById('lyricFile') as HTMLInputElement;
     this.coverFile = document.getElementById('coverFile') as HTMLInputElement;
@@ -902,13 +1069,33 @@ class WebLyricsPlayer {
     this.bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
     this.lyricAlignPosition = document.getElementById('lyricAlignPosition') as HTMLInputElement;
     this.lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
+
+    // 调试：查找字体大小滑块元素
+    const fontSizeElement = document.getElementById('lyricFontSize');
+    if (fontSizeElement) {
+      // 如果找到元素，修改其 title 来显示调试信息
+      fontSizeElement.setAttribute('title', 'DEBUG: Element found!');
+    } else {
+      // 如果没找到，在 body 添加一个隐藏的调试元素
+      const debugDiv = document.createElement('div');
+      debugDiv.id = 'debug-info';
+      debugDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 5px; z-index: 9999;';
+      debugDiv.textContent = 'DEBUG: lyricFontSize element NOT FOUND!';
+      document.body.appendChild(debugDiv);
+    }
+
+    this.lyricFontSize = fontSizeElement as HTMLInputElement;
+
+    const fontSizeValueElement = document.getElementById('lyricFontSizeValue');
+    if (fontSizeValueElement) {
+      fontSizeValueElement.setAttribute('title', 'DEBUG: Value element found!');
+    }
+
+    this.lyricFontSizeValue = fontSizeValueElement;
     this.hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
     this.bgLowFreqVolume = document.getElementById('bgLowFreqVolume') as HTMLInputElement;
     this.bgLowFreqVolumeValue = document.getElementById('bgLowFreqVolumeValue');
-    this.fftDataRangeMin = document.getElementById('fftDataRangeMin') as HTMLInputElement;
-    this.fftDataRangeMinValue = document.getElementById('fftDataRangeMinValue');
-    this.fftDataRangeMax = document.getElementById('fftDataRangeMax') as HTMLInputElement;
-    this.fftDataRangeMaxValue = document.getElementById('fftDataRangeMaxValue');
+    this.backgroundBeatCheckbox = document.getElementById('backgroundBeat') as HTMLInputElement;
     this.enableLyricBlur = document.getElementById('enableLyricBlur') as HTMLInputElement;
     this.enableLyricScale = document.getElementById('enableLyricScale') as HTMLInputElement;
     this.enableLyricSpring = document.getElementById('enableLyricSpring') as HTMLInputElement;
@@ -1028,6 +1215,7 @@ class WebLyricsPlayer {
       case 'bgRenderScale': input = this.bgRenderScale; valueElement = this.bgRenderScaleValue; break;
       case 'bgFPS': input = this.bgFPS; valueElement = this.bgFPSValue; break;
       case 'lyricAlignPosition': input = this.lyricAlignPosition; valueElement = this.lyricAlignPositionValue; break;
+      case 'lyricFontSize': input = this.lyricFontSize; valueElement = this.lyricFontSizeValue; break;
       case 'springPosYMass': input = this.posYSpringMassInput; valueElement = document.getElementById('springPosYMassValue'); break;
       case 'springPosYDamping': input = this.posYSpringDampingInput; valueElement = document.getElementById('springPosYDampingValue'); break;
       case 'springPosYStiffness': input = this.posYSpringStiffnessInput; valueElement = document.getElementById('springPosYStiffnessValue'); break;
@@ -1232,6 +1420,23 @@ class WebLyricsPlayer {
       this.lyricPlayer.setAlignPosition(value);
       if (this.lyricAlignPositionValue) {
         this.lyricAlignPositionValue.textContent = value.toFixed(1);
+      }
+      this.saveBackgroundSettings();
+    });
+
+    // 添加调试信息检查元素是否找到
+    console.log('lyricFontSize element:', this.lyricFontSize);
+    console.log('lyricFontSizeValue element:', this.lyricFontSizeValue);
+
+    this.lyricFontSize?.addEventListener('input', (e) => {
+      console.log('lyricFontSize input event fired!');
+      const value = parseInt((e.target as HTMLInputElement).value);
+      console.log('New value:', value);
+      this.state.lyricFontSize = value;
+      this.updateLyricFontSize();
+      if (this.lyricFontSizeValue) {
+        this.lyricFontSizeValue.textContent = `${value}%`;
+        console.log('Updated display to:', `${value}%`);
       }
       this.saveBackgroundSettings();
     });
@@ -1453,158 +1658,11 @@ class WebLyricsPlayer {
       this.updateMarqueeSettings();
       this.saveBackgroundSettings();
     });
-
-    // FFT Data Range Min
-    const fftDataRangeMin = this.fftDataRangeMin;
-    const fftDataRangeMinValue = this.fftDataRangeMinValue;
-
-    if (fftDataRangeMin && fftDataRangeMinValue) {
-      fftDataRangeMinValue.textContent = `${fftDataRangeMin.value}Hz`;
-
-      fftDataRangeMin.addEventListener('input', (e) => {
-        const value = parseInt((e.target as HTMLInputElement).value);
-        const maxRange = this.fftDataRangeMax;
-        const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
-        let maxValue = 0;
-        if (maxRange) {
-          maxValue = parseInt(maxRange.value);
-        }
-
-        // 如果min > max，则max跟随min移动
-        if (value > maxValue) {
-          this.state.fftDataRangeMin = value;
-          fftDataRangeMin.value = value.toString();
-          this.state.fftDataRangeMax = value;
-          if (maxRange) {
-            maxRange.value = value.toString();
-          }
-          if (fftDataRangeMaxValue) {
-            fftDataRangeMaxValue.textContent = `${value}Hz`;
-          }
-        } else {
-          this.state.fftDataRangeMin = value;
-        }
-
-        fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
-        this.updateFFTDataRange();
-        this.saveBackgroundSettings();
-      });
-
-      fftDataRangeMin.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
-        const currentValue = parseInt(fftDataRangeMin.value);
-        const min = parseInt(fftDataRangeMin.min);
-        const max = parseInt(fftDataRangeMin.max);
-        const step = 1;
-        const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
-
-        const maxRange = this.fftDataRangeMax;
-        const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
-        let maxValue = 0;
-        if (maxRange) {
-          maxValue = parseInt(maxRange.value);
-        }
-
-        if (newValue > maxValue) {
-          fftDataRangeMin.value = newValue.toString();
-          this.state.fftDataRangeMin = newValue;
-          if (maxRange) {
-            maxRange.value = newValue.toString();
-          }
-          this.state.fftDataRangeMax = newValue;
-          if (fftDataRangeMaxValue) {
-            fftDataRangeMaxValue.textContent = `${newValue}Hz`;
-          }
-        } else {
-          fftDataRangeMin.value = newValue.toString();
-          this.state.fftDataRangeMin = newValue;
-        }
-
-        fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
-        this.updateFFTDataRange();
-        this.saveBackgroundSettings();
-      }, { passive: false });
-
-      // FFT Data Range Max
-      const fftDataRangeMax = this.fftDataRangeMax;
-      const fftDataRangeMaxValue = this.fftDataRangeMaxValue;
-
-      if (fftDataRangeMin && fftDataRangeMinValue) {
-        fftDataRangeMinValue.textContent = `${fftDataRangeMin.value}Hz`;
-      }
-      if (fftDataRangeMax) {
-        fftDataRangeMax.addEventListener('input', (e) => {
-          const value = parseInt((e.target as HTMLInputElement).value);
-          const minRange = this.fftDataRangeMin;
-          let minValue = 0;
-
-          if (minRange) {
-            minValue = parseInt(minRange.value);
-          }
-
-          // 如果max < min，则min跟随max移动
-          if (value < minValue) {
-            this.state.fftDataRangeMax = value;
-            fftDataRangeMax.value = value.toString();
-            this.state.fftDataRangeMin = value;
-            if (minRange) {
-              minRange.value = value.toString();
-              if (fftDataRangeMinValue) {
-                fftDataRangeMinValue.textContent = `${value}Hz`;
-              }
-            }
-          } else {
-            this.state.fftDataRangeMax = value;
-          }
-
-          if (fftDataRangeMaxValue) {
-            fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
-          }
-          this.updateFFTDataRange();
-          this.saveBackgroundSettings();
-        });
-
-        fftDataRangeMax.addEventListener('wheel', (e) => {
-          e.preventDefault();
-          const delta = Math.sign((e as WheelEvent).deltaY) * -1; // 反转滚轮方向
-          const currentValue = parseInt(fftDataRangeMax.value);
-          const min = parseInt(fftDataRangeMax.min);
-          const max = parseInt(fftDataRangeMax.max);
-          const step = 1;
-          const newValue = Math.min(max, Math.max(min, currentValue + delta * step));
-
-          const minRange = this.fftDataRangeMin;
-          let minValue = 0;
-
-          if (minRange) {
-            minValue = parseInt(minRange.value);
-          }
-
-          // 如果max < min，则min跟随max移动
-          if (newValue < minValue) {
-            fftDataRangeMax.value = newValue.toString();
-            this.state.fftDataRangeMax = newValue;
-            if (minRange) {
-              minRange.value = newValue.toString();
-              this.state.fftDataRangeMin = newValue;
-              if (fftDataRangeMinValue) {
-                fftDataRangeMinValue.textContent = `${newValue}Hz`;
-              }
-            }
-          } else {
-            fftDataRangeMax.value = newValue.toString();
-            this.state.fftDataRangeMax = newValue;
-          }
-
-          if (fftDataRangeMaxValue) {
-            fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
-          }
-          this.updateFFTDataRange();
-          this.saveBackgroundSettings();
-        }, { passive: false });
-      }
-    }
+    this.backgroundBeatCheckbox?.addEventListener('change', (e) => {
+      this.state.backgroundBeatEnabled = (e.target as HTMLInputElement).checked;
+      this.syncBackgroundBeatState();
+      this.saveBackgroundSettings();
+    });
 
     this.setupWheelControl('coverBlurLevel', 'coverBlurLevelValue', 5);
     this.setupWheelControl('bgFlowSpeed', 'bgFlowSpeedValue', 0.1);
@@ -1616,6 +1674,7 @@ class WebLyricsPlayer {
     this.setupWheelControl('bgRenderScale', 'bgRenderScaleValue', 0.1);
     this.setupWheelControl('bgFPS', 'bgFPSValue', 1);
     this.setupWheelControl('lyricAlignPosition', 'lyricAlignPositionValue', 0.1);
+    this.setupWheelControl('lyricFontSize', 'lyricFontSizeValue', 5);
     this.setupWheelControl('springPosYMass', 'springPosYMassValue', 0.1);
     this.setupWheelControl('springPosYDamping', 'springPosYDampingValue', 0.1);
     this.setupWheelControl('springPosYStiffness', 'springPosYStiffnessValue', 1);
@@ -2721,6 +2780,8 @@ class WebLyricsPlayer {
     this.background.getElement().style.backgroundSize = "cover";
     this.background.getElement().style.backgroundPosition = "center";
     this.background.getElement().style.backgroundRepeat = "no-repeat";
+    this.background.getElement().style.transformOrigin = "center";
+    this.background.getElement().style.willChange = "transform";
     this.detectMaxFPS().then(maxFPS => {
       if (this.bgFPS) {
         this.bgFPS.max = maxFPS.toString();
@@ -2997,6 +3058,11 @@ class WebLyricsPlayer {
         }
       }, { passive: true });
     }
+    document.addEventListener('click', () => {
+      if (this.beatState.audioContext && this.beatState.audioContext.state === 'suspended') {
+        this.beatState.audioContext.resume().catch(() => {});
+      }
+    }, { passive: true });
 
     this.audio.addEventListener("loadedmetadata", () => {
       this.state.duration = this.audio.duration;
@@ -3037,6 +3103,7 @@ class WebLyricsPlayer {
       this.lyricPlayer.resume();
       this.updateMarqueeSettings();
       this.updateCoverRotation();
+      this.syncBackgroundBeatState();
 
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "playing";
@@ -3049,6 +3116,7 @@ class WebLyricsPlayer {
       this.lyricPlayer.pause();
       this.updateMarqueeSettings();
       this.updateCoverRotation();
+      this.syncBackgroundBeatState();
 
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "paused";
@@ -3058,6 +3126,7 @@ class WebLyricsPlayer {
     this.audio.addEventListener("ended", () => {
       this.state.isPlaying = false;
       this.updatePlayButton();
+      this.syncBackgroundBeatState();
       if (this.state.loopPlay) {
         this.audio.currentTime = 0;
         const firstLineStartTime = this.processedLyricLines.length > 0
@@ -3085,6 +3154,11 @@ class WebLyricsPlayer {
               this.exitRangeMode();
             }
             this.generateWaveformData();
+            this.clearBeatCurvePolling();
+            this.beatCurvePath = null;
+            this.beatState.beatCurve = null;
+            this.resetBeatPaletteCache();
+            this.syncBackgroundBeatState();
           }
         }
       });
@@ -3154,48 +3228,7 @@ class WebLyricsPlayer {
 
     if (this.lyricAreaHint) this.lyricAreaHint.remove();
 
-    if (!this.hasLyrics) {
-      const hintElement = document.createElement("div");
-      hintElement.id = "lyricAreaHint";
-      this.lyricAreaHint = hintElement;
-      hintElement.style.cssText = `
-        position: absolute;
-        top: 45%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: var(--dominant-color-light);
-        font-size: 16px;
-        text-align: center;
-        pointer-events: auto;
-        z-index: 30;
-        width: 80%;
-        padding: 30px;
-        opacity: 0.7;
-        transition: opacity 0.3s ease;
-        cursor: pointer;
-        user-select: none;
-      `;
-      hintElement.innerHTML = `
-        <div style="margin-bottom: 15px; font-size: var(--amll-lp-font-size, max(max(4vh, 2vw), 12px));">${t(
-        "clickToAddLyrics"
-      )}</div>
-        <div style="opacity: 0.6; line-height: 1.5; font-size: var(--amll-lp-font-size, max(max(3vh, 1.5vw), 12px));">*.ass, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.spl, *.srt, *.ttml, *.yrc</div>
-      `;
-      // *.alrc, *.ass, *.json, *.krc, *.lqe, *.lrc, *.lyl, *.lys, *.qrc, *.srt, *.ttml, *.yrc
-
-      hintElement.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (this.lyricFile) this.lyricFile.click();
-      });
-
-      hintElement.addEventListener("touchend", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.lyricFile) this.lyricFile.click();
-      }, { passive: false });
-
-      this.lyricsPanel.appendChild(hintElement);
-    }
+    this.lyricAreaHint = null;
   }
 
   private setupDragAndDropEvents() {
@@ -4074,6 +4107,20 @@ class WebLyricsPlayer {
         }
         break;
       }
+      case 'lyricFontSize': {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          const clampedValue = Math.max(50, Math.min(200, Math.round(numeric)));
+          this.state.lyricFontSize = clampedValue;
+          if (this.lyricFontSize) {
+            this.lyricFontSize.value = clampedValue.toString();
+          }
+          if (this.lyricFontSizeValue) {
+            this.lyricFontSizeValue.textContent = `${clampedValue}%`;
+          }
+        }
+        break;
+      }
       default:
         break;
     }
@@ -4754,6 +4801,8 @@ class WebLyricsPlayer {
     this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
     this.state.lyricAlignPosition = DEFAULT_PLAYER_STATE.lyricAlignPosition;
     this.lyricPlayer.setAlignPosition(this.state.lyricAlignPosition);
+    this.state.lyricFontSize = DEFAULT_PLAYER_STATE.lyricFontSize;
+    this.updateLyricFontSize();
     this.state.hidePassedLyrics = DEFAULT_PLAYER_STATE.hidePassedLyrics;
     this.lyricPlayer.setHidePassedLines(this.state.hidePassedLyrics);
     this.state.enableLyricBlur = DEFAULT_PLAYER_STATE.enableLyricBlur;
@@ -4774,6 +4823,8 @@ class WebLyricsPlayer {
     this.state.singleLyrics = DEFAULT_PLAYER_STATE.singleLyrics;
     this.state.backgroundLowFreqVolume = DEFAULT_PLAYER_STATE.backgroundLowFreqVolume;
     this.background.setLowFreqVolume(this.state.backgroundLowFreqVolume);
+    this.state.backgroundBeatEnabled = DEFAULT_PLAYER_STATE.backgroundBeatEnabled;
+    this.syncBackgroundBeatState();
     this.state.coverStyle = DEFAULT_PLAYER_STATE.coverStyle;
 
     this.state.lyricUrl = "";
@@ -5742,6 +5793,7 @@ class WebLyricsPlayer {
     this.loadBackgroundSettings();
     this.startAnimationLoop();
     this.background.resume();
+    this.syncBackgroundBeatState();
 
     const urlParams = new URLSearchParams(window.location.search);
     const hasMusicParam = urlParams.has("music");
@@ -5969,6 +6021,7 @@ class WebLyricsPlayer {
       coverRotationSpeed: this.state.coverRotationSpeed,
       backgroundRenderScale: this.state.backgroundRenderScale,
       lyricAlignPosition: this.state.lyricAlignPosition,
+      lyricFontSize: this.state.lyricFontSize,
       lyricDelay: this.state.lyricDelay,
       hidePassedLyrics: this.state.hidePassedLyrics,
       enableLyricBlur: this.state.enableLyricBlur,
@@ -5984,9 +6037,8 @@ class WebLyricsPlayer {
       advanceLyricTiming: this.state.advanceLyricTiming,
       singleLyrics: this.state.singleLyrics,
       backgroundLowFreqVolume: this.state.backgroundLowFreqVolume,
+      backgroundBeatEnabled: this.state.backgroundBeatEnabled,
       coverStyle: this.state.coverStyle,
-      fftDataRangeMin: this.state.fftDataRangeMin,
-      fftDataRangeMax: this.state.fftDataRangeMax,
       posYSpringMass: this.state.posYSpringMass,
       backgroundFPS: this.state.backgroundFPS,
       posYSpringDamping: this.state.posYSpringDamping,
@@ -6078,6 +6130,9 @@ class WebLyricsPlayer {
         if (hasSetting('lyricAlignPosition')) {
           this.state.lyricAlignPosition = typeof settings.lyricAlignPosition === 'number' ? settings.lyricAlignPosition : defaults.lyricAlignPosition;
         }
+        if (hasSetting('lyricFontSize')) {
+          this.state.lyricFontSize = typeof settings.lyricFontSize === 'number' ? settings.lyricFontSize : defaults.lyricFontSize;
+        }
         if (hasSetting('lyricDelay')) {
           this.state.lyricDelay = typeof settings.lyricDelay === 'number' ? settings.lyricDelay : defaults.lyricDelay;
         }
@@ -6123,14 +6178,11 @@ class WebLyricsPlayer {
         if (hasSetting('backgroundLowFreqVolume')) {
           this.state.backgroundLowFreqVolume = typeof settings.backgroundLowFreqVolume === 'number' ? settings.backgroundLowFreqVolume : defaults.backgroundLowFreqVolume;
         }
+        if (hasSetting('backgroundBeatEnabled')) {
+          this.state.backgroundBeatEnabled = typeof settings.backgroundBeatEnabled === 'boolean' ? settings.backgroundBeatEnabled : defaults.backgroundBeatEnabled;
+        }
         if (hasSetting('coverStyle')) {
           this.state.coverStyle = typeof settings.coverStyle === 'string' ? settings.coverStyle : defaults.coverStyle;
-        }
-        if (hasSetting('fftDataRangeMin')) {
-          this.state.fftDataRangeMin = typeof settings.fftDataRangeMin === 'number' ? settings.fftDataRangeMin : defaults.fftDataRangeMin;
-        }
-        if (hasSetting('fftDataRangeMax')) {
-          this.state.fftDataRangeMax = typeof settings.fftDataRangeMax === 'number' ? settings.fftDataRangeMax : defaults.fftDataRangeMax;
         }
         if (hasSetting('posYSpringMass')) {
           this.state.posYSpringMass = typeof settings.posYSpringMass === 'number' ? settings.posYSpringMass : defaults.posYSpringMass;
@@ -6244,6 +6296,7 @@ class WebLyricsPlayer {
         this.updateLyricsDisplay();
         this.updateMarqueeSettings();
         this.lyricPlayer.setAlignPosition(this.state.lyricAlignPosition);
+        this.updateLyricFontSize();
         this.invertColors(this.state.invertColors);
         this.lyricPlayer.setEnableBlur(this.state.enableLyricBlur);
         this.lyricPlayer.setEnableScale(this.state.enableLyricScale);
@@ -6262,6 +6315,9 @@ class WebLyricsPlayer {
 
       if (this.lyricAlignPositionValue) {
         this.lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
+      }
+      if (this.lyricFontSizeValue) {
+        this.lyricFontSizeValue.textContent = `${this.state.lyricFontSize}%`;
       }
       if (this.springPosYMassValue) {
         this.springPosYMassValue.textContent = this.state.posYSpringMass.toFixed(1);
@@ -6359,6 +6415,12 @@ class WebLyricsPlayer {
     if (this.lyricAlignPositionValue) {
       this.lyricAlignPositionValue.textContent = this.state.lyricAlignPosition.toFixed(1);
     }
+    if (this.lyricFontSize) {
+      this.lyricFontSize.value = this.state.lyricFontSize.toString();
+    }
+    if (this.lyricFontSizeValue) {
+      this.lyricFontSizeValue.textContent = `${this.state.lyricFontSize}%`;
+    }
     if (this.hidePassedLyricsCheckbox) {
       this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
     }
@@ -6400,15 +6462,8 @@ class WebLyricsPlayer {
     if (this.advanceLyricTimingCheckbox) {
       this.advanceLyricTimingCheckbox.checked = this.state.advanceLyricTiming;
     }
-
-    if (this.fftDataRangeMin && this.fftDataRangeMinValue) {
-      this.fftDataRangeMin.value = this.state.fftDataRangeMin.toString();
-      this.fftDataRangeMinValue.textContent = `${this.state.fftDataRangeMin}Hz`;
-    }
-
-    if (this.fftDataRangeMax && this.fftDataRangeMaxValue) {
-      this.fftDataRangeMax.value = this.state.fftDataRangeMax.toString();
-      this.fftDataRangeMaxValue.textContent = `${this.state.fftDataRangeMax}Hz`;
+    if (this.backgroundBeatCheckbox) {
+      this.backgroundBeatCheckbox.checked = this.state.backgroundBeatEnabled;
     }
 
     if (this.bgLowFreqVolume) {
@@ -6430,6 +6485,7 @@ class WebLyricsPlayer {
     if (springScaleSoftDiv) {
       springScaleSoftDiv.style.display = this.state.scaleSpringDamping < 1 ? 'flex' : 'none';
     }
+    this.syncBackgroundBeatState();
   }
 
   private initCoverBlurBackground() {
@@ -6442,9 +6498,605 @@ class WebLyricsPlayer {
     this.coverBlurBackground.style.backgroundPosition = "center";
     this.coverBlurBackground.style.backgroundRepeat = "no-repeat";
     this.coverBlurBackground.style.filter = "blur(20px)";
-    this.coverBlurBackground.style.transform = "scale(1.1)";
+    this.coverBlurBackground.style.transform = `scale(${this.coverBlurBaseScale})`;
+    this.coverBlurBackground.style.transformOrigin = "center";
+    this.coverBlurBackground.style.willChange = "transform";
     this.coverBlurBackground.style.zIndex = "0";
     this.coverBlurBackground.style.display = "none";
+  }
+
+  private ensureBeatAudioAnalyser() {
+    if (this.beatState.analyser || !this.audio) return;
+    const AudioContextRef = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextRef) return;
+    const audioContext = new AudioContextRef();
+    const source = audioContext.createMediaElementSource(this.audio);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.85;
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
+    this.beatState.audioContext = audioContext;
+    this.beatState.analyser = analyser;
+    this.beatState.freqData = new Uint8Array(analyser.frequencyBinCount);
+  }
+
+  private getBeatRenderer() {
+    const renderer = (this.background as any)?.renderer
+      || (this.background as any)?._renderer
+      || (this.background as any)?.['renderer'];
+    return renderer || null;
+  }
+
+  private extractPaletteFromImageData(imageData: ImageData | null, targetCount = AMLL_PALETTE_TARGET) {
+    if (!imageData || !imageData.width || !imageData.height) return [];
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    const step = Math.max(1, Math.floor(AMLL_PALETTE_PIXELATE));
+    const samples: Array<{ r: number; g: number; b: number }> = [];
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const idx = (y * width + x) * 4;
+        const alpha = data[idx + 3] ?? 255;
+        if (alpha < 16) continue;
+        samples.push({
+          r: (data[idx] || 0) / 255,
+          g: (data[idx + 1] || 0) / 255,
+          b: (data[idx + 2] || 0) / 255
+        });
+      }
+    }
+    if (!samples.length) return [];
+    const count = Math.max(1, targetCount);
+    const centers = new Array(count).fill(null).map((_, i) => {
+      const pos = count === 1 ? 0 : Math.floor((i / (count - 1)) * (samples.length - 1));
+      const pick = samples[pos] || samples[0];
+      return { r: pick.r, g: pick.g, b: pick.b };
+    });
+    for (let iter = 0; iter < 8; iter += 1) {
+      const sums = new Array(count).fill(null).map(() => ({ r: 0, g: 0, b: 0, n: 0 }));
+      for (const sample of samples) {
+        let best = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < count; i += 1) {
+          const c = centers[i];
+          const dr = sample.r - c.r;
+          const dg = sample.g - c.g;
+          const db = sample.b - c.b;
+          const dist = dr * dr + dg * dg + db * db;
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
+          }
+        }
+        const sum = sums[best];
+        sum.r += sample.r;
+        sum.g += sample.g;
+        sum.b += sample.b;
+        sum.n += 1;
+      }
+      for (let i = 0; i < count; i += 1) {
+        const sum = sums[i];
+        if (sum.n > 0) {
+          centers[i] = { r: sum.r / sum.n, g: sum.g / sum.n, b: sum.b / sum.n };
+        } else {
+          const fallback = samples[(i * 97) % samples.length];
+          centers[i] = { r: fallback.r, g: fallback.g, b: fallback.b };
+        }
+      }
+    }
+    const palette = centers.map((rgb) => {
+      const hsl = hexToHsl(
+        `#${Math.round(rgb.r * 255).toString(16).padStart(2, '0')}${Math.round(rgb.g * 255).toString(16).padStart(2, '0')}${Math.round(rgb.b * 255).toString(16).padStart(2, '0')}`
+      );
+      if (!hsl) return null;
+      const origS = clamp(hsl.s, 0, 100);
+      return { h: hsl.h, l: hsl.l, baseS: clamp(origS - 50, 0, 100), origS };
+    }).filter(Boolean) as Array<{ h: number; l: number; baseS: number; origS?: number }>;
+    palette.sort((a, b) => (a.h - b.h) || (a.l - b.l));
+    return palette;
+  }
+
+  private ensureBeatBasePalette() {
+    if (this.beatState.basePaletteHsl.length) return;
+    const renderer = this.beatState.renderer;
+    if (!renderer) return;
+    const imageData = renderer.currentImageData || renderer._currentImageData || null;
+    const palette = this.extractPaletteFromImageData(imageData, AMLL_PALETTE_TARGET);
+    if (palette.length) {
+      this.beatState.basePaletteHsl = palette;
+    }
+  }
+
+  private getActiveMesh(renderer: any) {
+    if (!renderer) return null;
+    const states = renderer.meshStates || renderer._meshStates;
+    if (!Array.isArray(states) || states.length === 0) return null;
+    return states[states.length - 1].mesh || null;
+  }
+
+  private getMeshSize(mesh: any) {
+    const controlPoints = mesh && (mesh._controlPoints || mesh.controlPoints);
+    if (!controlPoints) return null;
+    const width = controlPoints.width ?? controlPoints._width;
+    const height = controlPoints.height ?? controlPoints._height;
+    if (!width || !height) return null;
+    return { width, height };
+  }
+
+  private applyColorsToMesh(mesh: any, colors: Array<{ r: number; g: number; b: number }>) {
+    const size = this.getMeshSize(mesh);
+    if (!size || !colors.length) return;
+    const width = size.width;
+    const height = size.height;
+    if (!this.beatState.lastColors || this.beatState.lastColors.length !== colors.length) {
+      this.beatState.lastColors = colors.map((c) => ({ r: c.r, g: c.g, b: c.b }));
+    }
+    const blended = colors.map((target, index) => {
+      const prev = this.beatState.lastColors?.[index] || target;
+      const r = prev.r + (target.r - prev.r) * this.beatState.smoothing;
+      const g = prev.g + (target.g - prev.g) * this.beatState.smoothing;
+      const b = prev.b + (target.b - prev.b) * this.beatState.smoothing;
+      return { r, g, b };
+    });
+    this.beatState.lastColors = blended;
+    const maxIndex = Math.max(1, colors.length - 1);
+    const indexForPoint = (x: number, y: number) => {
+      const scale = Math.max(1, AMLL_NOISE_SCALE);
+      const nx = (x / Math.max(1, width - 1)) * scale;
+      const ny = (y / Math.max(1, height - 1)) * scale;
+      const hash = Math.sin(nx * 127.1 + ny * 311.7) * 43758.5453;
+      const frac = hash - Math.floor(hash);
+      return Math.floor(frac * (maxIndex + 1));
+    };
+    for (let x = 0; x < width; x += 1) {
+      for (let y = 0; y < height; y += 1) {
+        const colorIndex = indexForPoint(x, y);
+        const color = blended[colorIndex] || blended[blended.length - 1];
+        const point = mesh.getControlPoint ? mesh.getControlPoint(x, y) : null;
+        if (!point || !point.color) continue;
+        point.color[0] = color.r;
+        point.color[1] = color.g;
+        point.color[2] = color.b;
+      }
+    }
+    if (typeof mesh.updateMesh === 'function') {
+      mesh.updateMesh();
+    }
+  }
+
+  private applyBasePaletteToMesh(mesh: any) {
+    const size = this.getMeshSize(mesh);
+    if (!size || !this.beatState.basePaletteHsl.length) return;
+    const width = size.width;
+    const height = size.height;
+    const maxIndex = Math.max(1, this.beatState.basePaletteHsl.length - 1);
+    const indexForPoint = (x: number, y: number) => {
+      const scale = Math.max(1, AMLL_NOISE_SCALE);
+      const nx = (x / Math.max(1, width - 1)) * scale;
+      const ny = (y / Math.max(1, height - 1)) * scale;
+      const hash = Math.sin(nx * 127.1 + ny * 311.7) * 43758.5453;
+      const frac = hash - Math.floor(hash);
+      return Math.floor(frac * (maxIndex + 1));
+    };
+    for (let x = 0; x < width; x += 1) {
+      for (let y = 0; y < height; y += 1) {
+        const colorIndex = indexForPoint(x, y);
+        const base = this.beatState.basePaletteHsl[colorIndex]
+          || this.beatState.basePaletteHsl[this.beatState.basePaletteHsl.length - 1];
+        const rgb = hslToRgb(base.h, base.origS ?? (base.baseS + 50), base.l);
+        const point = mesh.getControlPoint ? mesh.getControlPoint(x, y) : null;
+        if (!point || !point.color) continue;
+        point.color[0] = rgb.r;
+        point.color[1] = rgb.g;
+        point.color[2] = rgb.b;
+      }
+    }
+    if (typeof mesh.updateMesh === 'function') {
+      mesh.updateMesh();
+    }
+  }
+
+  private captureMeshColors(mesh: any) {
+    const size = this.getMeshSize(mesh);
+    if (!size) return;
+    const width = size.width;
+    const height = size.height;
+    const colors = new Array(width * height);
+    for (let x = 0; x < width; x += 1) {
+      for (let y = 0; y < height; y += 1) {
+        const point = mesh.getControlPoint ? mesh.getControlPoint(x, y) : null;
+        if (!point || !point.color) {
+          colors[y * width + x] = null;
+          continue;
+        }
+        colors[y * width + x] = [point.color[0], point.color[1], point.color[2]];
+      }
+    }
+    this.beatState.originalMeshColors = colors;
+    this.beatState.originalMeshSize = { width, height };
+  }
+
+  private restoreMeshColors(mesh: any) {
+    const size = this.getMeshSize(mesh);
+    const stored = this.beatState.originalMeshColors;
+    const storedSize = this.beatState.originalMeshSize;
+    if (!size || !stored || !storedSize) return false;
+    if (size.width !== storedSize.width || size.height !== storedSize.height) return false;
+    const width = size.width;
+    const height = size.height;
+    for (let x = 0; x < width; x += 1) {
+      for (let y = 0; y < height; y += 1) {
+        const point = mesh.getControlPoint ? mesh.getControlPoint(x, y) : null;
+        const color = stored[y * width + x];
+        if (!point || !point.color || !color) continue;
+        point.color[0] = color[0];
+        point.color[1] = color[1];
+        point.color[2] = color[2];
+      }
+    }
+    if (typeof mesh.updateMesh === 'function') {
+      mesh.updateMesh();
+    }
+    return true;
+  }
+
+  private parseBeatCurve(buffer: ArrayBuffer) {
+    if (!buffer || buffer.byteLength < 12) return null;
+    const view = new DataView(buffer);
+    const magic = String.fromCharCode(
+      view.getUint8(0),
+      view.getUint8(1),
+      view.getUint8(2),
+      view.getUint8(3)
+    );
+    if (magic !== AMLL_BEAT_CURVE_MAGIC && magic !== AMLL_BEAT_CURVE_MAGIC_LEVELS) return null;
+    const version = view.getUint8(4);
+    if (version !== 1) return null;
+    const bandCount = view.getUint8(5);
+    const frameMs = view.getUint16(6, true);
+    const frameCount = view.getUint32(8, true);
+    if (!bandCount || !frameMs || !frameCount) return null;
+    const dataOffset = 12;
+    const bytesPerFrame = magic === AMLL_BEAT_CURVE_MAGIC_LEVELS ? bandCount + 1 : bandCount;
+    const expected = dataOffset + frameCount * bytesPerFrame;
+    if (buffer.byteLength < expected) return null;
+    const data = new Uint8Array(buffer, dataOffset, frameCount * bytesPerFrame);
+    const mode = magic === AMLL_BEAT_CURVE_MAGIC_LEVELS ? 'levels' : 'gain';
+    return { bandCount, frameMs, frameCount, data, mode };
+  }
+
+  private clearBeatCurvePolling() {
+    if (this.beatCurvePollTimer) {
+      clearTimeout(this.beatCurvePollTimer);
+      this.beatCurvePollTimer = null;
+    }
+    this.beatCurveRequestInFlight = false;
+  }
+
+  private async loadBeatCurve(beatPath: string) {
+    if (!beatPath) {
+      this.beatState.beatCurve = null;
+      return;
+    }
+    try {
+      const url = normalizeBackendUrl(beatPath);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Beat curve request failed: ${response.status}`);
+      }
+      const buffer = await response.arrayBuffer();
+      const curve = this.parseBeatCurve(buffer);
+      if (!curve) {
+        throw new Error('Invalid beat curve');
+      }
+      this.beatState.beatCurve = curve;
+    } catch (error) {
+      console.warn('[AMLL] Beat curve load failed:', error);
+      this.beatState.beatCurve = null;
+    }
+  }
+
+  private async requestBeatCurveFromServer() {
+    if (!this.state.backgroundBeatEnabled) return;
+    if (this.beatCurveRequestInFlight) return;
+    this.beatCurveRequestInFlight = true;
+    try {
+      const response = await fetch('/amll/generate_beat_curve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok && response.status !== 202) {
+        console.warn('[AMLL] Beat curve request failed', response.status);
+        return;
+      }
+      if (payload && payload.status === 'success' && payload.curve) {
+        this.beatCurvePath = payload.curve;
+        await this.loadBeatCurve(payload.curve);
+        return;
+      }
+      if (payload && payload.status === 'pending') {
+        this.beatCurvePollTimer = window.setTimeout(() => this.requestBeatCurveFromServer(), 2000);
+      }
+    } catch (error) {
+      console.warn('[AMLL] Beat curve request failed', error);
+    } finally {
+      this.beatCurveRequestInFlight = false;
+    }
+  }
+
+  private ensureBeatCurveAuto() {
+    if (!this.state.backgroundBeatEnabled) return;
+    if (this.beatState.beatCurve) return;
+    if (this.beatCurvePath) {
+      this.loadBeatCurve(this.beatCurvePath);
+      return;
+    }
+    this.requestBeatCurveFromServer();
+  }
+
+  private sampleBeatCurve(targetBands: number) {
+    const curve = this.beatState.beatCurve;
+    if (!curve || !this.audio) return null;
+    const timeMs = Number.isFinite(this.audio.currentTime) ? this.audio.currentTime * 1000 : 0;
+    const frameFloat = Math.max(0, timeMs / curve.frameMs);
+    const maxFrame = Math.max(0, curve.frameCount - 1);
+    const frameIndex = Math.min(maxFrame, Math.floor(frameFloat));
+    const nextIndex = Math.min(maxFrame, frameIndex + 1);
+    const frameFrac = frameFloat - frameIndex;
+    const bytesPerFrame = curve.mode === 'levels' ? curve.bandCount + 1 : curve.bandCount;
+    const baseOffset = frameIndex * bytesPerFrame;
+    const nextOffset = nextIndex * bytesPerFrame;
+    if (curve.mode === 'levels') {
+      const levels = new Array(targetBands).fill(0);
+      if (curve.bandCount === 1) {
+        const v0 = curve.data[baseOffset] || 0;
+        const v1 = curve.data[nextOffset] || v0;
+        const value = lerp(v0, v1, frameFrac) / 255;
+        levels.fill(value);
+      } else {
+        for (let i = 0; i < targetBands; i += 1) {
+          const srcPos = targetBands === 1
+            ? 0
+            : (i / Math.max(1, targetBands - 1)) * (curve.bandCount - 1);
+          const srcIndex = Math.floor(srcPos);
+          const srcNext = Math.min(curve.bandCount - 1, srcIndex + 1);
+          const srcFrac = srcPos - srcIndex;
+          const a0 = lerp(
+            curve.data[baseOffset + srcIndex] || 0,
+            curve.data[baseOffset + srcNext] || 0,
+            srcFrac
+          );
+          const a1 = lerp(
+            curve.data[nextOffset + srcIndex] || 0,
+            curve.data[nextOffset + srcNext] || 0,
+            srcFrac
+          );
+          levels[i] = lerp(a0, a1, frameFrac) / 255;
+        }
+      }
+      const g0 = curve.data[baseOffset + curve.bandCount] || 0;
+      const g1 = curve.data[nextOffset + curve.bandCount] || g0;
+      const globalEnergy = lerp(g0, g1, frameFrac) / 255;
+      return { mode: 'levels', levels, globalEnergy };
+    }
+    const gains = new Array(targetBands).fill(AMLL_GAIN_MIN);
+    if (curve.bandCount === 1) {
+      const v0 = curve.data[baseOffset] || 0;
+      const v1 = curve.data[nextOffset] || v0;
+      const value = lerp(v0, v1, frameFrac) / 255;
+      const gain = AMLL_GAIN_MIN + value * (AMLL_GAIN_MAX - AMLL_GAIN_MIN);
+      gains.fill(gain);
+    } else {
+      for (let i = 0; i < targetBands; i += 1) {
+        const srcPos = targetBands === 1
+          ? 0
+          : (i / Math.max(1, targetBands - 1)) * (curve.bandCount - 1);
+        const srcIndex = Math.floor(srcPos);
+        const srcNext = Math.min(curve.bandCount - 1, srcIndex + 1);
+        const srcFrac = srcPos - srcIndex;
+        const a0 = lerp(
+          curve.data[baseOffset + srcIndex] || 0,
+          curve.data[baseOffset + srcNext] || 0,
+          srcFrac
+        );
+        const a1 = lerp(
+          curve.data[nextOffset + srcIndex] || 0,
+          curve.data[nextOffset + srcNext] || 0,
+          srcFrac
+        );
+        const value = lerp(a0, a1, frameFrac) / 255;
+        gains[i] = AMLL_GAIN_MIN + value * (AMLL_GAIN_MAX - AMLL_GAIN_MIN);
+      }
+    }
+    return { mode: 'gain', gains };
+  }
+
+  private getBandLevels() {
+    const bandCount = this.beatState.basePaletteHsl.length || 1;
+    const levels = new Array(bandCount).fill(0);
+    const curveSample = this.sampleBeatCurve(bandCount);
+    if (curveSample && curveSample.mode === 'levels') {
+      this.beatState.globalEnergy = curveSample.globalEnergy;
+      return curveSample.levels;
+    }
+    if (!this.beatState.analyser || !this.beatState.freqData) return levels;
+    this.beatState.analyser.getByteFrequencyData(this.beatState.freqData);
+    const totalBins = this.beatState.freqData.length;
+    const nyquist = (this.beatState.audioContext && this.beatState.audioContext.sampleRate)
+      ? this.beatState.audioContext.sampleRate / 2
+      : 22050;
+    const minFreq = 40;
+    const maxFreq = 14000;
+    const logMin = Math.log10(minFreq);
+    const logMax = Math.log10(maxFreq);
+    const binForFreq = (freq: number) => {
+      const clamped = clamp(freq, minFreq, maxFreq);
+      const ratio = clamped / nyquist;
+      return Math.max(0, Math.min(totalBins - 1, Math.round(ratio * (totalBins - 1))));
+    };
+    let sumRaw = 0;
+    for (let i = 0; i < bandCount; i += 1) {
+      const t0 = bandCount === 1 ? 0 : i / bandCount;
+      const t1 = bandCount === 1 ? 1 : (i + 1) / bandCount;
+      const f0 = 10 ** (logMin + (logMax - logMin) * t0);
+      const f1 = 10 ** (logMin + (logMax - logMin) * t1);
+      const start = binForFreq(f0);
+      const end = Math.max(start + 1, binForFreq(f1));
+      let sumSq = 0;
+      let peak = 0;
+      let count = 0;
+      for (let j = start; j < end; j += 1) {
+        const v = this.beatState.freqData[j] || 0;
+        sumSq += v * v;
+        if (v > peak) peak = v;
+        count += 1;
+      }
+      const rms = Math.sqrt(sumSq / Math.max(1, count)) / 255;
+      const peakNorm = peak / 255;
+      const level = 0.7 * rms + 0.3 * peakNorm;
+      const emphasized = Math.pow(clamp(level, 0, 1), 1.15);
+      sumRaw += emphasized;
+      const stats = this.beatState.bandStats[i] || { ema: emphasized, dev: 0.05 };
+      const emaAlpha = 0.02;
+      const devAlpha = 0.05;
+      stats.ema = stats.ema + (emphasized - stats.ema) * emaAlpha;
+      const deviation = Math.abs(emphasized - stats.ema);
+      stats.dev = stats.dev + (deviation - stats.dev) * devAlpha;
+      this.beatState.bandStats[i] = stats;
+      let gain = null;
+      if (curveSample && curveSample.mode === 'gain') {
+        gain = curveSample.gains[i] ?? 1;
+      }
+      if (gain == null) {
+        gain = clamp(0.6 / (stats.dev + 0.02), 0.6, 3.0);
+      }
+      const adjusted = clamp(stats.ema + (emphasized - stats.ema) * gain, 0, 1);
+      levels[i] = adjusted;
+    }
+    this.beatState.globalEnergy = bandCount ? sumRaw / bandCount : 0;
+    if (!Number.isFinite(this.beatState.globalEnergy)) {
+      this.beatState.globalEnergy = 0;
+    }
+    const lowBandCount = Math.min(3, bandCount);
+    const lowBandThreshold = 0.15;
+    const lowBandGain = 1.2;
+    for (let i = 0; i < lowBandCount; i += 1) {
+      const value = levels[i];
+      const normalized = Math.max(0, (value - lowBandThreshold) / Math.max(0.001, 1 - lowBandThreshold));
+      levels[i] = clamp(normalized * lowBandGain, 0, 1);
+    }
+    return levels;
+  }
+
+  private buildDynamicColors() {
+    const levels = this.getBandLevels();
+    const globalEnergy = this.beatState.globalEnergy || 0;
+    const darken = clamp(globalEnergy, 0, 1) * AMLL_DARKEN_MAX;
+    return this.beatState.basePaletteHsl.map((base, index) => {
+      const level = levels[index] || 0;
+      const delta = AMLL_LIGHTNESS_MIN_DELTA
+        + level * (AMLL_LIGHTNESS_MAX_DELTA - AMLL_LIGHTNESS_MIN_DELTA)
+        - darken;
+      const lightness = clamp(base.l + delta, 0, 100);
+      const sat = clamp(base.origS ?? (base.baseS + 50), 0, 100);
+      const rgb = hslToRgb(base.h, sat, lightness);
+      return { r: rgb.r, g: rgb.g, b: rgb.b };
+    });
+  }
+
+  private tickBeatPalette() {
+    if (!this.beatState.enabled) {
+      this.beatState.rafId = null;
+      return;
+    }
+    const renderer = this.beatState.renderer;
+    const mesh = this.getActiveMesh(renderer);
+    if (mesh) {
+      if (!this.beatState.originalMeshColors) {
+        this.captureMeshColors(mesh);
+      }
+      this.ensureBeatBasePalette();
+      const colors = this.buildDynamicColors();
+      if (colors.length) {
+        this.applyColorsToMesh(mesh, colors);
+      }
+    }
+    this.beatState.rafId = requestAnimationFrame(() => this.tickBeatPalette());
+  }
+
+  private startBeatPaletteLoop() {
+    if (this.beatState.rafId != null) return;
+    this.beatState.rafId = requestAnimationFrame(() => this.tickBeatPalette());
+  }
+
+  private stopBeatPaletteLoop(clearBackground = true) {
+    if (this.beatState.rafId != null) {
+      cancelAnimationFrame(this.beatState.rafId);
+    }
+    this.beatState.rafId = null;
+    this.beatState.enabled = false;
+    this.beatState.lastColors = null;
+    const renderer = this.beatState.renderer;
+    const mesh = this.getActiveMesh(renderer);
+    if (mesh) {
+      if (!this.restoreMeshColors(mesh)) {
+        this.applyBasePaletteToMesh(mesh);
+      }
+    }
+    this.beatState.renderer = null;
+    this.beatState.basePaletteHsl = [];
+    this.beatState.originalMeshColors = null;
+    this.beatState.originalMeshSize = null;
+    this.beatState.bandStats = [];
+    this.beatState.globalEnergy = 0;
+    if (clearBackground) {
+      this.beatState.beatCurve = null;
+    }
+  }
+
+  private attachBeatPaletteDriver() {
+    if (!this.state.backgroundBeatEnabled) return;
+    if (this.state.backgroundType !== 'fluid') return;
+    const renderer = this.getBeatRenderer();
+    if (!renderer) return;
+    this.beatState.renderer = renderer;
+    this.beatState.enabled = true;
+    this.beatState.basePaletteHsl = [];
+    this.beatState.bandStats = [];
+    this.beatState.globalEnergy = 0;
+    if (!this.beatState.beatCurve || this.beatState.beatCurve.mode === 'gain') {
+      this.ensureBeatAudioAnalyser();
+    }
+    this.ensureBeatBasePalette();
+    this.startBeatPaletteLoop();
+    this.ensureBeatCurveAuto();
+  }
+
+  private resetBeatPaletteCache() {
+    this.beatState.basePaletteHsl = [];
+    this.beatState.lastColors = null;
+    this.beatState.originalMeshColors = null;
+    this.beatState.originalMeshSize = null;
+    this.beatState.bandStats = [];
+  }
+
+  private syncBackgroundBeatState() {
+    if (!this.state.backgroundBeatEnabled || this.state.backgroundType !== 'fluid') {
+      this.stopBeatPaletteLoop(true);
+      return;
+    }
+    if (!this.state.isPlaying) {
+      this.stopBeatPaletteLoop(false);
+      return;
+    }
+    if (this.beatState.audioContext && this.beatState.audioContext.state === 'suspended') {
+      this.beatState.audioContext.resume().catch(() => {});
+    }
+    this.attachBeatPaletteDriver();
   }
 
   // 更新背景显示
@@ -6636,6 +7288,8 @@ class WebLyricsPlayer {
 
     const dpr = window.devicePixelRatio || 1;
     this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
+    this.resetBeatPaletteCache();
+    this.syncBackgroundBeatState();
   }
 
   private updateFPSDisplay() {
