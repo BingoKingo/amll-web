@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@applemusic-like-lyrics/core':
-        specifier: 0.2.0-alpha.5
-        version: 0.2.0-alpha.5(@pixi/app@7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3)))(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3))(@pixi/filter-bulge-pinch@5.1.1(@pixi/core@7.4.3))(@pixi/filter-color-matrix@7.4.3(@pixi/core@7.4.3))(@pixi/sprite@7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3)))
+        specifier: link:../applemusic-like-lyrics/packages/core
+        version: link:../applemusic-like-lyrics/packages/core
       '@applemusic-like-lyrics/lyric':
-        specifier: 0.2.4
-        version: 0.2.4
+        specifier: link:../applemusic-like-lyrics/packages/lyric
+        version: link:../applemusic-like-lyrics/packages/lyric
       '@applemusic-like-lyrics/ttml':
-        specifier: 0.1.1
-        version: 0.1.1
+        specifier: link:../applemusic-like-lyrics/packages/ttml
+        version: link:../applemusic-like-lyrics/packages/ttml
       '@ffmpeg/ffmpeg':
         specifier: ^0.12.15
         version: 0.12.15
@@ -113,23 +113,6 @@ importers:
         version: 3.5.0(vite@7.1.7)
 
 packages:
-
-  '@applemusic-like-lyrics/core@0.2.0-alpha.5':
-    resolution: {integrity: sha512-wkq2moQZr6PEVz03Bd/x+G9gQp7+GY/NZi5jFMyd1HvNaSuYcBP78fSjBAg3raCBY+RkwaWZ/0ZwDDP/W3mPMA==}
-    peerDependencies:
-      '@pixi/app': '*'
-      '@pixi/core': '*'
-      '@pixi/display': '*'
-      '@pixi/filter-blur': '*'
-      '@pixi/filter-bulge-pinch': '*'
-      '@pixi/filter-color-matrix': '*'
-      '@pixi/sprite': '*'
-
-  '@applemusic-like-lyrics/lyric@0.2.4':
-    resolution: {integrity: sha512-B1N7dMEwEIlgtyqLGVt7EbXJBQLCbv5J/N0YjkgWHu5qM1vMhKSGOXzrBuMDusmr4Z6tfO5iLfOYQUtoSXZyeg==}
-
-  '@applemusic-like-lyrics/ttml@0.1.1':
-    resolution: {integrity: sha512-gt/R8FdKKFjCh2gQFIi2fdjULGqeqWym7ZUeNisV6jBEESCetyo/BLRDNIEkE5UB1eeehQni3SwyvSSkEhWLZQ==}
 
   '@babel/runtime@7.28.4':
     resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
@@ -623,9 +606,6 @@ packages:
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
 
-  '@ungap/structured-clone@1.3.0':
-    resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
-
   '@vercel/speed-insights@1.2.0':
     resolution: {integrity: sha512-y9GVzrUJ2xmgtQlzFP2KhVRoCglwfRQgjyfY607aU0hh0Un6d0OUyrJkjuAlsV18qR4zfoFPs/BiIj9YDS6Wzw==}
     peerDependencies:
@@ -675,9 +655,6 @@ packages:
 
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
-
-  bezier-easing@2.1.0:
-    resolution: {integrity: sha512-gbIqZ/eslnUFC1tjEvtz0sgx+xTK20wDnYMIA27VA04R7w6xxXQPZDbibjA9DTWZRA2CXtwHykkVzlCaAJAZig==}
 
   binary-extensions@2.3.0:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
@@ -751,9 +728,6 @@ packages:
     peerDependenciesMeta:
       supports-color:
         optional: true
-
-  deep-freeze@0.0.1:
-    resolution: {integrity: sha512-Z+z8HiAvsGwmjqlphnHW5oz6yWlOwu6EQfFTjmeTWlDeda3FS2yv3jhq35TX/ewmsnqB+RX2IdsIOyjJCQN5tg==}
 
   detect-libc@2.1.1:
     resolution: {integrity: sha512-ecqj/sy1jcK1uWrwpR67UhYrIFQ+5WlGxth34WquCbamhFA6hkkwiu37o6J5xCHdo1oixJRfVRw+ywV+Hq/0Aw==}
@@ -841,9 +815,6 @@ packages:
   get-proto@1.0.1:
     resolution: {integrity: sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==}
     engines: {node: '>= 0.4'}
-
-  gl-matrix@4.0.0-beta.2:
-    resolution: {integrity: sha512-OF6IkQpMkF8p2CZF9EtzYZPlPaW3M41KMsgZGlTKmMv/nWaP6GMJi9V5tI+oPn8FG0io85Q5ZtKpCXP4u6YmDA==}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -1218,24 +1189,6 @@ packages:
 
 snapshots:
 
-  '@applemusic-like-lyrics/core@0.2.0-alpha.5(@pixi/app@7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3)))(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3))(@pixi/filter-bulge-pinch@5.1.1(@pixi/core@7.4.3))(@pixi/filter-color-matrix@7.4.3(@pixi/core@7.4.3))(@pixi/sprite@7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3)))':
-    dependencies:
-      '@pixi/app': 7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3))
-      '@pixi/core': 7.4.3
-      '@pixi/display': 7.4.3(@pixi/core@7.4.3)
-      '@pixi/filter-blur': 7.4.3(@pixi/core@7.4.3)
-      '@pixi/filter-bulge-pinch': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-color-matrix': 7.4.3(@pixi/core@7.4.3)
-      '@pixi/sprite': 7.4.3(@pixi/core@7.4.3)(@pixi/display@7.4.3(@pixi/core@7.4.3))
-      '@ungap/structured-clone': 1.3.0
-      bezier-easing: 2.1.0
-      deep-freeze: 0.0.1
-      gl-matrix: 4.0.0-beta.2
-
-  '@applemusic-like-lyrics/lyric@0.2.4': {}
-
-  '@applemusic-like-lyrics/ttml@0.1.1': {}
-
   '@babel/runtime@7.28.4': {}
 
   '@borewit/text-codec@0.1.1': {}
@@ -1575,8 +1528,6 @@ snapshots:
 
   '@types/stats.js@0.17.4': {}
 
-  '@ungap/structured-clone@1.3.0': {}
-
   '@vercel/speed-insights@1.2.0': {}
 
   '@wasm-audio-decoders/common@9.0.7':
@@ -1612,8 +1563,6 @@ snapshots:
       picomatch: 2.3.1
 
   base64-js@1.5.1: {}
-
-  bezier-easing@2.1.0: {}
 
   binary-extensions@2.3.0: {}
 
@@ -1696,8 +1645,6 @@ snapshots:
   debug@4.4.3:
     dependencies:
       ms: 2.1.3
-
-  deep-freeze@0.0.1: {}
 
   detect-libc@2.1.1: {}
 
@@ -1811,8 +1758,6 @@ snapshots:
     dependencies:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.1
-
-  gl-matrix@4.0.0-beta.2: {}
 
   glob-parent@5.1.2:
     dependencies:

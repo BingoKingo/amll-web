@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/sync-backend.mjs",
+    "sync-backend": "node scripts/sync-backend.mjs",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -30,9 +31,9 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "@applemusic-like-lyrics/core": "0.2.0-alpha.5",
-    "@applemusic-like-lyrics/lyric": "0.2.4",
-    "@applemusic-like-lyrics/ttml": "0.1.1",
+    "@applemusic-like-lyrics/core": "link:../applemusic-like-lyrics/packages/core",
+    "@applemusic-like-lyrics/lyric": "link:../applemusic-like-lyrics/packages/lyric",
+    "@applemusic-like-lyrics/ttml": "link:../applemusic-like-lyrics/packages/ttml",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@pixi/app": "^7.4.3",

@@ -390,10 +390,7 @@ const URL_ALIAS_CONFIG: Record<
   auto: { property: 'autoPlay', parse: (raw) => parseBooleanParam(raw) },
   t: {
     property: 'rangeStartTime',
-    parse: (raw) => {
-      const parsed = Number(raw);
-      return Number.isNaN(parsed) ? undefined : parsed;
-    }
+    parse: () => 0
   },
   te: {
     property: 'rangeEndTime',
@@ -434,6 +431,7 @@ class WebLyricsPlayer {
       mode: 'levels' | 'gain';
     } | null
   };
+  private coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }> = [];
   private coverBlurBaseScale = 1.1;
   private stats: Stats;
   private state: PlayerState;
@@ -3586,7 +3584,7 @@ class WebLyricsPlayer {
     const volume = urlParams.get("vol");
     const loopPlay =
       urlParams.get("loop") === "1" || urlParams.get("loop") === "true";
-    const currentTime = urlParams.get("t");
+    const currentTime = null; // 固定为 null，忽略 URL 参数 t
 
     if (playbackSpeed) {
       const speed = parseFloat(playbackSpeed);
@@ -3976,6 +3974,22 @@ class WebLyricsPlayer {
         }
       }
 
+      const bgCount = lines.filter((line) => line.isBG).length;
+      let consecutiveBgCount = 0;
+      for (let i = 1; i < lines.length; i += 1) {
+        if (lines[i - 1].isBG && lines[i].isBG) {
+          consecutiveBgCount += 1;
+        }
+      }
+      console.log(
+        "[AMLL] Parsed lyric lines:",
+        lines.length,
+        "bgLines:",
+        bgCount,
+        "consecutiveBgPairs:",
+        consecutiveBgCount
+      );
+
       this.originalLyricLines = JSON.parse(JSON.stringify(lines));
       this.hasLyrics = lines.length > 0;
       this.updateLyricsDisplay();
@@ -4145,14 +4159,6 @@ class WebLyricsPlayer {
         updatedLine.translatedLyric = updatedLine.romanLyric;
         updatedLine.romanLyric = temp;
       }
-      if (!this.state.showbgLyric && updatedLine.isBG) {
-        updatedLine.lyric = '';
-        updatedLine.translatedLyric = '';
-        updatedLine.romanLyric = '';
-        if (updatedLine.words && updatedLine.words.length > 0) {
-          updatedLine.words = updatedLine.words.map((word: any) => ({ ...word, word: '' }));
-        }
-      }
       if (this.state.swapDuetsPositions) {
         updatedLine.isDuet = !line.isDuet;
         if (updatedLine.words && updatedLine.words.length > 0) {
@@ -4186,11 +4192,7 @@ class WebLyricsPlayer {
       return updatedLine;
     });
 
-    const filteredLines = !this.state.showbgLyric
-      ? updatedLines.filter((line: any) => !line.isBG)
-      : updatedLines;
-
-    this.processedLyricLines = filteredLines as LyricLine[];
+    this.processedLyricLines = updatedLines as LyricLine[];
     this.lyricPlayer.setLyricLines(this.processedLyricLines);
     this.lyricPlayer.setHidePassedLines(this.state.hidePassedLyrics);
     const currentTimeMs = this.audio.currentTime * 1000;
@@ -5641,7 +5643,7 @@ class WebLyricsPlayer {
     const hasAutoParam = urlParams.has("auto");
     const autoPlay =
       urlParams.get("auto") === "1" || urlParams.get("auto") === "true";
-    const currentTime = urlParams.get("t");
+    const currentTime = null; // 固定为 null，忽略 URL 参数 t
     const endTime = urlParams.get("te");
 
     let styleParamsChanged = false;
@@ -5755,12 +5757,10 @@ class WebLyricsPlayer {
     if (music || lyric || cover) {
       this.hasAutoLoadedFromUrl = true;
       this.loadFromURLs().then(() => {
-        if (currentTime && this.audio) {
-          const time = parseFloat(currentTime);
-          if (!isNaN(time) && time >= 0) {
-            this.audio.currentTime = time;
-            this.state.rangeStartTime = time;
-          }
+        // t 参数固定为 0，不从 URL 读取
+        if (this.audio) {
+          this.audio.currentTime = 0;
+          this.state.rangeStartTime = 0;
         }
 
         if (endTime) {
@@ -5884,6 +5884,26 @@ class WebLyricsPlayer {
         img.src = imageUrl;
       });
       const [r, g, b] = this.colorThief.getColor(img);
+      try {
+        const palette = this.colorThief.getPalette(img, AMLL_PALETTE_TARGET);
+        if (Array.isArray(palette) && palette.length) {
+          const hslPalette = palette.map((rgb) => {
+            const hex = `#${rgb[0].toString(16).padStart(2, '0')}${rgb[1].toString(16).padStart(2, '0')}${rgb[2].toString(16).padStart(2, '0')}`;
+            const hsl = hexToHsl(hex);
+            if (!hsl) return null;
+            const origS = clamp(hsl.s, 0, 100);
+            return { h: hsl.h, l: hsl.l, baseS: clamp(origS - 50, 0, 100), origS };
+          }).filter(Boolean) as Array<{ h: number; l: number; baseS: number; origS?: number }>;
+          hslPalette.sort((a, b) => (a.h - b.h) || (a.l - b.l));
+          if (hslPalette.length) {
+            this.coverPaletteHsl = hslPalette;
+            this.beatState.basePaletteHsl = hslPalette.map((entry) => ({ ...entry }));
+            this.beatState.lastColors = null;
+          }
+        }
+      } catch {
+        // ignore palette failures
+      }
       const hsl = this.rgbToHsl(r, g, b);
       hsl[2] = 0.8;
       const [newR, newG, newB] = this.hslToRgb(hsl[0], hsl[1], hsl[2]);
@@ -6606,6 +6626,10 @@ class WebLyricsPlayer {
     const palette = this.extractPaletteFromImageData(imageData, AMLL_PALETTE_TARGET);
     if (palette.length) {
       this.beatState.basePaletteHsl = palette;
+      return;
+    }
+    if (this.coverPaletteHsl.length) {
+      this.beatState.basePaletteHsl = this.coverPaletteHsl.map((entry) => ({ ...entry }));
     }
   }
 
@@ -6775,6 +6799,38 @@ class WebLyricsPlayer {
     this.beatCurveRequestInFlight = false;
   }
 
+  private getBeatCurveJsonPath(): string | null {
+    const candidates = [this.state.lyricUrl, this.state.musicUrl];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      let path = trimmed;
+      if (/^https?:\/\//i.test(trimmed)) {
+        try {
+          path = new URL(trimmed).pathname || trimmed;
+        } catch {
+          path = trimmed;
+        }
+      }
+      path = path.split("?")[0].split("#")[0].replace(/\\/g, "/");
+      if (!path) continue;
+      let relative = "";
+      if (path.startsWith("/songs/")) {
+        relative = path.slice(1);
+      } else if (path.startsWith("songs/")) {
+        relative = path;
+      } else {
+        continue;
+      }
+      const lastSlash = relative.lastIndexOf("/");
+      const lastDot = relative.lastIndexOf(".");
+      if (lastDot <= lastSlash) continue;
+      return `${relative.slice(0, lastDot)}.json`;
+    }
+    return null;
+  }
+
   private async loadBeatCurve(beatPath: string) {
     if (!beatPath) {
       this.beatState.beatCurve = null;
@@ -6803,10 +6859,11 @@ class WebLyricsPlayer {
     if (this.beatCurveRequestInFlight) return;
     this.beatCurveRequestInFlight = true;
     try {
+      const jsonPath = this.getBeatCurveJsonPath();
       const response = await fetch('/amll/generate_beat_curve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify(jsonPath ? { json_path: jsonPath } : {})
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok && response.status !== 202) {
