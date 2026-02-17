@@ -5758,9 +5758,13 @@ class WebLyricsPlayer {
       this.hasAutoLoadedFromUrl = true;
       this.loadFromURLs().then(() => {
         // t 参数固定为 0，不从 URL 读取
+        console.log('[AMLL] 设置播放时间为 0，忽略 URL 参数 t');
         if (this.audio) {
           this.audio.currentTime = 0;
           this.state.rangeStartTime = 0;
+          console.log('[AMLL] 已设置 audio.currentTime = 0, rangeStartTime = 0');
+        } else {
+          console.log('[AMLL] audio 对象不存在，无法设置播放时间');
         }
 
         if (endTime) {
