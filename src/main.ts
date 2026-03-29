@@ -224,6 +224,17 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
 
 const cloneDefaultState = (): PlayerState => JSON.parse(JSON.stringify(DEFAULT_PLAYER_STATE));
 
+const readStoredSettings = (): Record<string, unknown> => {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 const BOOLEAN_TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const BOOLEAN_FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -6028,6 +6039,7 @@ class WebLyricsPlayer {
 
   private saveBackgroundSettings() {
     const settings = {
+      ...readStoredSettings(),
       backgroundType: this.state.backgroundType,
       backgroundDynamic: this.state.backgroundDynamic,
       backgroundFlowSpeed: this.state.backgroundFlowSpeed,
