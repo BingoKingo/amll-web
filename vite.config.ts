@@ -76,6 +76,10 @@ function toStaticUrl(filename: string, namespace: "assets" | "icons" | "public")
   return `{{ url_for('static', filename='${namespace}/${filename}') }}`;
 }
 
+function toServiceWorkerUrl(): string {
+  return "{{ url_for('service_worker') }}";
+}
+
 function transformIndexHtml(html: string): string {
   let output = html;
 
@@ -94,8 +98,24 @@ function transformIndexHtml(html: string): string {
   output = output.replace(/src="\.\/public\/([^\"]+)"/g, (_, file: string) => `src="${toStaticUrl(file, "public")}"`);
   output = output.replace(/src="\/public\/([^\"]+)"/g, (_, file: string) => `src="${toStaticUrl(file, "public")}"`);
 
-  output = output.replace(/\.register\("\.\/public\/([^\"]+)"\)/g, (_, file: string) => `.register("${toStaticUrl(file, "public")}")`);
-  output = output.replace(/\.register\('\.\/public\/([^\']+)'\)/g, (_, file: string) => `.register('${toStaticUrl(file, "public")}')`);
+  output = output.replace(
+    /\.register\(\s*"\.\/service-worker\.js"\s*(?:,\s*\{[^)]*\})?\s*\)/g,
+    () => `.register("${toServiceWorkerUrl()}", { scope: "/" })`
+  );
+  output = output.replace(
+    /\.register\(\s*'\.\/service-worker\.js'\s*(?:,\s*\{[^)]*\})?\s*\)/g,
+    () => `.register('${toServiceWorkerUrl()}', { scope: "/" })`
+  );
+  output = output.replace(
+    /\.register\(\s*"\.\/public\/([^\"]+)"\s*(?:,\s*(\{[^)]*\}))?\s*\)/g,
+    (_, file: string, options?: string) =>
+      `.register("${toStaticUrl(file, "public")}"${options ? `, ${options}` : ""})`
+  );
+  output = output.replace(
+    /\.register\(\s*'\.\/public\/([^\']+)'\s*(?:,\s*(\{[^)]*\}))?\s*\)/g,
+    (_, file: string, options?: string) =>
+      `.register('${toStaticUrl(file, "public")}'${options ? `, ${options}` : ""})`
+  );
 
   output = output.replace(/url_for\('static', filename='assets\/index-[^']+\.js'\)/g, "url_for('static', filename='assets/amll-player.js')");
   output = output.replace(/url_for\('static', filename='assets\/index-[^']+\.css'\)/g, "url_for('static', filename='assets/amll-player.css')");
