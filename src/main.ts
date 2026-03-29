@@ -437,6 +437,18 @@ const DYNAMIC_COVER_VIDEO_EXTENSIONS = [
   '.mov'
 ] as const;
 
+const DYNAMIC_COVER_IMAGE_EXTENSIONS = [
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.avif',
+  '.apng'
+] as const;
+
 function getFirstUrlParamValue(urlParams: URLSearchParams, keys: readonly string[]): string {
   for (const key of keys) {
     const value = urlParams.get(key);
@@ -457,17 +469,42 @@ function isLikelyVideoSource(input?: string | null): boolean {
     return true;
   }
 
+  if (candidate.startsWith('data:image/')) {
+    return false;
+  }
+
   if (candidate.startsWith('blob:')) {
     return true;
   }
 
   try {
     const parsed = new URL(candidate, window.location.href);
+    const hostname = (parsed.hostname || '').toLowerCase();
     const pathname = decodeURIComponent(parsed.pathname).toLowerCase();
-    return DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+    const fullUrl = parsed.toString().toLowerCase();
+
+    if (hostname === 'mvod.itunes.apple.com') {
+      return true;
+    }
+
+    if (DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => fullUrl.includes(ext))) {
+      return true;
+    }
+
+    if (DYNAMIC_COVER_IMAGE_EXTENSIONS.some((ext) => pathname.endsWith(ext))) {
+      return false;
+    }
+
+    return /(^https?:\/\/)|(^\/)|(^\.\/)|(^\.\.\/)|(^:)/.test(candidate);
   } catch {
     const lower = candidate.toLowerCase();
-    return DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => lower.includes(ext));
+    if (DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => lower.includes(ext))) {
+      return true;
+    }
+    if (DYNAMIC_COVER_IMAGE_EXTENSIONS.some((ext) => lower.includes(ext))) {
+      return false;
+    }
+    return true;
   }
 }
 
@@ -851,7 +888,7 @@ class WebLyricsPlayer {
       if (this.state.coverRotationSpeed !== 0) {
         this.applyCoverRotation(this.albumCoverLarge, this.albumCoverContainer);
         if (this.albumCoverVideo && this.albumCoverVideo.style.display !== 'none') {
-          this.applyCoverRotation(this.albumCoverVideo, this.albumCoverContainer, false);
+          this.applyCoverRotation(this.albumCoverVideo, this.albumCoverContainer);
         }
       } else {
         if (this.audio.paused) {
@@ -890,7 +927,9 @@ class WebLyricsPlayer {
     const animationName = this.state.coverRotationSpeed > 0 ? 'spin' : 'spinCounterclockwise';
     coverElement.style.animation = `${animationName} ${duration}s linear infinite`;
 
-    if (this.audio.paused || (pauseOnHover && coverElement.matches(':hover'))) {
+    const shouldPauseForHover = pauseOnHover && albumCoverContainer.matches(':hover');
+
+    if (this.audio.paused || shouldPauseForHover) {
       coverElement.style.animationPlayState = 'paused';
       albumCoverContainer.style.transform = 'scale(0.96)';
       coverElement.style.transform = 'scale(1)';
@@ -992,6 +1031,8 @@ class WebLyricsPlayer {
 
     if (posterSrc) {
       this.albumCoverVideo.poster = posterSrc;
+    } else {
+      this.albumCoverVideo.removeAttribute('poster');
     }
 
     const previousSrc = this.albumCoverVideo.dataset.dynamicSrc || '';
