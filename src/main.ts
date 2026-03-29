@@ -412,6 +412,65 @@ const URL_ALIAS_CONFIG: Record<
   }
 };
 
+const DYNAMIC_COVER_PARAM_KEYS = [
+  'dynamicCover',
+  'dynamicCoverSrc',
+  'coverVideo',
+  'videoCover',
+  'videoUrl',
+  'video_url'
+] as const;
+
+const DYNAMIC_COVER_POSTER_PARAM_KEYS = [
+  'dynamicCoverPoster',
+  'coverVideoPoster',
+  'coverPoster',
+  'videoPoster'
+] as const;
+
+const DYNAMIC_COVER_VIDEO_EXTENSIONS = [
+  '.mp4',
+  '.webm',
+  '.ogg',
+  '.ogv',
+  '.m4v',
+  '.mov'
+] as const;
+
+function getFirstUrlParamValue(urlParams: URLSearchParams, keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = urlParams.get(key);
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function isLikelyVideoSource(input?: string | null): boolean {
+  const candidate = typeof input === 'string' ? normalizeBackendUrl(input.trim()) : '';
+  if (!candidate) {
+    return false;
+  }
+
+  if (candidate.startsWith('data:video/')) {
+    return true;
+  }
+
+  if (candidate.startsWith('blob:')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(candidate, window.location.href);
+    const pathname = decodeURIComponent(parsed.pathname).toLowerCase();
+    return DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+  } catch {
+    const lower = candidate.toLowerCase();
+    return DYNAMIC_COVER_VIDEO_EXTENSIONS.some((ext) => lower.includes(ext));
+  }
+}
+
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: BaseDomLyricPlayer;
@@ -488,6 +547,7 @@ class WebLyricsPlayer {
   private songArtistInput: HTMLInputElement | null = null;
   private albumCoverLarge: HTMLImageElement | null = null;
   private albumCoverContainer: HTMLElement | null = null;
+  private albumCoverVideo: HTMLVideoElement | null = null;
   private roundedCoverSlider: HTMLInputElement | null = null;
   private roundedCoverValue: HTMLElement | null = null;
   private coverRotationSlider: HTMLInputElement | null = null;
@@ -608,6 +668,33 @@ class WebLyricsPlayer {
   private springScaleDampingValue: HTMLElement | null = null;
   private springScaleStiffnessValue: HTMLElement | null = null;
   private controlPointCodeInput: HTMLInputElement | null = null;
+  private dynamicCoverUrl = '';
+  private dynamicCoverPosterUrl = '';
+  private dynamicCoverLoadFailed = false;
+  private handleDynamicCoverLoaded = () => {
+    if (!this.albumCoverVideo || !this.dynamicCoverUrl) {
+      return;
+    }
+
+    this.dynamicCoverLoadFailed = false;
+    this.albumCoverContainer?.classList.add('amll-dynamic-cover-ready');
+    this.albumCoverVideo.classList.add('is-ready');
+    this.albumCoverVideo.style.display = 'block';
+    const playPromise = this.albumCoverVideo.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+    this.updateCoverRotation();
+  };
+  private handleDynamicCoverError = () => {
+    if (!this.dynamicCoverUrl) {
+      return;
+    }
+
+    console.warn('[AMLL] Dynamic cover video failed to load:', this.dynamicCoverUrl);
+    this.dynamicCoverLoadFailed = true;
+    this.hideDynamicCoverVideo({ clearSource: true });
+  };
 
   private initI18n() {
     document.documentElement.lang = getCurrentLanguage();
@@ -678,6 +765,9 @@ class WebLyricsPlayer {
       const borderRadius = (this.state.roundedCover / 100) * 50;
       this.albumCoverLarge.style.borderRadius = `${borderRadius}%`;
       this.albumCoverContainer.style.borderRadius = `${borderRadius}%`;
+      if (this.albumCoverVideo) {
+        this.albumCoverVideo.style.borderRadius = `${borderRadius}%`;
+      }
       document.documentElement.style.setProperty('--rounded-cover-percent', borderRadius.toString());
     }
 
@@ -754,16 +844,28 @@ class WebLyricsPlayer {
   private updateCoverRotation() {
     if (this.albumCoverLarge && this.albumCoverContainer) {
       this.albumCoverLarge.style.animation = 'none';
+      if (this.albumCoverVideo) {
+        this.albumCoverVideo.style.animation = 'none';
+      }
 
       if (this.state.coverRotationSpeed !== 0) {
         this.applyCoverRotation(this.albumCoverLarge, this.albumCoverContainer);
+        if (this.albumCoverVideo && this.albumCoverVideo.style.display !== 'none') {
+          this.applyCoverRotation(this.albumCoverVideo, this.albumCoverContainer, false);
+        }
       } else {
         if (this.audio.paused) {
           this.albumCoverContainer.style.transform = 'scale(0.96)';
           this.albumCoverLarge.style.transform = 'scale(1)';
+          if (this.albumCoverVideo) {
+            this.albumCoverVideo.style.transform = 'scale(1)';
+          }
         } else {
           this.albumCoverContainer.style.transform = 'scale(1)';
           this.albumCoverLarge.style.transform = 'scale(1)';
+          if (this.albumCoverVideo) {
+            this.albumCoverVideo.style.transform = 'scale(1)';
+          }
         }
       }
     }
@@ -777,22 +879,155 @@ class WebLyricsPlayer {
     }
   }
 
-  private applyCoverRotation(albumCoverLarge: HTMLImageElement, albumCoverContainer: HTMLElement) {
+  private applyCoverRotation(
+    coverElement: HTMLImageElement | HTMLVideoElement,
+    albumCoverContainer: HTMLElement,
+    pauseOnHover = true
+  ) {
     const speed = Math.abs(this.state.coverRotationSpeed);
     const duration = 60 / speed;
 
     const animationName = this.state.coverRotationSpeed > 0 ? 'spin' : 'spinCounterclockwise';
-    albumCoverLarge.style.animation = `${animationName} ${duration}s linear infinite`;
+    coverElement.style.animation = `${animationName} ${duration}s linear infinite`;
 
-    if (this.audio.paused || albumCoverLarge.matches(':hover')) {
-      albumCoverLarge.style.animationPlayState = 'paused';
+    if (this.audio.paused || (pauseOnHover && coverElement.matches(':hover'))) {
+      coverElement.style.animationPlayState = 'paused';
       albumCoverContainer.style.transform = 'scale(0.96)';
-      albumCoverLarge.style.transform = 'scale(1)';
+      coverElement.style.transform = 'scale(1)';
     } else {
-      albumCoverLarge.style.animationPlayState = 'running';
+      coverElement.style.animationPlayState = 'running';
       albumCoverContainer.style.transform = 'scale(1)';
-      albumCoverLarge.style.transform = 'scale(1)';
+      coverElement.style.transform = 'scale(1)';
     }
+  }
+
+  private initDynamicCoverVideo() {
+    if (!this.albumCoverContainer || this.albumCoverVideo) {
+      return;
+    }
+
+    if (!document.getElementById('amllDynamicCoverStyle')) {
+      const style = document.createElement('style');
+      style.id = 'amllDynamicCoverStyle';
+      style.textContent = `
+        #albumCoverContainer .amll-cover-video {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: none;
+          opacity: 0;
+          z-index: 6;
+          pointer-events: none;
+          background: transparent;
+          transition: opacity 0.2s ease;
+        }
+
+        #albumCoverContainer .amll-cover-video.is-ready {
+          opacity: 1;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const video = document.createElement('video');
+    video.id = 'albumCoverVideo';
+    video.className = 'amll-cover-video';
+    video.muted = true;
+    video.defaultMuted = true;
+    video.autoplay = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.disablePictureInPicture = true;
+    video.controls = false;
+    video.setAttribute('aria-hidden', 'true');
+    video.setAttribute('tabindex', '-1');
+    video.addEventListener('loadeddata', this.handleDynamicCoverLoaded);
+    video.addEventListener('error', this.handleDynamicCoverError);
+    this.albumCoverContainer.appendChild(video);
+    this.albumCoverVideo = video;
+    this.updateRoundedCover();
+  }
+
+  private hideDynamicCoverVideo(options?: { clearSource?: boolean }) {
+    if (!this.albumCoverVideo) {
+      return;
+    }
+
+    this.albumCoverContainer?.classList.remove('amll-dynamic-cover-ready');
+    this.albumCoverVideo.pause();
+    this.albumCoverVideo.classList.remove('is-ready');
+    this.albumCoverVideo.style.display = 'none';
+    this.albumCoverVideo.style.opacity = '';
+
+    if (options?.clearSource) {
+      delete this.albumCoverVideo.dataset.dynamicSrc;
+      this.albumCoverVideo.removeAttribute('src');
+      this.albumCoverVideo.load();
+    }
+  }
+
+  private syncDynamicCoverVideo() {
+    if (!this.albumCoverVideo || !this.albumCoverContainer) {
+      return;
+    }
+
+    const dynamicSrc = normalizeBackendUrl(this.dynamicCoverUrl);
+    const posterSrc = normalizeBackendUrl(this.dynamicCoverPosterUrl || resolveDefaultCover(this.state.coverUrl));
+
+    if (!dynamicSrc) {
+      this.dynamicCoverLoadFailed = false;
+      this.hideDynamicCoverVideo({ clearSource: true });
+      return;
+    }
+
+    if (!isLikelyVideoSource(dynamicSrc)) {
+      console.warn('[AMLL] Dynamic cover source is not a supported video:', dynamicSrc);
+      this.dynamicCoverLoadFailed = true;
+      this.hideDynamicCoverVideo({ clearSource: true });
+      return;
+    }
+
+    if (posterSrc) {
+      this.albumCoverVideo.poster = posterSrc;
+    }
+
+    const previousSrc = this.albumCoverVideo.dataset.dynamicSrc || '';
+    if (previousSrc === dynamicSrc) {
+      if (!this.dynamicCoverLoadFailed && this.albumCoverVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        this.albumCoverVideo.style.display = 'block';
+        this.albumCoverVideo.classList.add('is-ready');
+        this.albumCoverContainer.classList.add('amll-dynamic-cover-ready');
+      }
+      return;
+    }
+
+    this.dynamicCoverLoadFailed = false;
+    this.albumCoverContainer.classList.remove('amll-dynamic-cover-ready');
+    this.albumCoverVideo.classList.remove('is-ready');
+    this.albumCoverVideo.style.display = 'none';
+    this.albumCoverVideo.pause();
+    this.albumCoverVideo.dataset.dynamicSrc = dynamicSrc;
+    this.albumCoverVideo.src = dynamicSrc;
+    this.albumCoverVideo.load();
+    const playPromise = this.albumCoverVideo.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  }
+
+  private updateDynamicCoverFromUrlParams(urlParams: URLSearchParams) {
+    const dynamicCover = getFirstUrlParamValue(urlParams, DYNAMIC_COVER_PARAM_KEYS);
+    const dynamicCoverPoster = getFirstUrlParamValue(urlParams, DYNAMIC_COVER_POSTER_PARAM_KEYS);
+
+    this.dynamicCoverUrl = dynamicCover;
+    this.dynamicCoverPosterUrl = dynamicCoverPoster;
+    if (!dynamicCover) {
+      this.dynamicCoverLoadFailed = false;
+    }
+    this.syncDynamicCoverVideo();
   }
 
   private checkAndUpdateMarquee(element: HTMLElement | null) {
@@ -1195,6 +1430,7 @@ class WebLyricsPlayer {
     this.coverBlurBackground = document.createElement('div');
     this.stats = new Stats();
     this.initDOMCache();
+    this.initDynamicCoverVideo();
     if (this.waveformCanvas) {
       this.waveformContext = this.waveformCanvas.getContext('2d');
     }
@@ -4844,6 +5080,9 @@ class WebLyricsPlayer {
     this.state.songTitle = "";
     this.state.songArtist = "";
     this.state.coverUrl = "";
+    this.dynamicCoverUrl = "";
+    this.dynamicCoverPosterUrl = "";
+    this.dynamicCoverLoadFailed = false;
     document.title = "AMLL Web Player";
 
     if (this.controlPointCodeInput) {
@@ -4857,6 +5096,7 @@ class WebLyricsPlayer {
     if (this.albumCoverLarge) {
       this.albumCoverLarge.src = DEFAULT_AMLL_COVER_URL;
     }
+    this.hideDynamicCoverVideo({ clearSource: true });
 
     if (this.songTitle) {
       this.songTitle.textContent = t("title");
@@ -5230,6 +5470,7 @@ class WebLyricsPlayer {
       } else {
         this.albumCoverLarge.src = DEFAULT_AMLL_COVER_URL;
       }
+      this.syncDynamicCoverVideo();
       this.songTitle.textContent = this.state.songTitle || t("title");
       this.songArtist.textContent = this.state.songArtist || t("artist");
       this.updateMarqueeSettings();
@@ -5656,6 +5897,8 @@ class WebLyricsPlayer {
       urlParams.get("auto") === "1" || urlParams.get("auto") === "true";
     const currentTime = null; // 固定为 null，忽略 URL 参数 t
     const endTime = urlParams.get("te");
+
+    this.updateDynamicCoverFromUrlParams(urlParams);
 
     let styleParamsChanged = false;
 
