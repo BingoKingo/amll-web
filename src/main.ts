@@ -713,6 +713,11 @@ class WebLyricsPlayer {
       return;
     }
 
+    const hasPoster = Boolean(this.albumCoverVideo.getAttribute('poster'));
+    if (!hasPoster && this.albumCoverVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return;
+    }
+
     this.dynamicCoverLoadFailed = false;
     this.albumCoverContainer?.classList.add('amll-dynamic-cover-ready');
     this.albumCoverVideo.classList.add('is-ready');
@@ -949,6 +954,13 @@ class WebLyricsPlayer {
       const style = document.createElement('style');
       style.id = 'amllDynamicCoverStyle';
       style.textContent = `
+        #albumCoverContainer {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
         #albumCoverContainer .amll-cover-video {
           position: absolute;
           inset: 0;
@@ -983,7 +995,9 @@ class WebLyricsPlayer {
     video.controls = false;
     video.setAttribute('aria-hidden', 'true');
     video.setAttribute('tabindex', '-1');
+    video.addEventListener('loadedmetadata', this.handleDynamicCoverLoaded);
     video.addEventListener('loadeddata', this.handleDynamicCoverLoaded);
+    video.addEventListener('canplay', this.handleDynamicCoverLoaded);
     video.addEventListener('error', this.handleDynamicCoverError);
     this.albumCoverContainer.appendChild(video);
     this.albumCoverVideo = video;
@@ -1037,7 +1051,8 @@ class WebLyricsPlayer {
 
     const previousSrc = this.albumCoverVideo.dataset.dynamicSrc || '';
     if (previousSrc === dynamicSrc) {
-      if (!this.dynamicCoverLoadFailed && this.albumCoverVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      const hasPoster = Boolean(this.albumCoverVideo.getAttribute('poster'));
+      if (!this.dynamicCoverLoadFailed && (hasPoster || this.albumCoverVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)) {
         this.albumCoverVideo.style.display = 'block';
         this.albumCoverVideo.classList.add('is-ready');
         this.albumCoverContainer.classList.add('amll-dynamic-cover-ready');
