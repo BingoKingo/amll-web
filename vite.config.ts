@@ -100,11 +100,11 @@ function transformIndexHtml(html: string): string {
 
   output = output.replace(
     /\.register\(\s*"\.\/service-worker\.js"\s*(?:,\s*\{[^)]*\})?\s*\)/g,
-    () => `.register("${toServiceWorkerUrl()}", { scope: "/" })`
+    () => `.register("${toServiceWorkerUrl()}", { scope: "/amll-web/" })`
   );
   output = output.replace(
     /\.register\(\s*'\.\/service-worker\.js'\s*(?:,\s*\{[^)]*\})?\s*\)/g,
-    () => `.register('${toServiceWorkerUrl()}', { scope: "/" })`
+    () => `.register('${toServiceWorkerUrl()}', { scope: "/amll-web/" })`
   );
   output = output.replace(
     /\.register\(\s*"\.\/public\/([^\"]+)"\s*(?:,\s*(\{[^)]*\}))?\s*\)/g,
