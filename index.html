@@ -580,21 +580,9 @@
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
       }
 
-      .has-squircle #albumCoverContainer {
-        /* 不在容器上应用 mask，以免裁剪伪元素的长阴影 */
-      }
-
       #albumCoverLarge {
         position: relative;
         transform: translateZ(0);
-      }
-
-      .has-squircle #albumCoverLarge {
-        /* 应用平滑圆角（仅在图片上，而不是容器） */
-        -webkit-mask-image: paint(squircle);
-        mask-image: paint(squircle);
-        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-        --squircle-smooth: var(--sc-smooth);
       }
 
       #albumInfo {
@@ -675,18 +663,6 @@
         overflow: hidden;
         transition: width 0.25s ease, height 0.25s ease, margin-bottom 0.25s ease, margin-right 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease-in-out;
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-      }
-
-      .has-squircle #albumCoverContainer {
-        /* 不在容器上应用 mask，以免裁剪伪元素的长阴影 */
-      }
-
-      .has-squircle #albumCoverLarge {
-        /* 应用平滑圆角（仅在图片上，而不是容器） */
-        -webkit-mask-image: paint(squircle);
-        mask-image: paint(squircle);
-        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-        --squircle-smooth: var(--sc-smooth);
       }
 
       #albumSidePanel .song-info-container {
@@ -1298,8 +1274,8 @@
   <div id="player">
     <div id="albumSidePanel">
       <div class="song-info-container">
-        <div id="albumCoverContainer" class="smooth-corner sc-cover">
-          <img id="albumCoverLarge" src="./assets/icon-512x512.png" alt="Cover" title="Album Cover" />
+        <div id="albumCoverContainer">
+          <img id="albumCoverLarge" class="smooth-corner sc-cover" src="./assets/icon-512x512.png" alt="Cover" title="Album Cover" />
         </div>
         <div id="albumInfo">
           <div id="songTitle" data-i18n="title" title="Song Title">Title</div>
