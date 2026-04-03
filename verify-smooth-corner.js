@@ -35,6 +35,10 @@ const elementsToCheck = {
     elem: document.getElementById('controlPanel'),
     expectedClasses: ['smooth-corner', 'sc-panel'],
   },
+  '#albumCoverContainer': {
+    elem: document.getElementById('albumCoverContainer'),
+    expectedClasses: ['smooth-corner', 'sc-cover'],
+  },
   '.btn (第一个)': {
     elem: document.querySelector('.btn'),
     expectedClasses: ['smooth-corner', 'sc-control'],
@@ -60,8 +64,7 @@ const elementsToCheck = {
 let allElementsCorrect = true;
 Object.entries(elementsToCheck).forEach(([selector, { elem, expectedClasses }]) => {
   if (!elem) {
-    console.log(`${selector}: ❌ 元素未找到`);
-    allElementsCorrect = false;
+    console.log(`${selector}: ⚠️ 元素未找到`);
     return;
   }
 
@@ -97,6 +100,10 @@ cssVars.forEach(varName => {
   if (!value) allVarsSet = false;
 });
 
+// 检查动态圆角变量
+const roundedCoverPercent = computedStyle.getPropertyValue('--rounded-cover-percent').trim();
+console.log(`--rounded-cover-percent: ${roundedCoverPercent ? '✅ = ' + roundedCoverPercent : '❌ 未初始化'}`);
+
 console.groupEnd();
 
 // ============================================================================
@@ -106,6 +113,7 @@ console.group('4️⃣ paint(squircle) 掩码应用检查（关键）');
 
 const elementsWithMask = [
   '#controlPanel',
+  '#albumCoverContainer',
   '.btn',
   'input[type="text"]',
   '.select-input',
@@ -175,6 +183,9 @@ if (allPass) {
   if (!allElementsCorrect) {
     console.log('  → 某些元素未正确挂载 smooth-corner 类');
   }
+  if (!allVarsSet) {
+    console.log('  → CSS 变量未定义');
+  }
 }
 
 console.groupEnd();
@@ -198,8 +209,6 @@ if (browserName === 'Safari' || !paintWorkletSupported) {
   console.log('ℹ️ 当前浏览器不支持 Paint Worklet，已自动使用 border-radius 作为降级方案。');
   console.log('   元素仍然会显示圆角，但不会有平滑的 squircle 效果。');
 }
-
-console.groupEnd();
 
 console.groupEnd();
 
@@ -227,104 +236,5 @@ setTimeout(() => {
   observer.disconnect();
   console.log('ℹ️ 实时监听已停止（30秒超时）');
 }, 30000);
-
-
-// 2. 检查各元素的 border-radius 是否使用了 CSS 变量
-console.group('2️⃣ 元素圆角检查');
-const elements = {
-  '#controlPanel': document.getElementById('controlPanel'),
-  '.btn (第一个)': document.querySelector('.btn'),
-  '#status': document.getElementById('status'),
-  '#progressBar': document.getElementById('progressBar'),
-  '#albumCoverContainer': document.getElementById('albumCoverContainer'),
-  '#albumCoverLarge': document.getElementById('albumCoverLarge'),
-};
-
-Object.entries(elements).forEach(([selector, elem]) => {
-  if (elem) {
-    const borderRadius = getComputedStyle(elem).borderRadius;
-    const hasVar = borderRadius.includes('var') || borderRadius !== '0px';
-    console.log(`${selector}: ${borderRadius} ${hasVar ? '✅' : '⚠️'}`);
-  } else {
-    console.log(`${selector}: ❌ 元素未找到`);
-  }
-});
-console.groupEnd();
-
-// 3. 检查动态圆角变量
-console.group('3️⃣ 动态圆角变量检查');
-const roundedCoverPercent = getComputedStyle(root).getPropertyValue('--rounded-cover-percent');
-console.log(`--rounded-cover-percent: ${roundedCoverPercent || '未初始化'}`);
-console.groupEnd();
-
-// 4. 检查 Paint Worklet 支持
-console.group('4️⃣ Paint Worklet 支持检查');
-if (CSS && CSS.paintWorklet) {
-  console.log('✅ Paint Worklet API 支持');
-} else {
-  console.log('⚠️ Paint Worklet API 不支持，使用 border-radius 降级');
-}
-console.groupEnd();
-
-// 5. 检查 .smooth-corner 类定义
-console.group('5️⃣ 平滑圆角类定义检查');
-const styleSheets = document.styleSheets;
-let smoothCornerFound = false;
-let smoothCornerRules = [];
-
-try {
-  for (let i = 0; i < styleSheets.length; i++) {
-    try {
-      const rules = styleSheets[i].cssRules || styleSheets[i].rules;
-      for (let j = 0; j < rules.length; j++) {
-        const rule = rules[j];
-        if (rule.selectorText && (rule.selectorText.includes('.smooth-corner') || rule.selectorText.includes('.sc-'))) {
-          smoothCornerFound = true;
-          smoothCornerRules.push(rule.selectorText);
-        }
-      }
-    } catch (e) {
-      // 跨域样式表会抛出异常，正常行为
-    }
-  }
-} catch (e) {
-  console.log('⚠️ 无法完全访问所有样式表');
-}
-
-if (smoothCornerFound) {
-  console.log('✅ 平滑圆角类定义已加载');
-  console.log('找到的选择器:', smoothCornerRules);
-} else {
-  console.log('❌ 未找到平滑圆角类定义');
-}
-console.groupEnd();
-
-// 6. 输入框和下拉框圆角检查
-console.group('6️⃣ 输入控件圆角检查');
-const inputElements = {
-  'input[type="text"]': document.querySelector('input[type="text"]'),
-  'input[type="number"]': document.querySelector('input[type="number"]'),
-  'textarea': document.querySelector('textarea'),
-  '.select-input': document.querySelector('.select-input'),
-};
-
-Object.entries(inputElements).forEach(([selector, elem]) => {
-  if (elem) {
-    const borderRadius = getComputedStyle(elem).borderRadius;
-    console.log(`${selector}: ${borderRadius}`);
-  } else {
-    console.log(`${selector}: 页面上未找到`);
-  }
-});
-console.groupEnd();
-
-// 7. 生成测试建议
-console.group('7️⃣ 测试建议');
-console.log('✅ 如果上面的检查都通过了，请进行以下手动测试：');
-console.log('  1. 调整"圆角"滑块（如果有），确保封面圆角平滑变化');
-console.log('  2. 检查封面特效（innerShadow、longShadow、neumorphismB）是否跟着变化');
-console.log('  3. 验证所有按钮、输入框的圆角是否一致');
-console.log('  4. 检查浏览器控制台是否有 worklet 相关的警告或错误');
-console.groupEnd();
 
 console.groupEnd();

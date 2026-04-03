@@ -560,6 +560,11 @@
         overflow: hidden;
         transition: transform 0.25s ease-in-out, width 0.25s ease, margin-bottom 0.25s ease;
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
+        /* 应用平滑圆角 */
+        -webkit-mask-image: paint(squircle);
+        mask-image: paint(squircle);
+        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
+        --squircle-smooth: var(--sc-smooth);
       }
 
       #albumCoverLarge {
@@ -645,6 +650,11 @@
         overflow: hidden;
         transition: width 0.25s ease, height 0.25s ease, margin-bottom 0.25s ease, margin-right 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease-in-out;
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
+        /* 应用平滑圆角 */
+        -webkit-mask-image: paint(squircle);
+        mask-image: paint(squircle);
+        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
+        --squircle-smooth: var(--sc-smooth);
       }
 
       #albumSidePanel .song-info-container {
@@ -1256,7 +1266,7 @@
   <div id="player">
     <div id="albumSidePanel">
       <div class="song-info-container">
-        <div id="albumCoverContainer">
+        <div id="albumCoverContainer" class="smooth-corner sc-cover">
           <img id="albumCoverLarge" src="./assets/icon-512x512.png" alt="Cover" title="Album Cover" />
         </div>
         <div id="albumInfo">

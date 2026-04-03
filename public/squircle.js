@@ -1,6 +1,6 @@
-// Squircle Paint Worklet - 超椭圆形 (Superellipse) 的可靠实现
-// 基于 Bézier 曲线的光滑连续路径构造
-// 参考: Figma's squircle design & Piet Poortinga's research
+// Squircle Paint Worklet - 超椭圆形 (Superellipse) 的正确实现
+// 基于 iOS 风格的 squircle 算法
+// 关键：使用 sign() 函数处理四个象限，确保路径连续不穿过内部
 
 class SquirclePainter {
   static get inputProperties() {
@@ -40,61 +40,49 @@ class SquirclePainter {
     ctx.fill();
   }
 
+  // 符号函数
+  sign(x) {
+    return x === 0 ? 0 : x > 0 ? 1 : -1;
+  }
+
   drawSquircle(ctx, width, height, radius, smooth) {
     ctx.beginPath();
 
-    // squircle 是一个 4 折对称的超椭圆形，具有连续的曲率
-    // 使用参数化方程：
-    // x = r + (w - 2r) * cos^(2/p) θ
-    // y = r + (h - 2r) * sin^(2/p) θ
-    // 其中 p 是曲率参数（p越接近1，形状越接近圆角矩形）
+    // Squircle 公式（iOS 风格）：
+    // x = centerX + (halfWidth - radius) * cos^(2/p) θ * sign(cos θ) + radius * sign(cos θ)
+    // y = centerY + (halfHeight - radius) * sin^(2/p) θ * sign(sin θ) + radius * sign(sin θ)
+    // 其中 p 是曲率参数（p=1 时最圆，p>1 时更方）
 
-    const curvePoint = (t, width, height, radius, power) => {
-      const ps = 2 / power;
-      const x = radius + (width - 2 * radius) * Math.pow(Math.max(0, Math.cos(t)), ps);
-      const y = radius + (height - 2 * radius) * Math.pow(Math.max(0, Math.sin(t)), ps);
-      return { x, y };
-    };
-
-    // 使用三次贝塞尔曲线分段绘制圆角
-    // 每个象限分成多段以确保平滑性
-    const segments = 40; // 每个象限的段数
-    const angleStart = 0;
-
-    // 第一象限：从右上 (width - radius, 0) 到右下 (width, radius)
-    let prevX = width - radius;
-    let prevY = 0;
-    ctx.moveTo(prevX, prevY);
-
-    for (let i = 1; i <= segments; i++) {
-      const angle = (Math.PI / 2) * (i / segments);
-      const pt = curvePoint(angle, width, height, radius, smooth);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    
+    // 曲率指数
+    const pow = smooth;
+    
+    // 总段数（对于完整圆周）
+    const totalSegments = 200;
+    
+    for (let i = 0; i <= totalSegments; i++) {
+      // 参数 t 从 0 到 2π
+      const t = (i / totalSegments) * Math.PI * 2;
+      const cos_t = Math.cos(t);
+      const sin_t = Math.sin(t);
       
-      // 使用直线连接以保证路径连续性（贝塞尔会造成路径错乱）
-      ctx.lineTo(pt.x, pt.y);
-      prevX = pt.x;
-      prevY = pt.y;
-    }
-
-    // 第二象限：从右下角 (width, height - radius) 到左下角 (radius, height)
-    for (let i = 1; i <= segments; i++) {
-      const angle = Math.PI / 2 + (Math.PI / 2) * (i / segments);
-      const pt = curvePoint(angle, width, height, radius, smooth);
-      ctx.lineTo(pt.x, pt.y);
-    }
-
-    // 第三象限：从左下角 (0, height - radius) 到左上角 (0, radius)
-    for (let i = 1; i <= segments; i++) {
-      const angle = Math.PI + (Math.PI / 2) * (i / segments);
-      const pt = curvePoint(angle, width, height, radius, smooth);
-      ctx.lineTo(pt.x, pt.y);
-    }
-
-    // 第四象限：从左上角 (0, radius) 回到起点 (width - radius, 0)
-    for (let i = 1; i <= segments; i++) {
-      const angle = (3 * Math.PI / 2) + (Math.PI / 2) * (i / segments);
-      const pt = curvePoint(angle, width, height, radius, smooth);
-      ctx.lineTo(pt.x, pt.y);
+      // 计算 cos^(2/p) 和 sin^(2/p)，保留符号
+      const cos_pow = Math.pow(Math.abs(cos_t), 2 / pow) * this.sign(cos_t);
+      const sin_pow = Math.pow(Math.abs(sin_t), 2 / pow) * this.sign(sin_t);
+      
+      // 计算坐标
+      const x = centerX + (halfWidth - radius) * cos_pow + radius * this.sign(cos_t);
+      const y = centerY + (halfHeight - radius) * sin_pow + radius * this.sign(sin_t);
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
     }
 
     // 闭合路径
@@ -103,4 +91,3 @@ class SquirclePainter {
 }
 
 registerPaint('squircle', SquirclePainter);
-
