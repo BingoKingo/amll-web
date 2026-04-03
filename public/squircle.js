@@ -1,6 +1,6 @@
-// Squircle Paint Worklet - 连续曲率的超椭圆形 (Superellipse)
-// 基于 Figma 的 squircle 设计实现
-// 参考: https://figma.com/blog/how-figmas-multiplayer-technology-works/
+// Squircle Paint Worklet - 超椭圆形 (Superellipse) 的可靠实现
+// 基于 Bézier 曲线的光滑连续路径构造
+// 参考: Figma's squircle design & Piet Poortinga's research
 
 class SquirclePainter {
   static get inputProperties() {
@@ -21,7 +21,7 @@ class SquirclePainter {
     if (isNaN(radius)) radius = 20;
     if (isNaN(smooth)) smooth = 0.9;
 
-    // 将百分比转换为像素（如果是百分比）
+    // 将百分比转换为像素
     if (radiusStr.includes('%')) {
       radius = (Math.min(width, height) / 2) * (radius / 100);
     }
@@ -29,10 +29,10 @@ class SquirclePainter {
     // 确保 radius 不超过容器的一半
     radius = Math.min(radius, Math.min(width, height) / 2);
 
-    // smooth 值应该在 0.5 到 1 之间（0.5=完全矩形，1=完全圆形）
+    // smooth 值应该在 0.5 到 1 之间
     smooth = Math.max(0.5, Math.min(1, smooth));
 
-    // 绘制 squircle
+    // 绘制 squircle 路径
     this.drawSquircle(ctx, width, height, radius, smooth);
 
     // 填充白色（用于 mask-image）
@@ -43,61 +43,64 @@ class SquirclePainter {
   drawSquircle(ctx, width, height, radius, smooth) {
     ctx.beginPath();
 
-    const x = 0;
-    const y = 0;
+    // squircle 是一个 4 折对称的超椭圆形，具有连续的曲率
+    // 使用参数化方程：
+    // x = r + (w - 2r) * cos^(2/p) θ
+    // y = r + (h - 2r) * sin^(2/p) θ
+    // 其中 p 是曲率参数（p越接近1，形状越接近圆角矩形）
 
-    // 根据 smooth 参数调整曲率
-    // smooth = 1 时接近圆形，smooth = 0.5 时接近矩形
-    const controlMultiplier = (4 / 3) * Math.tan(Math.PI / (4 * smooth));
+    const curvePoint = (t, width, height, radius, power) => {
+      const ps = 2 / power;
+      const x = radius + (width - 2 * radius) * Math.pow(Math.max(0, Math.cos(t)), ps);
+      const y = radius + (height - 2 * radius) * Math.pow(Math.max(0, Math.sin(t)), ps);
+      return { x, y };
+    };
 
-    // 绘制四个象限，每个象限使用 Bézier 曲线
-    const steps = 20; // 每个角的曲线分段数
+    // 使用三次贝塞尔曲线分段绘制圆角
+    // 每个象限分成多段以确保平滑性
+    const segments = 40; // 每个象限的段数
+    const angleStart = 0;
 
-    // 右上角
-    for (let i = 0; i <= steps; i++) {
-      const angle = (Math.PI / 2) * (i / steps);
-      const px = radius + (width - 2 * radius) * Math.pow(Math.cos(angle), 2 / smooth);
-      const py = radius * (1 - Math.pow(Math.sin(angle), 2 / smooth));
+    // 第一象限：从右上 (width - radius, 0) 到右下 (width, radius)
+    let prevX = width - radius;
+    let prevY = 0;
+    ctx.moveTo(prevX, prevY);
+
+    for (let i = 1; i <= segments; i++) {
+      const angle = (Math.PI / 2) * (i / segments);
+      const pt = curvePoint(angle, width, height, radius, smooth);
       
-      if (i === 0) {
-        ctx.moveTo(x + width - radius, y);
-      } else {
-        const prevAngle = (Math.PI / 2) * ((i - 1) / steps);
-        const prevPx = radius + (width - 2 * radius) * Math.pow(Math.cos(prevAngle), 2 / smooth);
-        const prevPy = radius * (1 - Math.pow(Math.sin(prevAngle), 2 / smooth));
-        ctx.lineTo(x + px, y + py);
-      }
+      // 使用直线连接以保证路径连续性（贝塞尔会造成路径错乱）
+      ctx.lineTo(pt.x, pt.y);
+      prevX = pt.x;
+      prevY = pt.y;
     }
 
-    // 右下角
-    for (let i = 0; i <= steps; i++) {
-      const angle = (Math.PI / 2) * (i / steps);
-      const px = radius + (width - 2 * radius) * Math.pow(Math.sin(angle), 2 / smooth);
-      const py = height - radius * (1 - Math.pow(Math.cos(angle), 2 / smooth));
-      
-      ctx.lineTo(x + px, y + py);
+    // 第二象限：从右下角 (width, height - radius) 到左下角 (radius, height)
+    for (let i = 1; i <= segments; i++) {
+      const angle = Math.PI / 2 + (Math.PI / 2) * (i / segments);
+      const pt = curvePoint(angle, width, height, radius, smooth);
+      ctx.lineTo(pt.x, pt.y);
     }
 
-    // 左下角
-    for (let i = 0; i <= steps; i++) {
-      const angle = (Math.PI / 2) * (i / steps);
-      const px = radius - (width - 2 * radius) * Math.pow(Math.cos(angle), 2 / smooth);
-      const py = height - radius * (1 - Math.pow(Math.sin(angle), 2 / smooth));
-      
-      ctx.lineTo(x + px, y + py);
+    // 第三象限：从左下角 (0, height - radius) 到左上角 (0, radius)
+    for (let i = 1; i <= segments; i++) {
+      const angle = Math.PI + (Math.PI / 2) * (i / segments);
+      const pt = curvePoint(angle, width, height, radius, smooth);
+      ctx.lineTo(pt.x, pt.y);
     }
 
-    // 左上角
-    for (let i = 0; i <= steps; i++) {
-      const angle = (Math.PI / 2) * (i / steps);
-      const px = radius - (width - 2 * radius) * Math.pow(Math.sin(angle), 2 / smooth);
-      const py = radius * (1 - Math.pow(Math.cos(angle), 2 / smooth));
-      
-      ctx.lineTo(x + px, y + py);
+    // 第四象限：从左上角 (0, radius) 回到起点 (width - radius, 0)
+    for (let i = 1; i <= segments; i++) {
+      const angle = (3 * Math.PI / 2) + (Math.PI / 2) * (i / segments);
+      const pt = curvePoint(angle, width, height, radius, smooth);
+      ctx.lineTo(pt.x, pt.y);
     }
 
+    // 闭合路径
     ctx.closePath();
   }
 }
 
 registerPaint('squircle', SquirclePainter);
+

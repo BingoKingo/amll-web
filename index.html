@@ -184,6 +184,11 @@
       font-size: 0.875em;
       box-sizing: border-box;
       margin-bottom: 8px;
+      /* 应用平滑圆角 */
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+      --squircle-radius: var(--sc-control);
+      --squircle-smooth: var(--sc-smooth);
     }
 
     .control-group input[type="file"] {
@@ -212,6 +217,11 @@
       transition: opacity 0.25s ease;
       display: flex;
       align-items: center;
+      /* 应用平滑圆角 */
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+      --squircle-radius: var(--sc-control);
+      --squircle-smooth: var(--sc-smooth);
     }
 
     .btn:hover {
@@ -291,6 +301,11 @@
       position: relative;
       overflow: hidden;
       transition: width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
+      /* 应用平滑圆角 */
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+      --squircle-radius: var(--sc-control);
+      --squircle-smooth: var(--sc-smooth);
     }
 
     body:hover #progressBar {
@@ -410,6 +425,11 @@
       display: none;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      /* 应用平滑圆角 */
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+      --squircle-radius: var(--sc-card);
+      --squircle-smooth: var(--sc-smooth);
     }
 
     #lyricAreaHint {
@@ -454,6 +474,11 @@
       box-sizing: border-box;
       height: 2.5em;
       padding: 8px 12px;
+      /* 应用平滑圆角 */
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+      --squircle-radius: var(--sc-control);
+      --squircle-smooth: var(--sc-smooth);
     }
 
     .tool-btn {
@@ -709,13 +734,19 @@
   <script>
     // 注册 Squircle Paint Worklet（用于平滑圆角的连续曲率）
     if (CSS && CSS.paintWorklet) {
-      CSS.paintWorklet.addModule('./public/squircle.js').catch(err => {
-        console.warn('Squircle paintWorklet registration failed, falling back to border-radius:', err);
-        // 标记 squircle 不可用，样式会自动降级到 border-radius
-        document.documentElement.style.setProperty('--squircle-unavailable', 'true');
-      });
+      CSS.paintWorklet.addModule('./public/squircle.js')
+        .then(() => {
+          console.log('✅ Squircle paintWorklet loaded successfully');
+          // 在根节点添加 has-squircle 类，启用平滑圆角选择器
+          document.documentElement.classList.add('has-squircle');
+        })
+        .catch(err => {
+          console.warn('⚠️ Squircle paintWorklet registration failed, falling back to border-radius:', err);
+          // 标记 squircle 不可用，样式会自动降级到 border-radius
+          document.documentElement.style.setProperty('--squircle-unavailable', 'true');
+        });
     } else {
-      console.warn('Paint Worklet API not supported, using border-radius fallback');
+      console.warn('⚠️ Paint Worklet API not supported, using border-radius fallback');
       document.documentElement.style.setProperty('--squircle-unavailable', 'true');
     }
   </script>
@@ -723,7 +754,7 @@
 </head>
 
 <body>
-  <div id="controlPanel">
+  <div id="controlPanel" class="smooth-corner sc-panel">
     <div class="control-group">
       <label data-i18n="sourceFile">Source</label>
       <div class="flex-group-without-margin">
@@ -734,7 +765,7 @@
         </svg>
         <input type="text" id="musicUrl" data-i18n-placeholder="musicUrl" placeholder="Enter music URL"
           title="Enter music URL" style="flex: 1;" />
-        <button class="btn tool-btn" id="musicFileBtn" title="Select music file">
+        <button class="btn tool-btn smooth-corner sc-control" id="musicFileBtn" title="Select music file">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -757,7 +788,7 @@
         </svg>
         <input type="text" id="coverUrl" data-i18n-placeholder="coverUrl" placeholder="Enter cover image URL"
           title="Enter cover image URL" style="flex: 1;" />
-        <button class="btn tool-btn" id="coverFileBtn" title="Select cover image">
+        <button class="btn tool-btn smooth-corner sc-control" id="coverFileBtn" title="Select cover image">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -781,7 +812,7 @@
           title="Enter lyrics or lyrics URL" style="flex: 1; max-height: 36px; resize: none; font-family: inherit;"
           rows="1"></textarea>
           <!-- min-height: 36px; resize: vertical; max-height: calc(96vh - 340px); -->
-        <button class="btn tool-btn" id="lyricFileBtn" title="Select lyric file">
+        <button class="btn tool-btn smooth-corner sc-control" id="lyricFileBtn" title="Select lyric file">
           <svg class="upload-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -812,7 +843,7 @@
         </svg>
         <input type="text" id="songTitleInput" data-i18n-placeholder="title" placeholder="Title" style="flex: 1;"
           title="Song title" />
-        <button class="btn tool-btn" title="Search song title">
+        <button class="btn tool-btn smooth-corner sc-control" title="Search song title">
           <svg class="search-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -833,7 +864,7 @@
         </svg>
         <input type="text" id="songArtistInput" data-i18n-placeholder="artist" placeholder="Artist" style="flex: 1;"
           title="Song artist" />
-        <button class="btn tool-btn" title="Search song artist">
+        <button class="btn tool-btn smooth-corner sc-control" title="Search song artist">
           <svg class="search-icon" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
             fill="var(--dominant-color-light)" style="display: block;">
             <path
@@ -1162,7 +1193,7 @@
       </div>
     </div>
     <div style="margin-top: 16px">
-      <button class="btn" id="loadFromUrl" title="Load from URL">
+      <button class="btn smooth-corner sc-control" id="loadFromUrl" title="Load from URL">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path d="M200.66 352H144a96 96 0 010-192h55.41M312.59 160H368a96 96 0 010 192h-56.66M169.07 256h175.86"
@@ -1170,7 +1201,7 @@
         </svg>
         <span data-i18n="loadFromUrl">Load from URL</span>
       </button>
-      <button class="btn" id="loadFiles" title="Load files">
+      <button class="btn smooth-corner sc-control" id="loadFiles" title="Load files">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path
@@ -1179,7 +1210,7 @@
         </svg>
         <span data-i18n="loadFiles">Load Files</span>
       </button>
-      <button class="btn" id="resetPlayer" style="display: flex; align-items: center;" title="Reset player">
+      <button class="btn smooth-corner sc-control" id="resetPlayer" style="display: flex; align-items: center;" title="Reset player">
         <svg width="1em" height="1em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
           fill="var(--dominant-color-light)">
           <path
