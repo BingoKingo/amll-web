@@ -48,6 +48,13 @@ class SquirclePainter {
   drawSquircle(ctx, width, height, radius, smooth) {
     ctx.beginPath();
 
+    // 特殊情况：radius = 0 时画矩形（没有圆角）
+    if (radius === 0) {
+      ctx.rect(0, 0, width, height);
+      ctx.closePath();
+      return;
+    }
+
     // Squircle 公式（iOS 风格）：
     // x = centerX + (halfWidth - radius) * cos^(2/p) θ * sign(cos θ) + radius * sign(cos θ)
     // y = centerY + (halfHeight - radius) * sin^(2/p) θ * sign(sin θ) + radius * sign(sin θ)

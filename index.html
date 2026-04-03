@@ -184,6 +184,12 @@
       font-size: 0.875em;
       box-sizing: border-box;
       margin-bottom: 8px;
+    }
+
+    .has-squircle .control-group input[type="text"],
+    .has-squircle .control-group input[type="file"],
+    .has-squircle .control-group input[type="number"],
+    .has-squircle .control-group textarea {
       /* 应用平滑圆角 */
       -webkit-mask-image: paint(squircle);
       mask-image: paint(squircle);
@@ -217,6 +223,9 @@
       transition: opacity 0.25s ease;
       display: flex;
       align-items: center;
+    }
+
+    .has-squircle .btn {
       /* 应用平滑圆角 */
       -webkit-mask-image: paint(squircle);
       mask-image: paint(squircle);
@@ -301,6 +310,9 @@
       position: relative;
       overflow: hidden;
       transition: width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
+    }
+
+    .has-squircle #progressBar {
       /* 应用平滑圆角 */
       -webkit-mask-image: paint(squircle);
       mask-image: paint(squircle);
@@ -425,6 +437,9 @@
       display: none;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .has-squircle #status {
       /* 应用平滑圆角 */
       -webkit-mask-image: paint(squircle);
       mask-image: paint(squircle);
@@ -474,6 +489,9 @@
       box-sizing: border-box;
       height: 2.5em;
       padding: 8px 12px;
+    }
+
+    .has-squircle .select-input {
       /* 应用平滑圆角 */
       -webkit-mask-image: paint(squircle);
       mask-image: paint(squircle);
@@ -560,16 +578,23 @@
         overflow: hidden;
         transition: transform 0.25s ease-in-out, width 0.25s ease, margin-bottom 0.25s ease;
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-        /* 应用平滑圆角 */
-        -webkit-mask-image: paint(squircle);
-        mask-image: paint(squircle);
-        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-        --squircle-smooth: var(--sc-smooth);
+      }
+
+      .has-squircle #albumCoverContainer {
+        /* 不在容器上应用 mask，以免裁剪伪元素的长阴影 */
       }
 
       #albumCoverLarge {
         position: relative;
         transform: translateZ(0);
+      }
+
+      .has-squircle #albumCoverLarge {
+        /* 应用平滑圆角（仅在图片上，而不是容器） */
+        -webkit-mask-image: paint(squircle);
+        mask-image: paint(squircle);
+        --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);
+        --squircle-smooth: var(--sc-smooth);
       }
 
       #albumInfo {
@@ -650,7 +675,14 @@
         overflow: hidden;
         transition: width 0.25s ease, height 0.25s ease, margin-bottom 0.25s ease, margin-right 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease-in-out;
         border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
-        /* 应用平滑圆角 */
+      }
+
+      .has-squircle #albumCoverContainer {
+        /* 不在容器上应用 mask，以免裁剪伪元素的长阴影 */
+      }
+
+      .has-squircle #albumCoverLarge {
+        /* 应用平滑圆角（仅在图片上，而不是容器） */
         -webkit-mask-image: paint(squircle);
         mask-image: paint(squircle);
         --squircle-radius: calc(var(--rounded-cover-percent, 0) * 1%);

@@ -45,11 +45,11 @@ const elementsToCheck = {
   },
   '#status': {
     elem: document.getElementById('status'),
-    expectedClasses: ['smooth-corner', 'sc-card'],
+    expectedClasses: [],  // 通过 CSS 选择器应用，不需要类
   },
   '#progressBar': {
     elem: document.getElementById('progressBar'),
-    expectedClasses: ['smooth-corner', 'sc-control'],
+    expectedClasses: [],  // 通过 CSS 选择器应用，不需要类
   },
   'input[type="text"]': {
     elem: document.querySelector('input[type="text"]'),
