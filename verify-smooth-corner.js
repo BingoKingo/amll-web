@@ -35,8 +35,8 @@ const elementsToCheck = {
     elem: document.getElementById('controlPanel'),
     expectedClasses: ['smooth-corner', 'sc-panel'],
   },
-  '#albumCoverContainer': {
-    elem: document.getElementById('albumCoverContainer'),
+  '#albumCoverLarge': {
+    elem: document.getElementById('albumCoverLarge'),
     expectedClasses: ['smooth-corner', 'sc-cover'],
   },
   '.btn (第一个)': {
@@ -113,7 +113,7 @@ console.group('4️⃣ paint(squircle) 掩码应用检查（关键）');
 
 const elementsWithMask = [
   '#controlPanel',
-  '#albumCoverContainer',
+  '#albumCoverLarge',
   '.btn',
   'input[type="text"]',
   '.select-input',
