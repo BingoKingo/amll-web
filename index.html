@@ -112,13 +112,39 @@
       position: relative;
     }
 
+    /* ===== Smooth Corner (Squircle) 语义圆角层 ===== */
+    :root {
+      --sc-smooth: 0.9;
+      --sc-card: 24px;
+      --sc-panel: 32px;
+      --sc-control: 16px;
+      --sc-cover: 24px;
+    }
+
+    .smooth-corner {
+      border-radius: var(--sc-radius, 20px);
+      overflow: hidden;
+    }
+
+    .has-squircle .smooth-corner {
+      --squircle-radius: var(--sc-radius, 20px);
+      --squircle-smooth: var(--sc-smooth, 0.9);
+      -webkit-mask-image: paint(squircle);
+      mask-image: paint(squircle);
+    }
+
+    .sc-card { --sc-radius: var(--sc-card); }
+    .sc-panel { --sc-radius: var(--sc-panel); }
+    .sc-control { --sc-radius: var(--sc-control); }
+    .sc-cover { --sc-radius: var(--sc-cover); }
+
     #controlPanel {
       position: fixed;
       top: 28px;
       max-height: calc(100vh - 40px);
       bottom: 70px;
       right: -50px;
-      border-radius: 24px;
+      border-radius: var(--sc-panel);
       padding: 15px;
       color: var(--dominant-color-light);
       z-index: 50;
@@ -152,7 +178,7 @@
       width: 100%;
       padding: 8px 12px;
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 24px;
+      border-radius: var(--sc-control);
       background: rgba(255, 255, 255, 0.1);
       color: var(--dominant-color-light);
       font-size: 0.875em;
@@ -177,7 +203,7 @@
       border: 1px solid rgba(255, 255, 255, 0.18);
       color: var(--dominant-color-light);
       padding: 8px 16px;
-      border-radius: 24px;
+      border-radius: var(--sc-control);
       cursor: pointer;
       font-size: 0.875em;
       margin-right: 8px;
@@ -255,7 +281,7 @@
     #progressBar {
       width: 0px;
       height: 8px;
-      border-radius: 4px;
+      border-radius: var(--sc-control);
       background: rgba(255, 255, 255, 0.1);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
@@ -364,6 +390,7 @@
       -webkit-backdrop-filter: blur(10px);
       object-fit: cover;
       cursor: pointer;
+      border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
     }
 
     #albumCoverLarge:hover {
@@ -378,7 +405,7 @@
       background: var(--dominant-color-dark);
       color: var(--dominant-color-light);
       padding: 20px 30px;
-      border-radius: 12px;
+      border-radius: var(--sc-card);
       z-index: 100;
       display: none;
       backdrop-filter: blur(10px);
@@ -420,7 +447,7 @@
     .select-input {
       flex: 1;
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 24px;
+      border-radius: var(--sc-control);
       background: rgba(255, 255, 255, 0.1);
       color: var(--dominant-color-light);
       font-size: 0.875em;
@@ -507,6 +534,7 @@
         justify-content: center;
         overflow: hidden;
         transition: transform 0.25s ease-in-out, width 0.25s ease, margin-bottom 0.25s ease;
+        border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
       }
 
       #albumCoverLarge {
@@ -591,6 +619,7 @@
         box-shadow: 0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18);
         overflow: hidden;
         transition: width 0.25s ease, height 0.25s ease, margin-bottom 0.25s ease, margin-right 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease-in-out;
+        border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
       }
 
       #albumSidePanel .song-info-container {
@@ -676,6 +705,19 @@
         console.log("[ERROR] jsmediatags library failed to load");
       }
     });
+  </script>
+  <script>
+    // 注册 Squircle Paint Worklet（用于平滑圆角的连续曲率）
+    if (CSS && CSS.paintWorklet) {
+      CSS.paintWorklet.addModule('./public/squircle.js').catch(err => {
+        console.warn('Squircle paintWorklet registration failed, falling back to border-radius:', err);
+        // 标记 squircle 不可用，样式会自动降级到 border-radius
+        document.documentElement.style.setProperty('--squircle-unavailable', 'true');
+      });
+    } else {
+      console.warn('Paint Worklet API not supported, using border-radius fallback');
+      document.documentElement.style.setProperty('--squircle-unavailable', 'true');
+    }
   </script>
   <script type="module" src="./src/main.ts" defer></script>
 </head>

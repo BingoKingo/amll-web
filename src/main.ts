@@ -805,12 +805,12 @@ class WebLyricsPlayer {
     if (this.albumCoverLarge && this.albumCoverContainer) {
       // 将0-100%映射到0-50%的border-radius
       const borderRadius = (this.state.roundedCover / 100) * 50;
-      this.albumCoverLarge.style.borderRadius = `${borderRadius}%`;
-      this.albumCoverContainer.style.borderRadius = `${borderRadius}%`;
+      // 通过 CSS 变量统一管理，不再直接设置 border-radius
+      document.documentElement.style.setProperty('--rounded-cover-percent', borderRadius.toString());
       if (this.albumCoverVideo) {
+        // albumCoverVideo 也可以添加此 CSS 变量作为后备方案
         this.albumCoverVideo.style.borderRadius = `${borderRadius}%`;
       }
-      document.documentElement.style.setProperty('--rounded-cover-percent', borderRadius.toString());
     }
 
     if (this.roundedCoverSlider) {
@@ -4755,7 +4755,6 @@ class WebLyricsPlayer {
         break;
       case "innerShadow":
         // 内阴影 - 使用伪元素实现，避免被图片覆盖，并随圆角变化
-        const borderRadius = (this.state.roundedCover / 100) * 50;
         const style = document.createElement('style');
         style.id = 'coverStyleDynamic';
         this.coverStyleDynamic = style; // 保存引用以便后续移除
@@ -4773,7 +4772,7 @@ class WebLyricsPlayer {
             box-shadow: inset 0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18);
             pointer-events: none;
             z-index: 10;
-            border-radius: ${borderRadius}%;
+            border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
           }
           #albumCoverLarge {
             position: relative;
@@ -4787,8 +4786,7 @@ class WebLyricsPlayer {
         this.albumCoverContainer.style.boxShadow = '0 20px 25px rgba(0, 0, 0, 0.18), 0 10px 25px rgba(0, 0, 0, 0.18)';
         break;
       case "longShadow":
-        // 长投影效果，仿照div长阴影样式实现，使用transform-origin、skew变换和动画效果，支持动态圆角（待实现）
-        const borderRadiusL = (this.state.roundedCover / 100) * 50;
+        // 长投影效果，仿照div长阴影样式实现，使用transform-origin、skew变换和动画效果，支持动态圆角
         const styleL = document.createElement('style');
         styleL.id = 'coverStyleDynamic';
         this.coverStyleDynamic = styleL; // 保存引用以便后续移除
@@ -4807,7 +4805,7 @@ class WebLyricsPlayer {
             right: 0;
             bottom: 0;
             z-index: -1;
-            border-radius: ${borderRadiusL}%;
+            border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
           }
           #albumCoverContainer::before {
             transform-origin: 0 50%;
@@ -4835,14 +4833,12 @@ class WebLyricsPlayer {
         document.head.appendChild(styleL);
         break;
       case "neumorphismA":
-        // 新拟态A - 浅色背景的凸起效果，支持动态圆角（待实现）
-        const borderRadiusA = (this.state.roundedCover / 100) * 50;
+        // 新拟态A - 浅色背景的凸起效果，支持动态圆角
         this.albumCoverContainer.style.boxShadow = '7px 7px 12px var(--dominant-color-dark), -7px -7px 12px var(--dominant-color-light), inset 0 0 0 var(--dominant-color-light), inset 0 0 0 var(--dominant-color-dark)';
-        this.albumCoverContainer.style.borderRadius = `${borderRadiusA}%`;
+        // border-radius 已通过 CSS 变量在 index.html 中设置
         break;
       case "neumorphismB":
-        // 新拟态B - 浅色背景的凹陷效果，使用伪元素实现，避免被图片覆盖，并随圆角变化（待实现）
-        const borderRadiusB = (this.state.roundedCover / 100) * 50;
+        // 新拟态B - 浅色背景的凹陷效果，使用伪元素实现，避免被图片覆盖，并随圆角变化
         const styleB = document.createElement('style');
         styleB.id = 'coverStyleDynamic';
         this.coverStyleDynamic = styleB; // 保存引用以便后续移除
@@ -4860,12 +4856,12 @@ class WebLyricsPlayer {
             box-shadow: 0 0 0 var(--dominant-color-dark), 0 0 0 var(--dominant-color-light), inset -7px -7px 12px var(--dominant-color-light), inset 7px 7px 12px var(--dominant-color-dark);
             pointer-events: none;
             z-index: 10;
-            border-radius: ${borderRadiusB}%;
+            border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
           }
           #albumCoverLarge {
             position: relative;
             z-index: 5;
-            border-radius: ${borderRadiusB}%;
+            border-radius: calc(var(--rounded-cover-percent, 0) * 1%);
           }
         `;
         document.head.appendChild(styleB);
