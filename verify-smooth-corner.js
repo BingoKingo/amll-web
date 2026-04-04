@@ -35,10 +35,6 @@ const elementsToCheck = {
     elem: document.getElementById('controlPanel'),
     expectedClasses: ['smooth-corner', 'sc-panel'],
   },
-  '#albumCoverLarge': {
-    elem: document.getElementById('albumCoverLarge'),
-    expectedClasses: ['smooth-corner', 'sc-cover'],
-  },
   '.btn (第一个)': {
     elem: document.querySelector('.btn'),
     expectedClasses: ['smooth-corner', 'sc-control'],
@@ -113,7 +109,6 @@ console.group('4️⃣ paint(squircle) 掩码应用检查（关键）');
 
 const elementsWithMask = [
   '#controlPanel',
-  '#albumCoverLarge',
   '.btn',
   'input[type="text"]',
   '.select-input',
@@ -152,6 +147,53 @@ elementsWithMask.forEach(selector => {
 console.groupEnd();
 
 // ============================================================================
+// 4️⃣ 验证封面使用纯 border-radius（不使用 squircle）
+// ============================================================================
+console.group('4️⃣ 封面纯 border-radius 验证');
+
+const albumCoverLarge = document.getElementById('albumCoverLarge');
+let coverRadiusCorrect = false;
+
+if (albumCoverLarge) {
+  const coverStyle = getComputedStyle(albumCoverLarge);
+  const coverMaskImage = coverStyle.maskImage || coverStyle.webkitMaskImage;
+  const coverBorderRadius = coverStyle.borderRadius;
+  
+  const hasMask = coverMaskImage && coverMaskImage.includes('paint');
+  const hasBorderRadius = coverBorderRadius && coverBorderRadius !== 'none';
+  
+  if (hasMask) {
+    console.log('❌ #albumCoverLarge 错误地使用了 paint(squircle) 掩码');
+    console.log(`  - mask-image: ${coverMaskImage}`);
+  } else {
+    console.log('✅ #albumCoverLarge 未使用 paint(squircle) 掩码');
+  }
+  
+  if (hasBorderRadius) {
+    console.log(`✅ #albumCoverLarge 使用 border-radius: ${coverBorderRadius}`);
+    coverRadiusCorrect = true;
+  } else {
+    console.log('⚠️ #albumCoverLarge 未设置 border-radius');
+  }
+  
+  // 检查是否移除了 smooth-corner 和 sc-cover 类
+  const hasSmootherClass = albumCoverLarge.classList.contains('smooth-corner');
+  const hasCoverClass = albumCoverLarge.classList.contains('sc-cover');
+  
+  if (hasSmootherClass || hasCoverClass) {
+    console.log('❌ #albumCoverLarge 仍然有不应该的类：');
+    if (hasSmootherClass) console.log('  - smooth-corner 类（应该移除）');
+    if (hasCoverClass) console.log('  - sc-cover 类（应该移除）');
+  } else {
+    console.log('✅ #albumCoverLarge 已移除 smooth-corner 和 sc-cover 类');
+  }
+} else {
+  console.log('⚠️ #albumCoverLarge 元素未找到');
+}
+
+console.groupEnd();
+
+// ============================================================================
 // 5️⃣ 综合诊断报告
 // ============================================================================
 console.group('📊 综合诊断报告');
@@ -161,6 +203,7 @@ const diagnostics = {
   '✅ DOM 类挂载': allElementsCorrect,
   '✅ CSS 变量': allVarsSet,
   '⚠️ Paint 应用': maskApplicationSuccess || !paintWorkletSupported,
+  '✅ 封面纯 border-radius': coverRadiusCorrect,
 };
 
 let allPass = Object.values(diagnostics).every(v => v);
