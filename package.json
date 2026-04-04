@@ -31,9 +31,6 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "@applemusic-like-lyrics/core": "link:../applemusic-like-lyrics/packages/core",
-    "@applemusic-like-lyrics/lyric": "link:../applemusic-like-lyrics/packages/lyric",
-    "@applemusic-like-lyrics/ttml": "link:../applemusic-like-lyrics/packages/ttml",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@pixi/app": "^7.4.3",

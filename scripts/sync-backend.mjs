@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { resolveBackendRoot } from "./project-paths.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -103,7 +104,7 @@ function transformIndexHtml(html) {
 }
 
 async function main() {
-  const backendRoot = resolve(__dirname, "..", "..");
+  const backendRoot = resolveBackendRoot(__dirname);
   const distDir = resolve(__dirname, "..", "dist");
 
   if (!(await pathExists(distDir))) {

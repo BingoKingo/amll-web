@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import wasm from "vite-plugin-wasm";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import compression from "vite-plugin-compression";
+import { resolveAmlRoot, resolveBackendRoot } from "./scripts/project-paths.mjs";
 
 async function pathExists(target: string): Promise<boolean> {
   try {
@@ -124,10 +125,11 @@ function transformIndexHtml(html: string): string {
 }
 
 function backendIntegrationPlugin() {
+  const backendRoot = resolveBackendRoot(__dirname);
+
   return {
     name: "backend-integration",
     async writeBundle() {
-      const backendRoot = resolve(__dirname, "..");
       const distDir = resolve(__dirname, "dist");
 
       if (!(await pathExists(distDir))) {
@@ -169,9 +171,31 @@ function backendIntegrationPlugin() {
   };
 }
 
+const amllRoot = resolveAmlRoot(__dirname);
+
 export default defineConfig({
   build: {
     target: ["esnext"],
+  },
+  resolve: {
+    alias: [
+      {
+        find: /^@applemusic-like-lyrics\/core\/style\.css$/,
+        replacement: resolve(amllRoot, "packages", "core", "dist", "amll-core.css"),
+      },
+      {
+        find: /^@applemusic-like-lyrics\/core$/,
+        replacement: resolve(amllRoot, "packages", "core", "dist", "amll-core.js"),
+      },
+      {
+        find: /^@applemusic-like-lyrics\/lyric$/,
+        replacement: resolve(amllRoot, "packages", "lyric", "pkg", "amll_lyric.js"),
+      },
+      {
+        find: /^@applemusic-like-lyrics\/ttml$/,
+        replacement: resolve(amllRoot, "packages", "ttml", "dist", "amll-ttml.js"),
+      },
+    ],
   },
   plugins: [
     wasm(),

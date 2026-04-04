@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "target": "ESNext",
     "lib": [
       "ESNext",
@@ -9,6 +10,20 @@
     "strict": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "@applemusic-like-lyrics/core": [
+        "../applemusic-like-lyrics/packages/core/dist/index.d.ts"
+      ],
+      "@applemusic-like-lyrics/core/style.css": [
+        "../applemusic-like-lyrics/packages/core/dist/amll-core.css"
+      ],
+      "@applemusic-like-lyrics/lyric": [
+        "../applemusic-like-lyrics/packages/lyric/pkg/amll_lyric.d.ts"
+      ],
+      "@applemusic-like-lyrics/ttml": [
+        "../applemusic-like-lyrics/packages/ttml/dist/index.d.ts"
+      ]
+    },
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

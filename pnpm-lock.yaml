@@ -8,15 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@applemusic-like-lyrics/core':
-        specifier: link:../applemusic-like-lyrics/packages/core
-        version: link:../applemusic-like-lyrics/packages/core
-      '@applemusic-like-lyrics/lyric':
-        specifier: link:../applemusic-like-lyrics/packages/lyric
-        version: link:../applemusic-like-lyrics/packages/lyric
-      '@applemusic-like-lyrics/ttml':
-        specifier: link:../applemusic-like-lyrics/packages/ttml
-        version: link:../applemusic-like-lyrics/packages/ttml
       '@ffmpeg/ffmpeg':
         specifier: ^0.12.15
         version: 0.12.15
