@@ -31,10 +31,6 @@ console.groupEnd();
 console.group('2️⃣ DOM 元素 smooth-corner 类应用检查');
 
 const elementsToCheck = {
-  '#controlPanel': {
-    elem: document.getElementById('controlPanel'),
-    expectedClasses: ['smooth-corner', 'sc-panel'],
-  },
   '.btn (第一个)': {
     elem: document.querySelector('.btn'),
     expectedClasses: ['smooth-corner', 'sc-control'],
@@ -194,7 +190,62 @@ if (albumCoverLarge) {
 console.groupEnd();
 
 // ============================================================================
-// 5️⃣ 综合诊断报告
+// 5️⃣ 控制面板纯 border-radius 验证（不使用 squircle）
+// ============================================================================
+console.group('5️⃣ 控制面板纯 border-radius 验证');
+
+const controlPanel = document.getElementById('controlPanel');
+let controlPanelRadiusCorrect = false;
+
+if (controlPanel) {
+  const panelStyle = getComputedStyle(controlPanel);
+  const panelMaskImage = panelStyle.maskImage || panelStyle.webkitMaskImage;
+  const panelBorderRadius = panelStyle.borderRadius;
+  
+  const hasMask = panelMaskImage && panelMaskImage.includes('paint');
+  const hasBorderRadius = panelBorderRadius && panelBorderRadius !== 'none';
+  
+  if (hasMask) {
+    console.log('❌ #controlPanel 错误地使用了 paint(squircle) 掩码');
+    console.log(`  - mask-image: ${panelMaskImage}`);
+  } else {
+    console.log('✅ #controlPanel 未使用 paint(squircle) 掩码');
+  }
+  
+  if (hasBorderRadius) {
+    console.log(`✅ #controlPanel 使用 border-radius: ${panelBorderRadius}`);
+    controlPanelRadiusCorrect = true;
+  } else {
+    console.log('⚠️ #controlPanel 未设置 border-radius');
+  }
+  
+  // 检查是否移除了 smooth-corner 和 sc-panel 类
+  const hasSmootherClass = controlPanel.classList.contains('smooth-corner');
+  const hasPanelClass = controlPanel.classList.contains('sc-panel');
+  
+  if (hasSmootherClass || hasPanelClass) {
+    console.log('❌ #controlPanel 仍然有不应该的类：');
+    if (hasSmootherClass) console.log('  - smooth-corner 类（应该移除）');
+    if (hasPanelClass) console.log('  - sc-panel 类（应该移除）');
+  } else {
+    console.log('✅ #controlPanel 已移除 smooth-corner 和 sc-panel 类');
+  }
+  
+  // 检查是否保持了滚动功能
+  const hasOverflowY = panelStyle.overflowY === 'auto' || panelStyle.overflowY === 'scroll';
+  if (hasOverflowY) {
+    console.log('✅ #controlPanel 保持了 overflow-y: auto 滚动功能');
+  } else {
+    console.log('⚠️ #controlPanel 的 overflow-y 可能被意外修改');
+  }
+} else {
+  console.log('⚠️ #controlPanel 元素未找到');
+}
+
+console.groupEnd();
+
+// ============================================================================
+// 6️⃣ 综合诊断报告
 // ============================================================================
 console.group('📊 综合诊断报告');
 
@@ -204,6 +255,7 @@ const diagnostics = {
   '✅ CSS 变量': allVarsSet,
   '⚠️ Paint 应用': maskApplicationSuccess || !paintWorkletSupported,
   '✅ 封面纯 border-radius': coverRadiusCorrect,
+  '✅ 面板纯 border-radius': controlPanelRadiusCorrect,
 };
 
 let allPass = Object.values(diagnostics).every(v => v);
