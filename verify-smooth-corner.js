@@ -104,7 +104,6 @@ console.groupEnd();
 console.group('4️⃣ paint(squircle) 掩码应用检查（关键）');
 
 const elementsWithMask = [
-  '#controlPanel',
   '.btn',
   'input[type="text"]',
   '.select-input',
