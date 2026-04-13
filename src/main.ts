@@ -163,10 +163,6 @@ interface PlayerState {
   backgroundType: 'fluid';
   backgroundDynamic: boolean;
   backgroundFlowSpeed: number;
-  backgroundColorMask: boolean;
-  backgroundMaskColor: string;
-  coverBlurLevel: number;
-  backgroundMaskOpacity: number;
   showFPS: boolean;
   marqueeEnabled: boolean;
   roundedCover: number;
@@ -224,10 +220,6 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   backgroundType: 'fluid',
   backgroundDynamic: true,
   backgroundFlowSpeed: 4,
-  backgroundColorMask: true,
-  backgroundMaskColor: '#FFFFFF',
-  coverBlurLevel: 100,
-  backgroundMaskOpacity: 70,
   showFPS: false,
   marqueeEnabled: true,
   roundedCover: 55,
@@ -590,7 +582,6 @@ class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: BaseDomLyricPlayer;
   private background: BackgroundRender<PixiRenderer | MeshGradientRenderer>;
-  private coverBlurBackground: HTMLDivElement;
   private beatCurvePollTimer: number | null = null;
   private beatCurveRequestInFlight = false;
   private beatCurvePath: string | null = null;
@@ -611,7 +602,6 @@ class WebLyricsPlayer {
     beatCurve: null
   };
   private coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }> = [];
-  private coverBlurBaseScale = 1.1;
   private stats: Stats;
   private state: PlayerState;
   private rangeStartLine: HTMLElement | null = null;
@@ -682,20 +672,11 @@ class WebLyricsPlayer {
   private statusText: HTMLElement | null = null;
   private bgFlowSpeed: HTMLInputElement | null = null;
   private bgFlowSpeedValue: HTMLElement | null = null;
-  private bgColorMask: HTMLInputElement | null = null;
-  private bgMaskColor: HTMLInputElement | null = null;
-  private bgMaskOpacity: HTMLInputElement | null = null;
-  private bgMaskOpacityValue: HTMLElement | null = null;
   private showFPSCheckbox: HTMLInputElement | null = null;
   private backgroundStyleSelect: HTMLSelectElement | null = null;
-  private coverBlurLevel: HTMLInputElement | null = null;
-  private coverBlurLevelValue: HTMLElement | null = null;
   private enableMarqueeCheckbox: HTMLInputElement | null = null;
   private bgRenderScale: HTMLInputElement | null = null;
   private fluidDesc: HTMLElement | null = null;
-  private coverDesc: HTMLElement | null = null;
-  private solidDesc: HTMLElement | null = null;
-  private solidOptions: NodeListOf<HTMLElement> | null = null;
   private recordOptions: NodeListOf<HTMLElement> | null = null;
   private bgRenderScaleValue: HTMLElement | null = null;
   private bgFPS: HTMLInputElement | null = null;
@@ -1479,17 +1460,11 @@ class WebLyricsPlayer {
     this.statusText = document.getElementById('statusText');
     this.bgFlowSpeed = document.getElementById('bgFlowSpeed') as HTMLInputElement;
     this.bgFlowSpeedValue = document.getElementById('bgFlowSpeedValue');
-    this.bgColorMask = document.getElementById('bgColorMask') as HTMLInputElement;
-    this.bgMaskColor = document.getElementById('bgMaskColor') as HTMLInputElement;
-    this.bgMaskOpacity = document.getElementById('bgMaskOpacity') as HTMLInputElement;
-    this.bgMaskOpacityValue = document.getElementById('bgMaskOpacityValue');
     this.showFPSCheckbox = document.getElementById('showFPS') as HTMLInputElement;
     this.bgFPS = document.getElementById('bgFPS') as HTMLInputElement;
     this.bgFPSValue = document.getElementById('bgFPSValue') as HTMLElement;
     this.backgroundStyleSelect = document.getElementById('backgroundStyle') as HTMLSelectElement;
     this.albumSidePanel = document.getElementById('albumSidePanel');
-    this.coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
-    this.coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
     this.enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
     this.bgRenderScale = document.getElementById('bgRenderScale') as HTMLInputElement;
     this.bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
@@ -1556,14 +1531,11 @@ class WebLyricsPlayer {
     this.songTitleDisplay = document.getElementById('songTitleDisplay');
     this.songArtistDisplay = document.getElementById('songArtistDisplay');
     this.fluidDesc = document.getElementById('fluid-desc');
-    this.coverDesc = document.getElementById('cover-desc');
-    this.solidDesc = document.getElementById('solid-desc');
     this.landscapeTimeDisplay = document.querySelector('.landscape-time') as HTMLElement;
     this.landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
     this.landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
     this.playControls = document.getElementById('playControls');
     this.languageSelect = document.getElementById('languageSelect') as HTMLSelectElement;
-    this.solidOptions = document.querySelectorAll('.solid-option');
     this.recordOptions = document.querySelectorAll('.record-option');
   }
 
@@ -1590,7 +1562,6 @@ class WebLyricsPlayer {
     this.setDefaultColors({ skipSave: true });
     this.initColors();
     this.background = BackgroundRender.new(MeshGradientRenderer);
-    this.coverBlurBackground = document.createElement('div');
     this.stats = new Stats();
     this.initDOMCache();
     this.initDynamicCoverVideo();
@@ -3645,10 +3616,9 @@ class WebLyricsPlayer {
 
     if (this.player) {
       // 检查this.player是否有appendChild方法（确保它是DOM元素）
-      if (typeof this.player.appendChild === 'function') {
-        this.player.appendChild(this.audio);
-        this.player.appendChild(this.background.getElement());
-        this.player.appendChild(this.coverBlurBackground);
+        if (typeof this.player.appendChild === 'function') {
+          this.player.appendChild(this.audio);
+          this.player.appendChild(this.background.getElement());
 
         if (this.lyricsPanel) {
           this.lyricsPanel.appendChild(this.lyricPlayer.getElement());
@@ -3671,7 +3641,6 @@ class WebLyricsPlayer {
       }
     }
 
-    this.initCoverBlurBackground();
     this.updateBackground({ skipSave: true });
     this.background.setAlbum(DEFAULT_AMLL_COVER_URL);
     this.setDefaultColors({ skipSave: true });
@@ -4337,18 +4306,6 @@ class WebLyricsPlayer {
           this.background.setFlowSpeed(numeric);
           this.updateBackground({ skipSave: true });
         }
-        break;
-      }
-      case 'backgroundColorMask': {
-        this.enforceAmlBackground();
-        break;
-      }
-      case 'backgroundMaskColor': {
-        this.enforceAmlBackground();
-        break;
-      }
-      case 'backgroundMaskOpacity': {
-        this.enforceAmlBackground();
         break;
       }
       case 'backgroundBeatEnabled': {
@@ -6778,23 +6735,6 @@ class WebLyricsPlayer {
     this.syncBackgroundBeatState();
   }
 
-  private initCoverBlurBackground() {
-    this.coverBlurBackground.style.position = "absolute";
-    this.coverBlurBackground.style.top = "0";
-    this.coverBlurBackground.style.left = "0";
-    this.coverBlurBackground.style.width = "100%";
-    this.coverBlurBackground.style.height = "100%";
-    this.coverBlurBackground.style.backgroundSize = "cover";
-    this.coverBlurBackground.style.backgroundPosition = "center";
-    this.coverBlurBackground.style.backgroundRepeat = "no-repeat";
-    this.coverBlurBackground.style.filter = "blur(20px)";
-    this.coverBlurBackground.style.transform = `scale(${this.coverBlurBaseScale})`;
-    this.coverBlurBackground.style.transformOrigin = "center";
-    this.coverBlurBackground.style.willChange = "transform";
-    this.coverBlurBackground.style.zIndex = "0";
-    this.coverBlurBackground.style.display = "none";
-  }
-
   private ensureBeatAudioAnalyser() {
     if (this.beatState.analyser || !this.audio) return;
     const AudioContextRef = window.AudioContext || (window as any).webkitAudioContext;
@@ -7433,10 +7373,6 @@ class WebLyricsPlayer {
 
   private enforceAmlBackground() {
     this.state.backgroundType = 'fluid';
-    this.state.backgroundColorMask = DEFAULT_PLAYER_STATE.backgroundColorMask;
-    this.state.backgroundMaskColor = DEFAULT_PLAYER_STATE.backgroundMaskColor;
-    this.state.backgroundMaskOpacity = DEFAULT_PLAYER_STATE.backgroundMaskOpacity;
-    this.state.coverBlurLevel = DEFAULT_PLAYER_STATE.coverBlurLevel;
   }
 
   // 更新背景显示
@@ -7598,10 +7534,6 @@ class WebLyricsPlayer {
     const currentCover = resolveDefaultCover(this.state.coverUrl);
 
     this.background.getElement().style.display = "block";
-    this.coverBlurBackground.style.display = "none";
-    if (this.player) {
-      this.player.style.background = "var(--page-background-color)";
-    }
 
     this.background.setAlbum(currentCover);
     this.background.setStaticMode(!this.state.backgroundDynamic);
