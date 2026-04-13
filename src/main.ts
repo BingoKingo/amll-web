@@ -160,7 +160,7 @@ interface PlayerState {
   playbackRate: number;
   volume: number;
   lyricDelay: number;
-  backgroundType: 'fluid' | 'cover' | 'solid';
+  backgroundType: 'fluid';
   backgroundDynamic: boolean;
   backgroundFlowSpeed: number;
   backgroundColorMask: boolean;
@@ -1631,9 +1631,7 @@ class WebLyricsPlayer {
     let valueElement: HTMLElement | null = null;
 
     switch (inputId) {
-      case 'coverBlurLevel': input = this.coverBlurLevel; valueElement = this.coverBlurLevelValue; break;
       case 'bgFlowSpeed': input = this.bgFlowSpeed; valueElement = this.bgFlowSpeedValue; break;
-      case 'bgMaskOpacity': input = this.bgMaskOpacity; valueElement = this.bgMaskOpacityValue; break;
       case 'volume': input = this.volumeControl; valueElement = this.volumeValue; break;
       case 'playbackRate': input = this.playbackRateControl; valueElement = this.playbackRateValue; break;
       case 'roundedCover': input = this.roundedCoverSlider; valueElement = this.roundedCoverValue; break;
@@ -1778,17 +1776,6 @@ class WebLyricsPlayer {
         }
       });
     }
-
-    this.coverBlurLevel?.addEventListener('input', (e: Event) => {
-      const blurLevel = parseFloat((e.target as HTMLInputElement).value);
-      const mappedBlurLevel = (blurLevel / 100) * 100;
-      this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
-      if (this.coverBlurLevelValue) {
-        this.coverBlurLevelValue.textContent = `${blurLevel}%`;
-      }
-      this.state.coverBlurLevel = blurLevel;
-      this.saveBackgroundSettings();
-    });
 
     this.coverStyleSelect?.addEventListener('change', (e) => {
       const target = e.target as HTMLSelectElement;
@@ -2099,9 +2086,7 @@ class WebLyricsPlayer {
       this.saveBackgroundSettings();
     });
 
-    this.setupWheelControl('coverBlurLevel', 'coverBlurLevelValue', 5);
     this.setupWheelControl('bgFlowSpeed', 'bgFlowSpeedValue', 0.1);
-    this.setupWheelControl('bgMaskOpacity', 'bgMaskOpacityValue', 5);
     this.setupWheelControl('volume', 'volumeValue', 0.05);
     this.setupWheelControl('playbackRate', 'playbackRateValue', 0.1);
     this.setupWheelControl('roundedCover', 'roundedCoverValue', 5);
@@ -2469,39 +2454,13 @@ class WebLyricsPlayer {
     this.bgFlowSpeed?.addEventListener('input', (e) => {
       const value = parseFloat((e.target as HTMLInputElement).value);
       this.state.backgroundFlowSpeed = value;
-      if (this.state.backgroundType === 'fluid') {
-        if (value === 0) {
-          this.background.setStaticMode(true);
-        } else {
-          this.background.setStaticMode(false);
-          this.background.setFlowSpeed(value);
-        }
+      if (value === 0) {
+        this.background.setStaticMode(true);
+      } else {
+        this.background.setStaticMode(false);
+        this.background.setFlowSpeed(value);
       }
       this.bgFlowSpeedValue!.textContent = value.toFixed(1);
-      this.saveBackgroundSettings();
-    });
-
-    // 颜色蒙版控制事件
-    this.bgColorMask?.addEventListener('change', (e) => {
-      this.state.backgroundColorMask = (e.target as HTMLInputElement).checked;
-      this.updateBackground();
-      this.updateBackgroundUI();
-      this.saveBackgroundSettings();
-    });
-
-    this.bgMaskColor?.addEventListener('input', (e) => {
-      this.state.backgroundMaskColor = (e.target as HTMLInputElement).value;
-      this.updateBackground();
-      this.updateBackgroundUI();
-      this.saveBackgroundSettings();
-    });
-
-    this.bgMaskOpacity?.addEventListener('input', (e) => {
-      const value = parseInt((e.target as HTMLInputElement).value);
-      this.state.backgroundMaskOpacity = value;
-      this.updateBackground();
-      this.updateBackgroundUI();
-      this.bgMaskOpacityValue!.textContent = value + '%';
       this.saveBackgroundSettings();
     });
 
@@ -3231,34 +3190,6 @@ class WebLyricsPlayer {
         }
       }
     });
-
-    if (this.backgroundStyleSelect) {
-      this.backgroundStyleSelect.addEventListener("change", (e) => {
-        const value = (e.target as HTMLSelectElement).value;
-        this.switchBackgroundStyle(value);
-      });
-
-      const backgroundStyleSelect = this.backgroundStyleSelect;
-      backgroundStyleSelect.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-          e.preventDefault();
-          const delta = e.key === "ArrowUp" ? -1 : 1;
-          const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
-          backgroundStyleSelect.selectedIndex = newIndex;
-          this.switchBackgroundStyle(backgroundStyleSelect.value);
-        }
-      });
-      if (this.backgroundStyleSelect) {
-        const backgroundStyleSelect = this.backgroundStyleSelect;
-        backgroundStyleSelect.addEventListener("wheel", (e) => {
-          e.preventDefault();
-          const delta = e.deltaY > 0 ? 1 : -1;
-          const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
-          backgroundStyleSelect.selectedIndex = newIndex;
-          this.switchBackgroundStyle(backgroundStyleSelect.value);
-        }, { passive: false });
-      }
-    }
 
     if (this.bgLowFreqVolume && this.bgLowFreqVolumeValue) {
       // 将[0.0-1.0]映射到[80hz-120hz]的显示函数
@@ -6378,15 +6309,11 @@ class WebLyricsPlayer {
       const shouldInvert = brightness >= 0.5;
       this.applyDominantColorAsCSSVariable();
       if (this.invertColorsCheckbox) {
-        if (this.state.backgroundType === 'cover') {
-          if (this.state.originalInvertColors === null && this.state.originalInvertColors === undefined) {
-            this.invertColorsCheckbox.checked = shouldInvert;
-            this.invertColors(shouldInvert);
-          } else {
-            this.invertColorsCheckbox.checked = this.state.originalInvertColors;
-            this.invertColors(this.state.originalInvertColors);
-          }
-        }
+        const prefersInvert = typeof this.state.originalInvertColors === 'boolean'
+          ? this.state.originalInvertColors
+          : shouldInvert;
+        this.invertColorsCheckbox.checked = prefersInvert;
+        this.invertColors(prefersInvert);
       }
     } catch (error) {
       this.setDefaultColors();
@@ -6493,6 +6420,18 @@ class WebLyricsPlayer {
     }
 
     const baseSettings = readStoredSettings();
+    const deprecatedKeys = [
+      'backgroundType',
+      'backgroundColorMask',
+      'backgroundMaskColor',
+      'backgroundMaskOpacity',
+      'coverBlurLevel',
+    ];
+    for (const key of deprecatedKeys) {
+      if (Object.prototype.hasOwnProperty.call(baseSettings, key)) {
+        delete (baseSettings as Record<string, unknown>)[key];
+      }
+    }
 
     const backgroundSettings = {
       backgroundDynamic: this.state.backgroundDynamic,
@@ -6577,29 +6516,14 @@ class WebLyricsPlayer {
         const defaults = DEFAULT_PLAYER_STATE;
         const hasSetting = (key: string) => Object.prototype.hasOwnProperty.call(settings, key);
 
-        if (hasSetting('backgroundType')) {
-          this.state.backgroundType = typeof settings.backgroundType === 'string' ? settings.backgroundType : defaults.backgroundType;
-        }
         if (hasSetting('backgroundDynamic')) {
           this.state.backgroundDynamic = typeof settings.backgroundDynamic === 'boolean' ? settings.backgroundDynamic : defaults.backgroundDynamic;
         }
         if (hasSetting('backgroundFlowSpeed')) {
           this.state.backgroundFlowSpeed = typeof settings.backgroundFlowSpeed === 'number' ? settings.backgroundFlowSpeed : defaults.backgroundFlowSpeed;
         }
-        if (hasSetting('backgroundColorMask')) {
-          this.state.backgroundColorMask = typeof settings.backgroundColorMask === 'boolean' ? settings.backgroundColorMask : defaults.backgroundColorMask;
-        }
-        if (hasSetting('backgroundMaskColor')) {
-          this.state.backgroundMaskColor = typeof settings.backgroundMaskColor === 'string' ? settings.backgroundMaskColor : defaults.backgroundMaskColor;
-        }
-        if (hasSetting('backgroundMaskOpacity')) {
-          this.state.backgroundMaskOpacity = typeof settings.backgroundMaskOpacity === 'number' ? settings.backgroundMaskOpacity : defaults.backgroundMaskOpacity;
-        }
         if (hasSetting('showFPS')) {
           this.state.showFPS = typeof settings.showFPS === 'boolean' ? settings.showFPS : defaults.showFPS;
-        }
-        if (hasSetting('coverBlurLevel')) {
-          this.state.coverBlurLevel = typeof settings.coverBlurLevel === 'number' ? settings.coverBlurLevel : defaults.coverBlurLevel;
         }
         if (hasSetting('invertColors')) {
           this.state.invertColors = typeof settings.invertColors === 'boolean' ? settings.invertColors : defaults.invertColors;
@@ -6873,17 +6797,11 @@ class WebLyricsPlayer {
     this.enforceAmlBackground();
     if (this.bgFlowSpeed) this.bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
     if (this.bgFlowSpeedValue) this.bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
-    if (this.bgColorMask) this.bgColorMask.checked = this.state.backgroundColorMask;
-    if (this.bgMaskColor) this.bgMaskColor.value = this.state.backgroundMaskColor;
-    if (this.bgMaskOpacity) this.bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
-    if (this.bgMaskOpacityValue) this.bgMaskOpacityValue.textContent = `${this.state.backgroundMaskOpacity}%`;
     if (this.showFPSCheckbox) this.showFPSCheckbox.checked = this.state.showFPS;
     if (this.backgroundStyleSelect) {
       this.backgroundStyleSelect.value = 'fluid';
       this.backgroundStyleSelect.disabled = true;
     }
-    if (this.coverBlurLevel) this.coverBlurLevel.value = this.state.coverBlurLevel.toString();
-    if (this.coverBlurLevelValue) this.coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
     if (this.invertColorsCheckbox) this.invertColorsCheckbox.checked = this.state.invertColors;
     if (this.dominantColorInput && this.isColorsInitialized) {
       this.dominantColorInput.value = this.state.manualDominantColor || this.originalDominant;
@@ -6927,15 +6845,6 @@ class WebLyricsPlayer {
       this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
     }
     if (this.fluidDesc) this.fluidDesc.style.display = 'block';
-    if (this.coverDesc) this.coverDesc.style.display = 'none';
-    if (this.solidDesc) this.solidDesc.style.display = 'none';
-
-    if (this.solidOptions) {
-      this.setOptionsVisibility(this.solidOptions, false, ['neumorphismA', 'neumorphismB']);
-      this.solidOptions.forEach((option) => {
-        option.style.display = 'none';
-      });
-    }
 
     if (this.loopPlayCheckbox) {
       this.loopPlayCheckbox.checked = this.state.loopPlay;
