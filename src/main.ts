@@ -165,12 +165,7 @@ interface PlayerState {
   backgroundFlowSpeed: number;
   backgroundColorMask: boolean;
   backgroundMaskColor: string;
-  invertColors: boolean;
-  originalInvertColors: boolean;
   coverBlurLevel: number;
-  manualDominantColor: string | null;
-  manualDominantColorLight: string | null;
-  manualDominantColorDark: string | null;
   backgroundMaskOpacity: number;
   showFPS: boolean;
   marqueeEnabled: boolean;
@@ -231,12 +226,7 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   backgroundFlowSpeed: 4,
   backgroundColorMask: true,
   backgroundMaskColor: '#FFFFFF',
-  invertColors: false,
-  originalInvertColors: false,
   coverBlurLevel: 100,
-  manualDominantColor: null,
-  manualDominantColorLight: null,
-  manualDominantColorDark: null,
   backgroundMaskOpacity: 70,
   showFPS: false,
   marqueeEnabled: true,
@@ -700,10 +690,6 @@ class WebLyricsPlayer {
   private backgroundStyleSelect: HTMLSelectElement | null = null;
   private coverBlurLevel: HTMLInputElement | null = null;
   private coverBlurLevelValue: HTMLElement | null = null;
-  private invertColorsCheckbox: HTMLInputElement | null = null;
-  private dominantColorInput: HTMLInputElement | null = null;
-  private dominantColorLightInput: HTMLInputElement | null = null;
-  private dominantColorDarkInput: HTMLInputElement | null = null;
   private enableMarqueeCheckbox: HTMLInputElement | null = null;
   private bgRenderScale: HTMLInputElement | null = null;
   private fluidDesc: HTMLElement | null = null;
@@ -1504,10 +1490,6 @@ class WebLyricsPlayer {
     this.albumSidePanel = document.getElementById('albumSidePanel');
     this.coverBlurLevel = document.getElementById('coverBlurLevel') as HTMLInputElement;
     this.coverBlurLevelValue = document.getElementById('coverBlurLevelValue');
-    this.invertColorsCheckbox = document.getElementById('invertColors') as HTMLInputElement;
-    this.dominantColorInput = document.getElementById('dominantColor') as HTMLInputElement;
-    this.dominantColorLightInput = document.getElementById('dominantColorLight') as HTMLInputElement;
-    this.dominantColorDarkInput = document.getElementById('dominantColorDark') as HTMLInputElement;
     this.enableMarqueeCheckbox = document.getElementById('enableMarquee') as HTMLInputElement;
     this.bgRenderScale = document.getElementById('bgRenderScale') as HTMLInputElement;
     this.bgRenderScaleValue = document.getElementById('bgRenderScaleValue');
@@ -2066,14 +2048,6 @@ class WebLyricsPlayer {
       selectElement.selectedIndex = nextIndex;
       selectElement.dispatchEvent(new Event('change'));
     }, { passive: false });
-
-    this.invertColorsCheckbox?.addEventListener('change', (e) => {
-      this.invertColors((e.target as HTMLInputElement).checked);
-    });
-
-    this.dominantColorInput?.addEventListener('change', () => this.onDominantColorChange());
-    this.dominantColorLightInput?.addEventListener('change', () => this.onDominantColorLightChange());
-    this.dominantColorDarkInput?.addEventListener('change', () => this.onDominantColorDarkChange());
 
     this.enableMarqueeCheckbox?.addEventListener('change', (e) => {
       this.state.marqueeEnabled = (e.target as HTMLInputElement).checked;
@@ -3239,97 +3213,37 @@ class WebLyricsPlayer {
     this.isColorsInitialized = true;
   }
 
-  private setDefaultColors(options?: { skipSave?: boolean }): void {
-    document.documentElement.style.setProperty('--dominant-color', '#fd9c9b');
-    document.documentElement.style.setProperty('--dominant-color-light', '#ffcfce');
-    document.documentElement.style.setProperty('--dominant-color-dark', '#640302');
-    document.documentElement.style.setProperty('--waveform-color', '#fd9c9b');
-
+  private setDefaultColors(_options?: { skipSave?: boolean }): void {
     this.originalDominant = '#fd9c9b';
     this.originalLight = '#ffcfce';
     this.originalDark = '#640302';
+    this.dominantColor = this.originalDominant;
+
+    document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
+    document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
+    document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
+    document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
+
     this.isColorsInitialized = true;
-
-    if (this.invertColorsCheckbox) {
-      this.invertColors(this.invertColorsCheckbox.checked, { skipSave: options?.skipSave });
-    }
-  }
-
-  private onDominantColorChange(): void {
-    if (!this.dominantColorInput) return;
-    this.state.manualDominantColor = this.dominantColorInput.value;
-    this.applyManualColors();
-    this.saveBackgroundSettings();
-  }
-
-  private onDominantColorLightChange(): void {
-    if (!this.dominantColorLightInput) return;
-    this.state.manualDominantColorLight = this.dominantColorLightInput.value;
-    this.applyManualColors();
-    this.saveBackgroundSettings();
-  }
-
-  private onDominantColorDarkChange(): void {
-    if (!this.dominantColorDarkInput) return;
-    this.state.manualDominantColorDark = this.dominantColorDarkInput.value;
-    this.applyManualColors();
-    this.saveBackgroundSettings();
-  }
-
-  private applyManualColors(): void {
-    const isInverted = this.invertColorsCheckbox?.checked || false;
-    const dominantColor = this.state.manualDominantColor || this.originalDominant;
-    const lightColor = this.state.manualDominantColorLight || this.originalLight;
-    const darkColor = this.state.manualDominantColorDark || this.originalDark;
-
-    if (isInverted) {
-      document.documentElement.style.setProperty('--dominant-color', lightColor);
-      document.documentElement.style.setProperty('--dominant-color-light', darkColor);
-      document.documentElement.style.setProperty('--dominant-color-dark', dominantColor);
-      document.documentElement.style.setProperty('--waveform-color', darkColor);
-    } else {
-      document.documentElement.style.setProperty('--dominant-color', dominantColor);
-      document.documentElement.style.setProperty('--dominant-color-light', lightColor);
-      document.documentElement.style.setProperty('--dominant-color-dark', darkColor);
-      document.documentElement.style.setProperty('--waveform-color', dominantColor);
-    }
     this.redrawWaveform();
   }
 
-  private invertColors(checked: boolean, options?: { skipSave?: boolean }): void {
-    if (!this.invertColorsCheckbox) return;
-
-    if (!this.isColorsInitialized) {
-      this.initColors();
-    }
-
-    this.state.invertColors = checked;
-    this.applyManualColors();
-    if (!options?.skipSave && !this.isHydratingSettings) {
-      this.saveBackgroundSettings();
-    }
-  }
-
   private applyDominantColorAsCSSVariable(): void {
-    const isInverted = this.invertColorsCheckbox?.checked;
-
-    if (this.dominantColor) {
-      this.originalDominant = this.dominantColor;
-      this.originalLight = this.lightenColor(this.dominantColor, 0.2);
-      this.originalDark = this.darkenColor(this.dominantColor, 0.5);
-      this.isColorsInitialized = true;
-      if (this.dominantColorInput && !this.state.manualDominantColor) {
-        this.dominantColorInput.value = this.dominantColor;
-      }
-      if (this.dominantColorLightInput && !this.state.manualDominantColorLight) {
-        this.dominantColorLightInput.value = this.originalLight;
-      }
-      if (this.dominantColorDarkInput && !this.state.manualDominantColorDark) {
-        this.dominantColorDarkInput.value = this.originalDark;
-      }
-
-      this.invertColors(isInverted || false);
+    if (!this.dominantColor) {
+      return;
     }
+
+    this.originalDominant = this.dominantColor;
+    this.originalLight = this.lightenColor(this.dominantColor, 0.2);
+    this.originalDark = this.darkenColor(this.dominantColor, 0.5);
+
+    document.documentElement.style.setProperty('--dominant-color', this.originalDominant);
+    document.documentElement.style.setProperty('--dominant-color-light', this.originalLight);
+    document.documentElement.style.setProperty('--dominant-color-dark', this.originalDark);
+    document.documentElement.style.setProperty('--waveform-color', this.originalDominant);
+
+    this.isColorsInitialized = true;
+    this.redrawWaveform();
   }
 
   private switchBackgroundStyle(_style: string) {
@@ -5129,9 +5043,6 @@ class WebLyricsPlayer {
     this.audio.src = "";
     this.state.musicUrl = "";
     this.state.isPlaying = false;
-    this.state.manualDominantColor = null;
-    this.state.manualDominantColorLight = null;
-    this.state.manualDominantColorDark = null;
 
     if (this.playControls) {
       this.playControls.style.bottom = "10px";
@@ -6304,20 +6215,9 @@ class WebLyricsPlayer {
       hsl[2] = 0.8;
       const [newR, newG, newB] = this.hslToRgb(hsl[0], hsl[1], hsl[2]);
       this.dominantColor = this.rgbToHex(newR, newG, newB);
-      // 计算颜色亮度并自动决定是否需要反转使用相对亮度公式: L = (0.299*R + 0.587*G + 0.114*B)/255
-      const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const shouldInvert = brightness >= 0.5;
       this.applyDominantColorAsCSSVariable();
-      if (this.invertColorsCheckbox) {
-        const prefersInvert = typeof this.state.originalInvertColors === 'boolean'
-          ? this.state.originalInvertColors
-          : shouldInvert;
-        this.invertColorsCheckbox.checked = prefersInvert;
-        this.invertColors(prefersInvert);
-      }
     } catch (error) {
       this.setDefaultColors();
-      this.applyDominantColorAsCSSVariable();
     }
   }
 
@@ -6426,6 +6326,11 @@ class WebLyricsPlayer {
       'backgroundMaskColor',
       'backgroundMaskOpacity',
       'coverBlurLevel',
+      'invertColors',
+      'originalInvertColors',
+      'manualDominantColor',
+      'manualDominantColorLight',
+      'manualDominantColorDark',
     ];
     for (const key of deprecatedKeys) {
       if (Object.prototype.hasOwnProperty.call(baseSettings, key)) {
@@ -6437,10 +6342,6 @@ class WebLyricsPlayer {
       backgroundDynamic: this.state.backgroundDynamic,
       backgroundFlowSpeed: this.state.backgroundFlowSpeed,
       showFPS: this.state.showFPS,
-      invertColors: this.state.invertColors,
-      manualDominantColor: this.state.manualDominantColor,
-      manualDominantColorLight: this.state.manualDominantColorLight,
-      manualDominantColorDark: this.state.manualDominantColorDark,
       roundedCover: this.state.roundedCover,
       coverRotationSpeed: this.state.coverRotationSpeed,
       backgroundRenderScale: this.state.backgroundRenderScale,
@@ -6524,18 +6425,6 @@ class WebLyricsPlayer {
         }
         if (hasSetting('showFPS')) {
           this.state.showFPS = typeof settings.showFPS === 'boolean' ? settings.showFPS : defaults.showFPS;
-        }
-        if (hasSetting('invertColors')) {
-          this.state.invertColors = typeof settings.invertColors === 'boolean' ? settings.invertColors : defaults.invertColors;
-        }
-        if (hasSetting('manualDominantColor')) {
-          this.state.manualDominantColor = typeof settings.manualDominantColor === 'string' ? settings.manualDominantColor : defaults.manualDominantColor;
-        }
-        if (hasSetting('manualDominantColorLight')) {
-          this.state.manualDominantColorLight = typeof settings.manualDominantColorLight === 'string' ? settings.manualDominantColorLight : defaults.manualDominantColorLight;
-        }
-        if (hasSetting('manualDominantColorDark')) {
-          this.state.manualDominantColorDark = typeof settings.manualDominantColorDark === 'string' ? settings.manualDominantColorDark : defaults.manualDominantColorDark;
         }
         if (hasSetting('roundedCover')) {
           this.state.roundedCover = typeof settings.roundedCover === 'number' ? settings.roundedCover : defaults.roundedCover;
@@ -6673,7 +6562,6 @@ class WebLyricsPlayer {
           this.state.rangeEndTime = typeof settings.rangeEndTime === 'number' ? settings.rangeEndTime : defaults.rangeEndTime;
         }
 
-        this.state.originalInvertColors = this.state.invertColors;
         this.audio.playbackRate = this.state.playbackRate;
         this.audio.volume = this.state.volume / 100;
 
@@ -6719,7 +6607,6 @@ class WebLyricsPlayer {
         this.updateMarqueeSettings();
         this.lyricPlayer.setAlignPosition(this.state.lyricAlignPosition);
         this.updateLyricFontSize();
-        this.invertColors(this.state.invertColors);
         this.lyricPlayer.setEnableBlur(this.state.enableLyricBlur);
         this.lyricPlayer.setEnableScale(this.state.enableLyricScale);
         this.lyricPlayer.setEnableSpring(this.state.enableLyricSpring);
@@ -6801,16 +6688,6 @@ class WebLyricsPlayer {
     if (this.backgroundStyleSelect) {
       this.backgroundStyleSelect.value = 'fluid';
       this.backgroundStyleSelect.disabled = true;
-    }
-    if (this.invertColorsCheckbox) this.invertColorsCheckbox.checked = this.state.invertColors;
-    if (this.dominantColorInput && this.isColorsInitialized) {
-      this.dominantColorInput.value = this.state.manualDominantColor || this.originalDominant;
-    }
-    if (this.dominantColorLightInput && this.isColorsInitialized) {
-      this.dominantColorLightInput.value = this.state.manualDominantColorLight || this.originalLight;
-    }
-    if (this.dominantColorDarkInput && this.isColorsInitialized) {
-      this.dominantColorDarkInput.value = this.state.manualDominantColorDark || this.originalDark;
     }
     if (this.roundedCoverSlider) this.roundedCoverSlider.value = this.state.roundedCover.toString();
     if (this.roundedCoverValue) this.roundedCoverValue.textContent = `${this.state.roundedCover}%`;
