@@ -3185,7 +3185,8 @@ class WebLyricsPlayer {
     this.background.getElement().style.backgroundRepeat = "no-repeat";
     this.background.getElement().style.transformOrigin = "center";
     this.background.getElement().style.willChange = "transform";
-    this.detectMaxFPS({ skipSave: true }).then(maxFPS => {
+    const detectOptions = { skipSave: true } as const;
+    this.detectMaxFPS(detectOptions).then(maxFPS => {
       if (this.bgFPS) {
         this.bgFPS.max = maxFPS.toString();
         if (parseInt(this.bgFPS.value) > maxFPS || parseInt(this.bgFPS.value) === 60) {
@@ -3195,7 +3196,7 @@ class WebLyricsPlayer {
             this.bgFPSValue.textContent = `${maxFPS}fps`;
           }
           this.background.setFPS(maxFPS);
-          if (!options?.skipSave && !this.isHydratingSettings) {
+          if (!detectOptions.skipSave && !this.isHydratingSettings) {
             this.saveBackgroundSettings();
           }
         }
@@ -6124,7 +6125,7 @@ class WebLyricsPlayer {
     }, 3000);
   }
 
-  public loadFromURLParams() {
+  public loadFromURLParams(): boolean {
     this.urlOverrides.clear();
     const urlParams = new URLSearchParams(window.location.search);
     const music = urlParams.get("music");
@@ -6230,10 +6231,6 @@ class WebLyricsPlayer {
       styleParamsChanged = true;
     }
 
-    if (styleParamsChanged) {
-      this.saveBackgroundSettings();
-    }
-
     if (currentTime) {
       this.urlOverrides.add("rangeStartTime");
     }
@@ -6273,7 +6270,7 @@ class WebLyricsPlayer {
           });
         }
       });
-      return;
+      return styleParamsChanged;
     }
 
     if (currentTime && this.audio) {
@@ -6282,18 +6279,24 @@ class WebLyricsPlayer {
         this.audio.currentTime = time;
       }
     }
+
+    return styleParamsChanged;
   }
 
   public start() {
     this.isHydratingSettings = true;
     this.loadBackgroundSettings();
-    this.loadFromURLParams();
+    const urlStyleParamsChanged = this.loadFromURLParams();
 
     this.updateBackgroundUI();
     this.updateBackground({ skipSave: true });
     this.syncBackgroundBeatState();
 
     this.isHydratingSettings = false;
+
+    if (urlStyleParamsChanged) {
+      this.saveBackgroundSettings({ backgroundOnly: true });
+    }
 
     this.startAnimationLoop();
     this.background.resume();
@@ -6526,13 +6529,14 @@ class WebLyricsPlayer {
       (B > 255 ? 255 : B < 0 ? 0 : B)).toString(16).slice(1);
   }
 
-  private saveBackgroundSettings() {
+  private saveBackgroundSettings(options?: { backgroundOnly?: boolean }) {
     if (this.isHydratingSettings) {
       return;
     }
 
-    const settings = {
-      ...readStoredSettings(),
+    const baseSettings = readStoredSettings();
+
+    const backgroundSettings = {
       backgroundType: this.state.backgroundType,
       backgroundDynamic: this.state.backgroundDynamic,
       backgroundFlowSpeed: this.state.backgroundFlowSpeed,
@@ -6545,58 +6549,70 @@ class WebLyricsPlayer {
       manualDominantColor: this.state.manualDominantColor,
       manualDominantColorLight: this.state.manualDominantColorLight,
       manualDominantColorDark: this.state.manualDominantColorDark,
-      marqueeEnabled: this.state.marqueeEnabled,
       roundedCover: this.state.roundedCover,
       coverRotationSpeed: this.state.coverRotationSpeed,
       backgroundRenderScale: this.state.backgroundRenderScale,
-      lyricAlignPosition: this.state.lyricAlignPosition,
-      lyricFontSize: this.state.lyricFontSize,
-      lyricDelay: this.state.lyricDelay,
-      hidePassedLyrics: this.state.hidePassedLyrics,
-      enableLyricBlur: this.state.enableLyricBlur,
-      enableLyricScale: this.state.enableLyricScale,
-      enableLyricSpring: this.state.enableLyricSpring,
-      wordFadeWidth: this.state.wordFadeWidth,
-      lyricAlignAnchor: this.state.lyricAlignAnchor,
-      showTranslatedLyric: this.state.showTranslatedLyric,
-      showRomanLyric: this.state.showRomanLyric,
-      swapLyricPositions: this.state.swapLyricPositions,
-      showbgLyric: this.state.showbgLyric,
-      swapDuetsPositions: this.state.swapDuetsPositions,
-      advanceLyricTiming: this.state.advanceLyricTiming,
-      singleLyrics: this.state.singleLyrics,
       backgroundLowFreqVolume: this.state.backgroundLowFreqVolume,
       backgroundBeatEnabled: this.state.backgroundBeatEnabled,
       coverStyle: this.state.coverStyle,
-      posYSpringMass: this.state.posYSpringMass,
       backgroundFPS: this.state.backgroundFPS,
-      posYSpringDamping: this.state.posYSpringDamping,
-      posYSpringStiffness: this.state.posYSpringStiffness,
-      posYSpringSoft: this.state.posYSpringSoft,
-      scaleSpringMass: this.state.scaleSpringMass,
-      scaleSpringDamping: this.state.scaleSpringDamping,
-      scaleSpringStiffness: this.state.scaleSpringStiffness,
-      scaleSpringSoft: this.state.scaleSpringSoft,
-      playbackRate: this.state.playbackRate,
-      volume: this.state.volume,
-      loopPlay: this.state.loopPlay,
-      showRemainingTime: this.state.showRemainingTime,
-      autoPlay: this.state.autoPlay,
-      musicUrl: this.state.musicUrl,
-      lyricUrl: this.state.lyricUrl,
-      coverUrl: this.state.coverUrl,
-      songTitle: this.state.songTitle,
-      songArtist: this.state.songArtist,
-      musicUrlInput: this.musicUrl?.value || '',
-      lyricUrlInput: this.lyricUrl?.value || '',
-      coverUrlInput: this.coverUrl?.value || '',
-      songTitleInput: this.songTitleInput?.value || '',
-      songArtistInput: this.songArtistInput?.value || '',
-      isRangeMode: this.state.isRangeMode,
-      rangeStartTime: this.state.rangeStartTime,
-      rangeEndTime: this.state.rangeEndTime,
-      controlPointCode: this.controlPointCodeInput?.value || '',
     };
+
+    const fullSettings = options?.backgroundOnly
+      ? backgroundSettings
+      : {
+          ...backgroundSettings,
+          marqueeEnabled: this.state.marqueeEnabled,
+          lyricAlignPosition: this.state.lyricAlignPosition,
+          lyricFontSize: this.state.lyricFontSize,
+          lyricDelay: this.state.lyricDelay,
+          hidePassedLyrics: this.state.hidePassedLyrics,
+          enableLyricBlur: this.state.enableLyricBlur,
+          enableLyricScale: this.state.enableLyricScale,
+          enableLyricSpring: this.state.enableLyricSpring,
+          wordFadeWidth: this.state.wordFadeWidth,
+          lyricAlignAnchor: this.state.lyricAlignAnchor,
+          showTranslatedLyric: this.state.showTranslatedLyric,
+          showRomanLyric: this.state.showRomanLyric,
+          swapLyricPositions: this.state.swapLyricPositions,
+          showbgLyric: this.state.showbgLyric,
+          swapDuetsPositions: this.state.swapDuetsPositions,
+          advanceLyricTiming: this.state.advanceLyricTiming,
+          singleLyrics: this.state.singleLyrics,
+          posYSpringMass: this.state.posYSpringMass,
+          posYSpringDamping: this.state.posYSpringDamping,
+          posYSpringStiffness: this.state.posYSpringStiffness,
+          posYSpringSoft: this.state.posYSpringSoft,
+          scaleSpringMass: this.state.scaleSpringMass,
+          scaleSpringDamping: this.state.scaleSpringDamping,
+          scaleSpringStiffness: this.state.scaleSpringStiffness,
+          scaleSpringSoft: this.state.scaleSpringSoft,
+          playbackRate: this.state.playbackRate,
+          volume: this.state.volume,
+          loopPlay: this.state.loopPlay,
+          showRemainingTime: this.state.showRemainingTime,
+          autoPlay: this.state.autoPlay,
+          musicUrl: this.state.musicUrl,
+          lyricUrl: this.state.lyricUrl,
+          coverUrl: this.state.coverUrl,
+          songTitle: this.state.songTitle,
+          songArtist: this.state.songArtist,
+          musicUrlInput: this.musicUrl?.value || '',
+          lyricUrlInput: this.lyricUrl?.value || '',
+          coverUrlInput: this.coverUrl?.value || '',
+          songTitleInput: this.songTitleInput?.value || '',
+          songArtistInput: this.songArtistInput?.value || '',
+          isRangeMode: this.state.isRangeMode,
+          rangeStartTime: this.state.rangeStartTime,
+          rangeEndTime: this.state.rangeEndTime,
+          controlPointCode: this.controlPointCodeInput?.value || '',
+        };
+
+    const settings = {
+      ...baseSettings,
+      ...fullSettings,
+    };
+
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   }
 
