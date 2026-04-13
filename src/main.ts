@@ -1485,28 +1485,8 @@ class WebLyricsPlayer {
     this.lyricAlignPosition = document.getElementById('lyricAlignPosition') as HTMLInputElement;
     this.lyricAlignPositionValue = document.getElementById('lyricAlignPositionValue');
 
-    // 调试：查找字体大小滑块元素
-    const fontSizeElement = document.getElementById('lyricFontSize');
-    if (fontSizeElement) {
-      // 如果找到元素，修改其 title 来显示调试信息
-      fontSizeElement.setAttribute('title', 'DEBUG: Element found!');
-    } else {
-      // 如果没找到，在 body 添加一个隐藏的调试元素
-      const debugDiv = document.createElement('div');
-      debugDiv.id = 'debug-info';
-      debugDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 5px; z-index: 9999;';
-      debugDiv.textContent = 'DEBUG: lyricFontSize element NOT FOUND!';
-      document.body.appendChild(debugDiv);
-    }
-
-    this.lyricFontSize = fontSizeElement as HTMLInputElement;
-
-    const fontSizeValueElement = document.getElementById('lyricFontSizeValue');
-    if (fontSizeValueElement) {
-      fontSizeValueElement.setAttribute('title', 'DEBUG: Value element found!');
-    }
-
-    this.lyricFontSizeValue = fontSizeValueElement;
+    this.lyricFontSize = document.getElementById('lyricFontSize') as HTMLInputElement;
+    this.lyricFontSizeValue = document.getElementById('lyricFontSizeValue');
     this.hidePassedLyricsCheckbox = document.getElementById('hidePassedLyrics') as HTMLInputElement;
     this.bgLowFreqVolume = document.getElementById('bgLowFreqVolume') as HTMLInputElement;
     this.bgLowFreqVolumeValue = document.getElementById('bgLowFreqVolumeValue');
