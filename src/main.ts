@@ -7723,7 +7723,7 @@ class WebLyricsPlayer {
     this.background.getElement().style.display = "block";
     this.coverBlurBackground.style.display = "none";
     if (this.player) {
-      this.player.style.background = "";
+      this.player.style.background = "var(--page-background-color)";
     }
 
     this.background.setAlbum(currentCover);
