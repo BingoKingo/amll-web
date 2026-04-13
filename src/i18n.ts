@@ -435,7 +435,7 @@ export const translations: Record<Language, Translations> = {
     },
     label: {
       language: "语言",
-      languageEnglish: "英文",
+      languageEnglish: "English",
       languageChinese: "中文",
       directInput: "直接输入",
       base64Input: "Base64 编码输入（{type}）",

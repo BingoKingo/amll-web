@@ -604,6 +604,7 @@ class WebLyricsPlayer {
   private hasLyrics = false;
   private gui: GUI | null = null;
   private urlOverrides = new Set<string>();
+  private isHydratingSettings = true;
   private colorThief: ColorThief;
   private static debounce(func: Function, wait: number) {
     let timeout: number | null = null;
@@ -1576,7 +1577,7 @@ class WebLyricsPlayer {
 
     this.hasLyrics = false;
 
-    this.setDefaultColors();
+    this.setDefaultColors({ skipSave: true });
     this.initColors();
     this.background = BackgroundRender.new(MeshGradientRenderer);
     this.coverBlurBackground = document.createElement('div');
@@ -2711,7 +2712,7 @@ class WebLyricsPlayer {
       });
   }
 
-  private async detectMaxFPS(): Promise<number> {
+  private async detectMaxFPS(options?: { skipSave?: boolean }): Promise<number> {
     try {
       const screenWithRefreshRate = window.screen as any;
       if (screenWithRefreshRate?.refreshRate) {
@@ -3184,7 +3185,7 @@ class WebLyricsPlayer {
     this.background.getElement().style.backgroundRepeat = "no-repeat";
     this.background.getElement().style.transformOrigin = "center";
     this.background.getElement().style.willChange = "transform";
-    this.detectMaxFPS().then(maxFPS => {
+    this.detectMaxFPS({ skipSave: true }).then(maxFPS => {
       if (this.bgFPS) {
         this.bgFPS.max = maxFPS.toString();
         if (parseInt(this.bgFPS.value) > maxFPS || parseInt(this.bgFPS.value) === 60) {
@@ -3194,7 +3195,9 @@ class WebLyricsPlayer {
             this.bgFPSValue.textContent = `${maxFPS}fps`;
           }
           this.background.setFPS(maxFPS);
-          this.saveBackgroundSettings();
+          if (!options?.skipSave && !this.isHydratingSettings) {
+            this.saveBackgroundSettings();
+          }
         }
       }
     });
@@ -3275,7 +3278,7 @@ class WebLyricsPlayer {
     this.isColorsInitialized = true;
   }
 
-  private setDefaultColors(): void {
+  private setDefaultColors(options?: { skipSave?: boolean }): void {
     document.documentElement.style.setProperty('--dominant-color', '#fd9c9b');
     document.documentElement.style.setProperty('--dominant-color-light', '#ffcfce');
     document.documentElement.style.setProperty('--dominant-color-dark', '#640302');
@@ -3287,7 +3290,7 @@ class WebLyricsPlayer {
     this.isColorsInitialized = true;
 
     if (this.invertColorsCheckbox) {
-      this.invertColors(this.invertColorsCheckbox.checked);
+      this.invertColors(this.invertColorsCheckbox.checked, { skipSave: options?.skipSave });
     }
   }
 
@@ -3332,7 +3335,7 @@ class WebLyricsPlayer {
     this.redrawWaveform();
   }
 
-  private invertColors(checked: boolean): void {
+  private invertColors(checked: boolean, options?: { skipSave?: boolean }): void {
     if (!this.invertColorsCheckbox) return;
 
     if (!this.isColorsInitialized) {
@@ -3341,7 +3344,9 @@ class WebLyricsPlayer {
 
     this.state.invertColors = checked;
     this.applyManualColors();
-    this.saveBackgroundSettings();
+    if (!options?.skipSave && !this.isHydratingSettings) {
+      this.saveBackgroundSettings();
+    }
   }
 
   private applyDominantColorAsCSSVariable(): void {
@@ -3848,9 +3853,9 @@ class WebLyricsPlayer {
     }
 
     this.initCoverBlurBackground();
-    this.updateBackground();
+    this.updateBackground({ skipSave: true });
     this.background.setAlbum(DEFAULT_AMLL_COVER_URL);
-    this.setDefaultColors();
+    this.setDefaultColors({ skipSave: true });
 
     if (this.controlPanel) {
       this.controlPanel.style.width = "0px";
@@ -4476,6 +4481,84 @@ class WebLyricsPlayer {
           this.volumeValue.textContent = `${numeric}%`;
         }
         this.updateVolumeIcon(numeric);
+        break;
+      }
+      case 'backgroundType': {
+        if (value === 'fluid' || value === 'cover' || value === 'solid') {
+          this.state.backgroundType = value;
+          if (this.backgroundStyleSelect) {
+            this.backgroundStyleSelect.value = value;
+          }
+          this.updateBackgroundUI();
+          this.updateBackground({ skipSave: true });
+        }
+        break;
+      }
+      case 'backgroundDynamic': {
+        const boolValue = Boolean(value);
+        this.state.backgroundDynamic = boolValue;
+        this.background.setStaticMode(!boolValue);
+        this.updateBackgroundUI();
+        this.updateBackground({ skipSave: true });
+        break;
+      }
+      case 'backgroundFlowSpeed': {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          this.state.backgroundFlowSpeed = numeric;
+          if (this.bgFlowSpeed) {
+            this.bgFlowSpeed.value = numeric.toString();
+          }
+          if (this.bgFlowSpeedValue) {
+            this.bgFlowSpeedValue.textContent = numeric.toFixed(1);
+          }
+          this.background.setFlowSpeed(numeric);
+          this.updateBackground({ skipSave: true });
+        }
+        break;
+      }
+      case 'backgroundColorMask': {
+        const boolValue = Boolean(value);
+        this.state.backgroundColorMask = boolValue;
+        if (this.bgColorMask) {
+          this.bgColorMask.checked = boolValue;
+        }
+        this.updateBackgroundUI();
+        this.updateBackground({ skipSave: true });
+        break;
+      }
+      case 'backgroundMaskColor': {
+        if (typeof value === 'string' && value.trim()) {
+          this.state.backgroundMaskColor = value;
+          if (this.bgMaskColor) {
+            this.bgMaskColor.value = value;
+          }
+          this.updateBackground({ skipSave: true });
+        }
+        break;
+      }
+      case 'backgroundMaskOpacity': {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          const clamped = clamp(numeric, 0, 100);
+          this.state.backgroundMaskOpacity = clamped;
+          if (this.bgMaskOpacity) {
+            this.bgMaskOpacity.value = clamped.toString();
+          }
+          if (this.bgMaskOpacityValue) {
+            this.bgMaskOpacityValue.textContent = `${clamped}%`;
+          }
+          this.updateBackground({ skipSave: true });
+        }
+        break;
+      }
+      case 'backgroundBeatEnabled': {
+        const boolValue = Boolean(value);
+        this.state.backgroundBeatEnabled = boolValue;
+        if (this.backgroundBeatCheckbox) {
+          this.backgroundBeatCheckbox.checked = boolValue;
+        }
+        this.syncBackgroundBeatState();
         break;
       }
       case 'loopPlay': {
@@ -5181,9 +5264,9 @@ class WebLyricsPlayer {
     this.updateFileInputDisplay("lyricFile", "");
 
     this.background.setAlbum(DEFAULT_AMLL_COVER_URL);
-   this.setDefaultColors();
-   this.isColorsInitialized = false;
-   this.initColors();
+    this.setDefaultColors();
+    this.isColorsInitialized = false;
+    this.initColors();
     this.state.roundedCover = DEFAULT_PLAYER_STATE.roundedCover;
     this.updateRoundedCover();
     this.state.backgroundRenderScale = DEFAULT_PLAYER_STATE.backgroundRenderScale;
@@ -6202,8 +6285,16 @@ class WebLyricsPlayer {
   }
 
   public start() {
-    this.loadFromURLParams();
+    this.isHydratingSettings = true;
     this.loadBackgroundSettings();
+    this.loadFromURLParams();
+
+    this.updateBackgroundUI();
+    this.updateBackground({ skipSave: true });
+    this.syncBackgroundBeatState();
+
+    this.isHydratingSettings = false;
+
     this.startAnimationLoop();
     this.background.resume();
     this.syncBackgroundBeatState();
@@ -6436,6 +6527,10 @@ class WebLyricsPlayer {
   }
 
   private saveBackgroundSettings() {
+    if (this.isHydratingSettings) {
+      return;
+    }
+
     const settings = {
       ...readStoredSettings(),
       backgroundType: this.state.backgroundType,
@@ -7724,7 +7819,7 @@ class WebLyricsPlayer {
     }
   }
 
-  private updateBackground() {
+  private updateBackground(options?: { skipSave?: boolean }) {
     const currentCover = resolveDefaultCover(this.state.coverUrl);
 
     if (this.state.backgroundType === 'cover') {
@@ -7745,7 +7840,7 @@ class WebLyricsPlayer {
 
       const mappedBlurLevel = (this.state.coverBlurLevel / 100) * 100;
       this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
-      this.invertColors(this.state.invertColors);
+      this.invertColors(this.state.invertColors, { skipSave: options?.skipSave });
     } else if (this.state.backgroundType === 'solid') {
       this.background.getElement().style.display = "none";
       this.coverBlurBackground.style.display = "none";
