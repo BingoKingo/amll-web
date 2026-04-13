@@ -583,7 +583,7 @@ type BeatState = {
   basePaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }>;
   analyser: AnalyserNode | null;
   audioContext: AudioContext | null;
-  freqData: Uint8Array | null;
+  freqData: Uint8Array<ArrayBuffer> | null;
   rafId: number | null;
   renderer: any;
   enabled: boolean;
@@ -7095,7 +7095,7 @@ class WebLyricsPlayer {
     analyser.connect(audioContext.destination);
     this.beatState.audioContext = audioContext;
     this.beatState.analyser = analyser;
-    this.beatState.freqData = new Uint8Array(analyser.frequencyBinCount);
+    this.beatState.freqData = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   private getBeatRenderer() {
