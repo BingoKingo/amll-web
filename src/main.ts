@@ -3957,7 +3957,8 @@ class WebLyricsPlayer {
     }
   }
 
-  private async loadFromURLs() {
+  private async loadFromURLs(options?: { persist?: boolean }) {
+    const persist = options?.persist !== false;
     let musicUrl = this.musicUrl?.value;
     let lyricUrl = this.lyricUrl?.value;
     let coverUrl = this.coverUrl?.value;
@@ -4179,7 +4180,9 @@ class WebLyricsPlayer {
       }
     }
 
-    this.saveBackgroundSettings();
+    if (persist) {
+      this.saveBackgroundSettings();
+    }
     this.showStatus(t("status.loadFromUrlComplete"));
   }
 
@@ -6245,7 +6248,7 @@ class WebLyricsPlayer {
 
     if (music || lyric || cover) {
       this.hasAutoLoadedFromUrl = true;
-      this.loadFromURLs().then(() => {
+      this.loadFromURLs({ persist: false }).then(() => {
         // t 参数固定为 0，不从 URL 读取
         console.log('[AMLL] 设置播放时间为 0，忽略 URL 参数 t');
         if (this.audio) {
