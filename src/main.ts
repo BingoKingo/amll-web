@@ -1257,15 +1257,12 @@ class WebLyricsPlayer {
     const songTitle = this.songTitle;
     const songArtist = this.songArtist;
     const baseTitle = this.getBasePageTitle();
+    this.originalTitle = baseTitle;
 
     const updateTitleMarquee = () => {
       if (this.titleMarqueeInterval) {
         clearInterval(this.titleMarqueeInterval);
         this.titleMarqueeInterval = null;
-      }
-
-      if (!this.originalTitle) {
-        this.originalTitle = document.title || baseTitle;
       }
 
       const hasSongInfo = Boolean(this.state.songTitle || this.state.songArtist);
@@ -1307,7 +1304,7 @@ class WebLyricsPlayer {
         if (hasSongInfo) {
           document.title = fullTitle;
         } else {
-          document.title = this.originalTitle || baseTitle;
+          document.title = this.originalTitle;
         }
       }
     };
@@ -1433,11 +1430,6 @@ class WebLyricsPlayer {
   }
 
   private initDOMCache() {
-    // 添加调试信息到页面标题（带时间戳确保是最新的）
-    if (document.title) {
-      document.title = `[DEBUG ${Date.now()}] ` + document.title;
-    }
-
     this.musicFile = document.getElementById('musicFile') as HTMLInputElement;
     this.lyricFile = document.getElementById('lyricFile') as HTMLInputElement;
     this.coverFile = document.getElementById('coverFile') as HTMLInputElement;
@@ -5253,6 +5245,7 @@ class WebLyricsPlayer {
     this.dynamicCoverPosterUrl = "";
     this.dynamicCoverLoadFailed = false;
     this.refreshPageMetadata();
+    this.updateMarqueeSettings();
 
     if (this.controlPointCodeInput) {
       this.controlPointCodeInput.value = '';
