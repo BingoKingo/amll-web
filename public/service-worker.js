@@ -9,6 +9,7 @@ const urlsToCache = [
 ];
 
 const NETWORK_FIRST_EXT = [".js", ".css", ".html", ".wasm"];
+const BYPASS_CACHE_PATHS = ["/songs/summary", "/get_json_data"];
 
 function shouldUseNetworkFirst(request, url) {
   if (request.mode === "navigate") {
@@ -16,6 +17,11 @@ function shouldUseNetworkFirst(request, url) {
   }
   const path = url.pathname || "";
   return NETWORK_FIRST_EXT.some((ext) => path.endsWith(ext));
+}
+
+function shouldBypassCache(url) {
+  const path = url.pathname || "";
+  return BYPASS_CACHE_PATHS.some((target) => path === target || path.endsWith(target));
 }
 
 // 安装 Service Worker
@@ -51,6 +57,11 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
+
+  if (request.method === "GET" && shouldBypassCache(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // 对核心静态资源使用网络优先，避免升级后仍拿到旧缓存。
   if (request.method === "GET" && shouldUseNetworkFirst(request, url)) {

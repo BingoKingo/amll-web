@@ -25,7 +25,7 @@ import { isLylFormat, parseLyl, lylToTTML } from "./lyric/lyl-parser";
 import { isSrtFormat, parseSrt, srtToTTML } from "./lyric/srt-parser";
 
 // 导入测试脚本（仅在开发环境中使用）
-import { getCurrentLanguage, getTranslations, t } from "./i18n";
+import { getCurrentLanguage, setCurrentLanguage, t } from "./i18n";
 import GUI from "lil-gui";
 import Stats from "stats.js";
 import ColorThief from 'colorthief';
@@ -59,6 +59,60 @@ const DEFAULT_AMLL_COVER_URL = (() => {
   }
   return "./icons/icon-512x512.png";
 })();
+
+const FAMYLIAM_SEEN_APP_VERSION_KEY = "famyliam_seen_app_version";
+const FAMYLIAM_UPDATE_RETURN_URL_KEY = "famyliam_update_return_url";
+const FAMYLIAM_UPDATE_LAST_CHECK_AT_KEY = "famyliam_update_last_check_at";
+const FAMYLIAM_UPDATE_CONFIRM_PARAM = "famyliam_update_confirm";
+
+function normalizeAppVersion(value: unknown): string {
+  const text = String(value ?? "").trim();
+  return text || "0.0.0-dev";
+}
+
+async function shouldBlockWithVersionGate(): Promise<boolean> {
+  try {
+    const response = await fetch("/api/runtime/version", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return false;
+    }
+
+    const payload = await response.json();
+    const serverVersion = normalizeAppVersion(payload?.app_version);
+    const currentUrl = new URL(window.location.href);
+    const rawConfirmVersion = currentUrl.searchParams.get(FAMYLIAM_UPDATE_CONFIRM_PARAM);
+    const hasConfirmVersion = rawConfirmVersion !== null && rawConfirmVersion.trim() !== "";
+    const confirmVersion = hasConfirmVersion ? normalizeAppVersion(rawConfirmVersion) : "";
+    if (hasConfirmVersion && confirmVersion === serverVersion) {
+      window.localStorage.setItem(FAMYLIAM_SEEN_APP_VERSION_KEY, serverVersion);
+      window.localStorage.setItem(FAMYLIAM_UPDATE_LAST_CHECK_AT_KEY, new Date().toISOString());
+      currentUrl.searchParams.delete(FAMYLIAM_UPDATE_CONFIRM_PARAM);
+      window.history.replaceState({}, "", currentUrl.toString());
+      return false;
+    }
+
+    const cachedRaw = window.localStorage.getItem(FAMYLIAM_SEEN_APP_VERSION_KEY);
+    const cachedVersion = normalizeAppVersion(cachedRaw);
+    const mismatch = !cachedRaw || cachedVersion !== serverVersion;
+    if (!mismatch) {
+      window.localStorage.setItem(FAMYLIAM_UPDATE_LAST_CHECK_AT_KEY, new Date().toISOString());
+      return false;
+    }
+
+    window.localStorage.setItem(FAMYLIAM_UPDATE_RETURN_URL_KEY, window.location.href);
+    window.localStorage.setItem(FAMYLIAM_UPDATE_LAST_CHECK_AT_KEY, new Date().toISOString());
+    const nextUrl = new URL("/update-screen", window.location.origin);
+    nextUrl.searchParams.set("target", serverVersion);
+    window.location.replace(nextUrl.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const originalFetch = typeof window !== "undefined" ? window.fetch.bind(window) : null;
 
@@ -601,6 +655,7 @@ class WebLyricsPlayer {
   private playButton: HTMLElement | null = null;
   private landscapePlayBtn: HTMLElement | null = null;
   private controlPanel: HTMLElement | null = null;
+  private languageSelect: HTMLSelectElement | null = null;
   private fullscreenButton: HTMLElement | null = null;
   private fullscreenEnterIcon: HTMLElement | null = null;
   private fullscreenExitIcon: HTMLElement | null = null;
@@ -738,26 +793,52 @@ class WebLyricsPlayer {
     this.hideDynamicCoverVideo({ clearSource: true });
   };
 
-  private initI18n() {
-    document.documentElement.lang = getCurrentLanguage();
+  private applyI18nToDom() {
+    const lang = getCurrentLanguage();
+    setCurrentLanguage(lang);
 
-    const i18nElements = document.querySelectorAll("[data-i18n]");
+    const i18nElements = document.querySelectorAll<HTMLElement>("[data-i18n]");
     i18nElements.forEach((el) => {
-      const key = el.getAttribute("data-i18n") as any;
-      if (key) {
-        el.textContent = t(key);
+      const key = el.getAttribute("data-i18n");
+      if (!key) return;
+      const translated = t(key);
+      const isDynamic = el.getAttribute("data-i18n-dynamic") === "true";
+      const hasLastApplied = el.hasAttribute("data-i18n-last");
+      const lastApplied = el.getAttribute("data-i18n-last") || "";
+      const currentText = (el.textContent || "").trim();
+      const shouldUpdateDynamic = !hasLastApplied || !currentText || currentText === lastApplied;
+
+      if (!isDynamic || shouldUpdateDynamic) {
+        el.textContent = translated;
+        el.setAttribute("data-i18n-last", translated);
       }
     });
 
-    const placeholderElements = document.querySelectorAll(
-      "[data-i18n-placeholder]"
-    );
-    placeholderElements.forEach((el) => {
-      const key = el.getAttribute("data-i18n-placeholder") as any;
-      if (key) {
-        (el as HTMLInputElement).placeholder = t(key);
-      }
+    const attrMappings: Array<{ dataAttr: string; targetAttr: string }> = [
+      { dataAttr: "data-i18n-placeholder", targetAttr: "placeholder" },
+      { dataAttr: "data-i18n-title", targetAttr: "title" },
+      { dataAttr: "data-i18n-aria-label", targetAttr: "aria-label" },
+      { dataAttr: "data-i18n-alt", targetAttr: "alt" },
+      { dataAttr: "data-i18n-content", targetAttr: "content" },
+    ];
+
+    attrMappings.forEach(({ dataAttr, targetAttr }) => {
+      document.querySelectorAll<HTMLElement>(`[${dataAttr}]`).forEach((el) => {
+        const key = el.getAttribute(dataAttr);
+        if (!key) return;
+        const value = t(key);
+        if (targetAttr === "placeholder") {
+          (el as HTMLInputElement | HTMLTextAreaElement).placeholder = value;
+        } else {
+          el.setAttribute(targetAttr, value);
+        }
+      });
     });
+  }
+
+  private reapplyI18n() {
+    this.applyI18nToDom();
+    this.updateAlbumSidePanel();
   }
 
   private initUploadButtons() {
@@ -1456,12 +1537,13 @@ class WebLyricsPlayer {
     this.landscapeProgressFill = document.querySelector('.landscape-progress-fill') as HTMLElement;
     this.landscapeCover = document.querySelector('.landscape-cover') as HTMLElement;
     this.playControls = document.getElementById('playControls');
+    this.languageSelect = document.getElementById('languageSelect') as HTMLSelectElement;
     this.solidOptions = document.querySelectorAll('.solid-option');
     this.recordOptions = document.querySelectorAll('.record-option');
   }
 
   constructor() {
-    this.initI18n();
+    this.applyI18nToDom();
     this.audio = document.createElement("audio");
     this.state = cloneDefaultState();
     this.audio.volume = this.state.volume / 100;
@@ -1589,6 +1671,15 @@ class WebLyricsPlayer {
     }, 100);
 
     orientationMediaQuery.addEventListener('change', handleOrientationChange);
+
+    if (this.languageSelect) {
+      this.languageSelect.value = getCurrentLanguage();
+      this.languageSelect.addEventListener("change", (e) => {
+        const nextLang = (e.target as HTMLSelectElement).value;
+        setCurrentLanguage(nextLang);
+        this.reapplyI18n();
+      });
+    }
 
     if (this.timeDisplay) {
       this.timeDisplay.addEventListener("click", () => {
@@ -2072,9 +2163,7 @@ class WebLyricsPlayer {
 
     this.songTitle?.addEventListener("click", (e) => {
       const titleElement = e.target as HTMLElement;
-      const currentTitle = titleElement.textContent || "";
-
-      if (currentTitle === "" || currentTitle === t("title")) {
+      if (!this.state.songTitle.trim()) {
         handleTitleEdit(titleElement);
       }
     });
@@ -2134,9 +2223,7 @@ class WebLyricsPlayer {
 
     this.songArtist?.addEventListener("click", (e) => {
       const artistElement = e.target as HTMLElement;
-      const currentArtist = artistElement.textContent || "";
-
-      if (currentArtist === "" || currentArtist === t("artist")) {
+      if (!this.state.songArtist.trim()) {
         handleArtistEdit(artistElement);
       }
     });
@@ -3556,7 +3643,7 @@ class WebLyricsPlayer {
             this.loadMusicFromFile(file);
             this.updateFileInputDisplay("musicFile", file);
           } else {
-            this.showStatus("不支持的文件类型，请拖拽音频或图片文件", true);
+            this.showStatus(t("status.unsupportedFileType"), true);
           }
         }
       });
@@ -3617,8 +3704,6 @@ class WebLyricsPlayer {
     fileDisplay.style = `max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;`;
     if (file instanceof File) {
       fileDisplay.textContent = `${file.name}`;
-    } else if (file === "Direct Input") {
-      fileDisplay.textContent = file;
     } else {
       try {
         const url = new URL(file);
@@ -3771,7 +3856,7 @@ class WebLyricsPlayer {
       const isValidExtension = /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
 
       if (!isAudioType && !isValidExtension) {
-        this.showStatus(t("musicLoadFailed"), true);
+        this.showStatus(t("status.musicLoadFailed"), true);
         return;
       }
 
@@ -3805,9 +3890,9 @@ class WebLyricsPlayer {
       }
 
       this.updateFileInputDisplay("musicFile", file);
-      this.showStatus(t("musicLoadSuccess"));
+      this.showStatus(t("status.musicLoadSuccess"));
     } catch (error) {
-      this.showStatus(t("musicLoadFailed"), true);
+      this.showStatus(t("status.musicLoadFailed"), true);
     }
   }
 
@@ -3820,7 +3905,7 @@ class WebLyricsPlayer {
       const isTextPlain = file.type === "text/plain" || file.type === "";
 
       if (!isValidExtension && !isTextPlain) {
-        this.showStatus(t("lyricsLoadFailed"), true);
+        this.showStatus(t("status.lyricsLoadFailed"), true);
         return;
       }
 
@@ -3829,9 +3914,9 @@ class WebLyricsPlayer {
       this.state.lyricUrl = url;
       await this.loadLyricContent(text, file.name);
       this.updateFileInputDisplay("lyricFile", file);
-      this.showStatus(t("lyricsLoadSuccess"));
+      this.showStatus(t("status.lyricsLoadSuccess"));
     } catch (error) {
-      this.showStatus(t("lyricsLoadFailed"), true);
+      this.showStatus(t("status.lyricsLoadFailed"), true);
     }
   }
 
@@ -3846,9 +3931,9 @@ class WebLyricsPlayer {
       this.updateBackground();
       this.updateSongInfo();
       this.updateFileInputDisplay("coverFile", file);
-      this.showStatus(t("coverLoadSuccess"));
+      this.showStatus(t("status.coverLoadSuccess"));
     } catch (error) {
-      this.showStatus(t("coverLoadFailed"), true);
+      this.showStatus(t("status.coverLoadFailed"), true);
     }
   }
 
@@ -4020,7 +4105,7 @@ class WebLyricsPlayer {
           }
           this.updateFileInputDisplay("lyricFile", lyricUrl);
         } catch (error) {
-          this.showStatus(t("lyricsUrlLoadFailed"), true);
+          this.showStatus(t("status.lyricsUrlLoadFailed"), true);
         }
       } else {
         await this.processLyricInput(lyricUrl);
@@ -4085,7 +4170,7 @@ class WebLyricsPlayer {
     }
 
     this.saveBackgroundSettings();
-    this.showStatus(t("loadFromUrlComplete"));
+    this.showStatus(t("status.loadFromUrlComplete"));
   }
 
   private async loadFromFiles() {
@@ -4174,22 +4259,22 @@ class WebLyricsPlayer {
           decodedContent = new TextDecoder('utf-8').decode(bytes);
         }
         await this.loadLyricContent(decodedContent, "direct-input.txt");
-        this.updateFileInputDisplay("lyricFile", `Base64 Encoded Input (${contentType})`);
-        this.showStatus(t("lyricsParseSuccess"));
+        this.updateFileInputDisplay("lyricFile", t("label.base64Input", { type: contentType }));
+        this.showStatus(t("status.lyricsParseSuccess"));
       } catch (error) {
         console.error("Base64 decoding error:", error);
-        this.showStatus(t("lyricsParseFailed"), true);
+        this.showStatus(t("status.lyricsParseFailed"), true);
       }
       return;
     }
 
     try {
       await this.loadLyricContent(input, "direct-input.txt");
-      this.updateFileInputDisplay("lyricFile", "Direct Input");
-      this.showStatus(t("lyricsParseSuccess"));
+      this.updateFileInputDisplay("lyricFile", t("label.directInput"));
+      this.showStatus(t("status.lyricsParseSuccess"));
     } catch (error) {
       console.error("Direct lyric input error:", error);
-      this.showStatus(t("lyricsParseFailed"), true);
+      this.showStatus(t("status.lyricsParseFailed"), true);
     }
   }
 
@@ -4301,10 +4386,10 @@ class WebLyricsPlayer {
         if (this.lyricAreaHint) this.lyricAreaHint.remove();
       }
       this.updateLyricAreaHint();
-      this.showStatus(`${t("lyricsParseSuccess")}${lines.length} 行`);
+      this.showStatus(t("status.lyricsParseSuccessWithCount", { count: lines.length }));
     } catch (error) {
       console.error("Lyric parsing error:", error);
-      this.showStatus(t("lyricsParseFailed"), true);
+      this.showStatus(t("status.lyricsParseFailed"), true);
     }
   }
 
@@ -5135,7 +5220,7 @@ class WebLyricsPlayer {
     this.dynamicCoverUrl = "";
     this.dynamicCoverPosterUrl = "";
     this.dynamicCoverLoadFailed = false;
-    document.title = "AMLL Web Player";
+    document.title = t("meta.pageTitle");
 
     if (this.controlPointCodeInput) {
       this.controlPointCodeInput.value = '';
@@ -5341,6 +5426,7 @@ class WebLyricsPlayer {
     this.updateBackgroundUI();
     this.updateBackground();
     this.updateFPSDisplay();
+    this.reapplyI18n();
 
     if (this.progressFill) {
       this.progressFill.style.width = "0%";
@@ -5352,7 +5438,7 @@ class WebLyricsPlayer {
     this.updateProgress();
     this.updateTimeDisplay();
     this.updateCoverRotation();
-    this.showStatus(t("playerReset"));
+    this.showStatus(t("status.playerReset"));
   }
 
   // 设置媒体会话操作处理程序
@@ -5490,12 +5576,15 @@ class WebLyricsPlayer {
     this.adjustLyricPosition();
     this.updateMediaSessionMetadata();
     this.updateMarqueeSettings();
+    const baseTitle = t("meta.pageTitle");
     if (this.state.songTitle) {
       if (this.state.songArtist) {
-        document.title = `${this.state.songArtist} - ${this.state.songTitle} | AMLL Web Player`;
+        document.title = `${this.state.songArtist} - ${this.state.songTitle} | ${baseTitle}`;
       } else {
-        document.title = `${this.state.songTitle} | AMLL Web Player`;
+        document.title = `${this.state.songTitle} | ${baseTitle}`;
       }
+    } else {
+      document.title = baseTitle;
     }
   }
 
@@ -5729,23 +5818,23 @@ class WebLyricsPlayer {
             this.updateMediaSessionMetadata();
 
             if (hasMetadata) {
-              this.showStatus(t("metadataParseSuccess"));
+              this.showStatus(t("status.metadataParseSuccess"));
             } else {
               this.parseAudioMetadataFallback(file);
             }
           },
           onError: (error: any) => {
-            this.showStatus(t("metadataParseFailed"), true);
+            this.showStatus(t("status.metadataParseFailed"), true);
             this.parseAudioMetadataFallback(file);
           },
         });
       } else {
         console.log("jsmediatags library not loaded");
-        this.showStatus(t("metadataLibNotLoaded"), true);
+        this.showStatus(t("status.metadataLibNotLoaded"), true);
         this.parseAudioMetadataFallback(file);
       }
     } catch (error) {
-      this.showStatus(t("metadataParseError"), true);
+      this.showStatus(t("status.metadataParseError"), true);
       this.parseAudioMetadataFallback(file);
     }
   }
@@ -5775,7 +5864,7 @@ class WebLyricsPlayer {
         });
         this.updateSongInfo();
         this.updateMediaSessionMetadata();
-        this.showStatus(t("extractedSongInfo"));
+        this.showStatus(t("status.extractedSongInfo"));
       } else {
         const altParts = nameWithoutExt.split(" – ");
         if (altParts.length >= 2) {
@@ -5795,7 +5884,7 @@ class WebLyricsPlayer {
           });
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
-          this.showStatus(t("extractedSongInfo"));
+          this.showStatus(t("status.extractedSongInfo"));
         } else {
           this.state.songTitle = nameWithoutExt;
           if (this.songTitleInput) {
@@ -5803,7 +5892,7 @@ class WebLyricsPlayer {
           }
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
-          this.showStatus(t("usedFilenameAsTitle"));
+          this.showStatus(t("status.usedFilenameAsTitle"));
         }
       }
 
@@ -5823,7 +5912,7 @@ class WebLyricsPlayer {
       }
     } catch (error) {
       console.log("Fallback parsing method failed:", error);
-      this.showStatus(t("cannotParseAudioInfo"), true);
+      this.showStatus(t("status.cannotParseAudioInfo"), true);
     }
   }
 
@@ -5914,19 +6003,39 @@ class WebLyricsPlayer {
       max-width: 300px;
       font-size: 14px;
     `;
-    hint.innerHTML = `
-      <div style="margin-bottom: 15px; font-size: 16px;">[INFO] 自动播放提示</div>
-      <div style="margin-bottom: 15px;">由于浏览器安全策略，需要用户交互才能自动播放音频。</div>
-      <div style="margin-bottom: 15px;">请点击播放按钮开始播放。</div>
-      <button onclick="this.parentElement.remove()" title="Got it" style="
+    const title = document.createElement("div");
+    title.style.marginBottom = "15px";
+    title.style.fontSize = "16px";
+    title.textContent = t("hint.autoplay.title");
+
+    const body = document.createElement("div");
+    body.style.marginBottom = "15px";
+    body.textContent = t("hint.autoplay.body");
+
+    const instruction = document.createElement("div");
+    instruction.style.marginBottom = "15px";
+    instruction.textContent = t("hint.autoplay.instruction");
+
+    const button = document.createElement("button");
+    button.textContent = t("hint.autoplay.button");
+    button.title = t("button.autoplayDismiss");
+    button.setAttribute("aria-label", t("hint.autoplay.button"));
+    button.style.cssText = `
         background: #007bff;
         color: white;
         border: none;
         padding: 8px 16px;
         border-radius: 5px;
         cursor: pointer;
-      ">知道了</button>
-    `;
+      `;
+    button.addEventListener("click", () => {
+      hint.remove();
+    });
+
+    hint.appendChild(title);
+    hint.appendChild(body);
+    hint.appendChild(instruction);
+    hint.appendChild(button);
     document.body.appendChild(hint);
 
     setTimeout(() => {
@@ -7803,8 +7912,17 @@ class WebLyricsPlayer {
   }
 }
 
-const player = new WebLyricsPlayer();
-(window as any).player = player;
-(window as any).globalLyricPlayer = player.getLyricPlayer();
-(window as any).globalBackground = player.getBackground();
-player.start();
+async function bootstrapPlayer(): Promise<void> {
+  const blocked = await shouldBlockWithVersionGate();
+  if (blocked) {
+    return;
+  }
+
+  const player = new WebLyricsPlayer();
+  (window as any).player = player;
+  (window as any).globalLyricPlayer = player.getLyricPlayer();
+  (window as any).globalBackground = player.getBackground();
+  player.start();
+}
+
+void bootstrapPlayer();
