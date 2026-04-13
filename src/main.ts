@@ -2492,6 +2492,7 @@ class WebLyricsPlayer {
     this.bgMaskColor?.addEventListener('input', (e) => {
       this.state.backgroundMaskColor = (e.target as HTMLInputElement).value;
       this.updateBackground();
+      this.updateBackgroundUI();
       this.saveBackgroundSettings();
     });
 
@@ -3400,74 +3401,18 @@ class WebLyricsPlayer {
     }
   }
 
-  private switchBackgroundStyle(style: string) {
+  private switchBackgroundStyle(_style: string) {
     if (!this.background) return;
 
-    const currentStyle = this.state.backgroundType;
-    if (this.fluidDesc) this.fluidDesc.style.display = style === "fluid" ? "block" : "none";
-    if (this.coverDesc) this.coverDesc.style.display = style === "cover" ? "block" : "none";
-    if (this.solidDesc) this.solidDesc.style.display = style === "solid" ? "block" : "none";
-
-    if (this.solidOptions) {
-      const showSolidOptions = style === 'cover' && this.state.backgroundColorMask && this.state.backgroundMaskOpacity === 0;
-      this.setOptionsVisibility(this.solidOptions, showSolidOptions, ['neumorphismA', 'neumorphismB']);
-    }
-    if (currentStyle === 'cover' && style !== 'cover' && this.invertColorsCheckbox) {
-      this.state.originalInvertColors = this.invertColorsCheckbox.checked;
+    this.enforceAmlBackground();
+    if (this.backgroundStyleSelect) {
+      this.backgroundStyleSelect.value = 'fluid';
+      this.backgroundStyleSelect.disabled = true;
     }
 
-    switch (style) {
-      case "fluid":
-        this.background.setFlowSpeed(this.state.backgroundFlowSpeed || 4);
-        if (this.player) this.player.style.background = "";
-        this.state.backgroundType = 'fluid';
-        this.updateBackground();
-        this.updateBackgroundUI();
-        this.saveBackgroundSettings();
-        break;
-      case "cover":
-        this.background.setAlbum(resolveDefaultCover(this.state.coverUrl));
-        if (this.player) this.player.style.background = "";
-        this.state.backgroundType = 'cover';
-        this.updateBackground();
-        this.updateBackgroundUI();
-        this.saveBackgroundSettings();
-        break;
-      case "solid":
-        this.background.setAlbum("");
-        if (this.player) this.player.style.background = "transparent";
-        this.state.backgroundType = 'solid';
-        this.updateBackground();
-        this.updateBackgroundUI();
-        this.saveBackgroundSettings();
-        break;
-      default:
-        break;
-    }
-
-    if (style !== 'cover' && this.invertColorsCheckbox) {
-      this.invertColorsCheckbox.checked = false;
-      this.invertColors(false);
-    }
-
-    if (style === 'cover' && currentStyle !== 'cover' && this.invertColorsCheckbox) {
-      const invertState = this.state.originalInvertColors !== null && this.state.originalInvertColors !== undefined ?
-        this.state.originalInvertColors : this.state.invertColors;
-      this.invertColorsCheckbox.checked = invertState;
-      this.invertColors(invertState);
-    }
-
-    if (this.invertColorsCheckbox) {
-      const isChecked = this.invertColorsCheckbox.checked;
-      this.invertColorsCheckbox.onchange = () => {
-        if (this.invertColorsCheckbox) {
-          this.invertColors(this.invertColorsCheckbox.checked);
-        }
-      };
-      if (isChecked && style === 'cover') {
-        this.invertColors(isChecked);
-      }
-    }
+    this.updateBackgroundUI();
+    this.updateBackground();
+    this.saveBackgroundSettings();
   }
 
   private setupAudioEvents() {
@@ -4516,14 +4461,14 @@ class WebLyricsPlayer {
         break;
       }
       case 'backgroundType': {
-        if (value === 'fluid' || value === 'cover' || value === 'solid') {
-          this.state.backgroundType = value;
-          if (this.backgroundStyleSelect) {
-            this.backgroundStyleSelect.value = value;
-          }
-          this.updateBackgroundUI();
-          this.updateBackground({ skipSave: true });
+        this.state.backgroundType = 'fluid';
+        this.enforceAmlBackground();
+        if (this.backgroundStyleSelect) {
+          this.backgroundStyleSelect.value = 'fluid';
+          this.backgroundStyleSelect.disabled = true;
         }
+        this.updateBackgroundUI();
+        this.updateBackground({ skipSave: true });
         break;
       }
       case 'backgroundDynamic': {
@@ -4550,38 +4495,15 @@ class WebLyricsPlayer {
         break;
       }
       case 'backgroundColorMask': {
-        const boolValue = Boolean(value);
-        this.state.backgroundColorMask = boolValue;
-        if (this.bgColorMask) {
-          this.bgColorMask.checked = boolValue;
-        }
-        this.updateBackgroundUI();
-        this.updateBackground({ skipSave: true });
+        this.enforceAmlBackground();
         break;
       }
       case 'backgroundMaskColor': {
-        if (typeof value === 'string' && value.trim()) {
-          this.state.backgroundMaskColor = value;
-          if (this.bgMaskColor) {
-            this.bgMaskColor.value = value;
-          }
-          this.updateBackground({ skipSave: true });
-        }
+        this.enforceAmlBackground();
         break;
       }
       case 'backgroundMaskOpacity': {
-        const numeric = Number(value);
-        if (!Number.isNaN(numeric)) {
-          const clamped = clamp(numeric, 0, 100);
-          this.state.backgroundMaskOpacity = clamped;
-          if (this.bgMaskOpacity) {
-            this.bgMaskOpacity.value = clamped.toString();
-          }
-          if (this.bgMaskOpacityValue) {
-            this.bgMaskOpacityValue.textContent = `${clamped}%`;
-          }
-          this.updateBackground({ skipSave: true });
-        }
+        this.enforceAmlBackground();
         break;
       }
       case 'backgroundBeatEnabled': {
@@ -5544,6 +5466,7 @@ class WebLyricsPlayer {
     // 清除localStorage中的BackgroundSettings
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
 
+    this.enforceAmlBackground();
     this.updateBackgroundUI();
     this.updateBackground();
     this.updateFPSDisplay();
@@ -6275,6 +6198,8 @@ class WebLyricsPlayer {
       this.updateSongInfo();
     }
 
+    this.enforceAmlBackground();
+
     if (music || lyric || cover) {
       this.hasAutoLoadedFromUrl = true;
       this.loadFromURLs({ persist: false }).then(() => {
@@ -6319,6 +6244,7 @@ class WebLyricsPlayer {
     this.isHydratingSettings = true;
     this.loadBackgroundSettings();
     const urlStyleParamsChanged = this.loadFromURLParams();
+    this.enforceAmlBackground();
 
     this.updateBackgroundUI();
     this.updateBackground({ skipSave: true });
@@ -6569,14 +6495,9 @@ class WebLyricsPlayer {
     const baseSettings = readStoredSettings();
 
     const backgroundSettings = {
-      backgroundType: this.state.backgroundType,
       backgroundDynamic: this.state.backgroundDynamic,
       backgroundFlowSpeed: this.state.backgroundFlowSpeed,
-      backgroundColorMask: this.state.backgroundColorMask,
-      backgroundMaskColor: this.state.backgroundMaskColor,
-      backgroundMaskOpacity: this.state.backgroundMaskOpacity,
       showFPS: this.state.showFPS,
-      coverBlurLevel: this.state.coverBlurLevel,
       invertColors: this.state.invertColors,
       manualDominantColor: this.state.manualDominantColor,
       manualDominantColorLight: this.state.manualDominantColorLight,
@@ -6864,7 +6785,7 @@ class WebLyricsPlayer {
           this.lyricDelayInput.value = this.state.lyricDelay.toString();
         }
         this.applyLyricDelay(this.state.lyricDelay, { skipSave: true });
-
+        this.enforceAmlBackground();
         this.updateBackgroundUI();
         this.updateBackground();
         this.updateFPSDisplay();
@@ -6949,6 +6870,7 @@ class WebLyricsPlayer {
   }
 
   private updateBackgroundUI() {
+    this.enforceAmlBackground();
     if (this.bgFlowSpeed) this.bgFlowSpeed.value = this.state.backgroundFlowSpeed.toString();
     if (this.bgFlowSpeedValue) this.bgFlowSpeedValue.textContent = this.state.backgroundFlowSpeed.toFixed(1);
     if (this.bgColorMask) this.bgColorMask.checked = this.state.backgroundColorMask;
@@ -6956,7 +6878,10 @@ class WebLyricsPlayer {
     if (this.bgMaskOpacity) this.bgMaskOpacity.value = this.state.backgroundMaskOpacity.toString();
     if (this.bgMaskOpacityValue) this.bgMaskOpacityValue.textContent = `${this.state.backgroundMaskOpacity}%`;
     if (this.showFPSCheckbox) this.showFPSCheckbox.checked = this.state.showFPS;
-    if (this.backgroundStyleSelect) this.backgroundStyleSelect.value = this.state.backgroundType;
+    if (this.backgroundStyleSelect) {
+      this.backgroundStyleSelect.value = 'fluid';
+      this.backgroundStyleSelect.disabled = true;
+    }
     if (this.coverBlurLevel) this.coverBlurLevel.value = this.state.coverBlurLevel.toString();
     if (this.coverBlurLevelValue) this.coverBlurLevelValue.textContent = `${this.state.coverBlurLevel}%`;
     if (this.invertColorsCheckbox) this.invertColorsCheckbox.checked = this.state.invertColors;
@@ -7001,13 +6926,15 @@ class WebLyricsPlayer {
     if (this.hidePassedLyricsCheckbox) {
       this.hidePassedLyricsCheckbox.checked = this.state.hidePassedLyrics;
     }
-    if (this.fluidDesc) this.fluidDesc.style.display = this.state.backgroundType === 'fluid' ? 'block' : 'none';
-    if (this.coverDesc) this.coverDesc.style.display = this.state.backgroundType === 'cover' ? 'block' : 'none';
-    if (this.solidDesc) this.solidDesc.style.display = this.state.backgroundType === 'solid' ? 'block' : 'none';
+    if (this.fluidDesc) this.fluidDesc.style.display = 'block';
+    if (this.coverDesc) this.coverDesc.style.display = 'none';
+    if (this.solidDesc) this.solidDesc.style.display = 'none';
 
     if (this.solidOptions) {
-      const showSolidOptions = this.state.backgroundType === 'cover' && this.state.backgroundColorMask && this.state.backgroundMaskOpacity === 0;
-      this.setOptionsVisibility(this.solidOptions, showSolidOptions, ['neumorphismA', 'neumorphismB']);
+      this.setOptionsVisibility(this.solidOptions, false, ['neumorphismA', 'neumorphismB']);
+      this.solidOptions.forEach((option) => {
+        option.style.display = 'none';
+      });
     }
 
     if (this.loopPlayCheckbox) {
@@ -7718,6 +7645,14 @@ class WebLyricsPlayer {
     this.attachBeatPaletteDriver();
   }
 
+  private enforceAmlBackground() {
+    this.state.backgroundType = 'fluid';
+    this.state.backgroundColorMask = DEFAULT_PLAYER_STATE.backgroundColorMask;
+    this.state.backgroundMaskColor = DEFAULT_PLAYER_STATE.backgroundMaskColor;
+    this.state.backgroundMaskOpacity = DEFAULT_PLAYER_STATE.backgroundMaskOpacity;
+    this.state.coverBlurLevel = DEFAULT_PLAYER_STATE.coverBlurLevel;
+  }
+
   // 更新背景显示
   private applyControlPointCode() {
     if (!this.controlPointCodeInput || !this.background) {
@@ -7872,38 +7807,19 @@ class WebLyricsPlayer {
     }
   }
 
-  private updateBackground(options?: { skipSave?: boolean }) {
+  private updateBackground(_options?: { skipSave?: boolean }) {
+    this.enforceAmlBackground();
     const currentCover = resolveDefaultCover(this.state.coverUrl);
 
-    if (this.state.backgroundType === 'cover') {
-      this.background.getElement().style.display = "none";
-      this.coverBlurBackground.style.display = "block";
-      this.coverBlurBackground.style.backgroundImage = `url(${currentCover})`;
-      if (this.state.backgroundColorMask) {
-        const opacity = this.state.backgroundMaskOpacity / 100;
-        const color = this.state.backgroundMaskColor;
-        this.coverBlurBackground.style.backgroundColor = color;
-        this.coverBlurBackground.style.backgroundBlendMode = 'multiply';
-        this.coverBlurBackground.style.opacity = opacity.toString();
-      } else {
-        this.coverBlurBackground.style.backgroundColor = 'transparent';
-        this.coverBlurBackground.style.backgroundBlendMode = 'normal';
-        this.coverBlurBackground.style.opacity = '1';
-      }
-
-      const mappedBlurLevel = (this.state.coverBlurLevel / 100) * 100;
-      this.coverBlurBackground.style.filter = `blur(${mappedBlurLevel}px)`;
-      this.invertColors(this.state.invertColors, { skipSave: options?.skipSave });
-    } else if (this.state.backgroundType === 'solid') {
-      this.background.getElement().style.display = "none";
-      this.coverBlurBackground.style.display = "none";
-    } else {
-      this.background.getElement().style.display = "block";
-      this.coverBlurBackground.style.display = "none";
-      this.background.setAlbum(currentCover);
-      this.background.setStaticMode(!this.state.backgroundDynamic);
-      this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
+    this.background.getElement().style.display = "block";
+    this.coverBlurBackground.style.display = "none";
+    if (this.player) {
+      this.player.style.background = "";
     }
+
+    this.background.setAlbum(currentCover);
+    this.background.setStaticMode(!this.state.backgroundDynamic);
+    this.background.setFlowSpeed(this.state.backgroundFlowSpeed);
 
     const dpr = window.devicePixelRatio || 1;
     this.background.setRenderScale(this.state.backgroundRenderScale * dpr);
