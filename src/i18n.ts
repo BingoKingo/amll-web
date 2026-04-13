@@ -1,6 +1,9 @@
 export type Language = "en" | "zh";
-export type TranslationValue = string | Record<string, TranslationValue>;
-export type Translations = Record<string, TranslationValue>;
+export interface TranslationMap {
+  [key: string]: string | TranslationMap;
+}
+export type TranslationValue = string | TranslationMap;
+export type Translations = TranslationMap;
 export const SUPPORTED_LANGUAGES: Language[] = ["en", "zh"];
 export const LANG_STORAGE_KEY = "amll-lang";
 
@@ -28,7 +31,7 @@ const resolveTranslation = (lang: Language, key: string): string | undefined => 
   let value: TranslationValue | undefined = translations[lang];
   for (const part of parts) {
     if (typeof value === "object" && value !== null && part in value) {
-      value = (value as Record<string, TranslationValue>)[part];
+      value = (value as TranslationMap)[part];
     } else {
       return undefined;
     }

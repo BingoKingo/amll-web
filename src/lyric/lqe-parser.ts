@@ -256,13 +256,14 @@ function mergeTracks(
     const mainEndTime = mainLine.endTime;
     
     // 确保每行都有 words 数组
-    if (!mainLine.words || !Array.isArray(mainLine.words) || mainLine.words.length === 0) {
-      mainLine.words = [{
-        word: `[行 ${i+1}]`,
-        startTime: mainStartTime,
-        endTime: mainEndTime || (mainStartTime + 1000)
-      }];
-    }
+      if (!mainLine.words || !Array.isArray(mainLine.words) || mainLine.words.length === 0) {
+        mainLine.words = [{
+          word: `[行 ${i+1}]`,
+          startTime: mainStartTime,
+          endTime: mainEndTime || (mainStartTime + 1000),
+          romanWord: ''
+        }];
+      }
     
     // 查找最接近的翻译
     if (translationLines.length > 0) {

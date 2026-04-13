@@ -562,6 +562,40 @@ function isLikelyVideoSource(input?: string | null): boolean {
   }
 }
 
+type BeatCurveMode = 'levels' | 'gain';
+
+type BeatCurveBase = {
+  bandCount: number;
+  frameMs: number;
+  frameCount: number;
+  data: Uint8Array;
+};
+
+type BeatCurveLevels = BeatCurveBase & { mode: 'levels' };
+type BeatCurveGain = BeatCurveBase & { mode: 'gain' };
+type BeatCurve = BeatCurveLevels | BeatCurveGain;
+
+type BeatCurveSampleLevels = { mode: 'levels'; globalEnergy: number; levels: number[] };
+type BeatCurveSampleGain = { mode: 'gain'; gains: number[] };
+type BeatCurveSample = BeatCurveSampleLevels | BeatCurveSampleGain;
+
+type BeatState = {
+  basePaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }>;
+  analyser: AnalyserNode | null;
+  audioContext: AudioContext | null;
+  freqData: Uint8Array | null;
+  rafId: number | null;
+  renderer: any;
+  enabled: boolean;
+  lastColors: Array<{ r: number; g: number; b: number }> | null;
+  smoothing: number;
+  originalMeshColors: Array<[number, number, number] | null> | null;
+  originalMeshSize: { width: number; height: number } | null;
+  bandStats: Array<{ ema: number; dev: number }>;
+  globalEnergy: number;
+  beatCurve: BeatCurve | null;
+};
+
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: BaseDomLyricPlayer;
@@ -570,27 +604,21 @@ class WebLyricsPlayer {
   private beatCurvePollTimer: number | null = null;
   private beatCurveRequestInFlight = false;
   private beatCurvePath: string | null = null;
-  private beatState = {
-    basePaletteHsl: [] as Array<{ h: number; l: number; baseS: number; origS?: number }>,
-    analyser: null as AnalyserNode | null,
-    audioContext: null as AudioContext | null,
-    freqData: null as Uint8Array | null,
-    rafId: null as number | null,
-    renderer: null as any,
+  private beatState: BeatState = {
+    basePaletteHsl: [],
+    analyser: null,
+    audioContext: null,
+    freqData: null,
+    rafId: null,
+    renderer: null,
     enabled: false,
-    lastColors: null as Array<{ r: number; g: number; b: number }> | null,
+    lastColors: null,
     smoothing: 0.12,
-    originalMeshColors: null as Array<[number, number, number] | null> | null,
-    originalMeshSize: null as { width: number; height: number } | null,
-    bandStats: [] as Array<{ ema: number; dev: number }>,
+    originalMeshColors: null,
+    originalMeshSize: null,
+    bandStats: [],
     globalEnergy: 0,
-    beatCurve: null as {
-      bandCount: number;
-      frameMs: number;
-      frameCount: number;
-      data: Uint8Array;
-      mode: 'levels' | 'gain';
-    } | null
+    beatCurve: null
   };
   private coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }> = [];
   private coverBlurBaseScale = 1.1;
@@ -5442,9 +5470,10 @@ class WebLyricsPlayer {
       this.controlPointCodeInput.value = '';
     }
 
-    if (this.background && this.background['renderer'] && typeof this.background['renderer']['setControlPoints'] === 'function') {
+    const controlRenderer = this.background?.renderer;
+    if (controlRenderer && 'setControlPoints' in controlRenderer && typeof controlRenderer.setControlPoints === 'function') {
       try {
-        this.background['renderer']['setControlPoints']([]);
+        controlRenderer.setControlPoints([]);
       } catch (error) {
         console.error('Failed to reset control points:', error);
       }
@@ -6213,7 +6242,7 @@ class WebLyricsPlayer {
     }
 
     if (title || artist) {
-      this.refreshPageMetadata(title, artist);
+      this.refreshPageMetadata(title ?? undefined, artist ?? undefined);
     }
 
     Object.entries(URL_ALIAS_CONFIG).forEach(([queryKey, config]) => {
@@ -7294,7 +7323,7 @@ class WebLyricsPlayer {
     return true;
   }
 
-  private parseBeatCurve(buffer: ArrayBuffer) {
+  private parseBeatCurve(buffer: ArrayBuffer): BeatCurve | null {
     if (!buffer || buffer.byteLength < 12) return null;
     const view = new DataView(buffer);
     const magic = String.fromCharCode(
@@ -7315,8 +7344,11 @@ class WebLyricsPlayer {
     const expected = dataOffset + frameCount * bytesPerFrame;
     if (buffer.byteLength < expected) return null;
     const data = new Uint8Array(buffer, dataOffset, frameCount * bytesPerFrame);
-    const mode = magic === AMLL_BEAT_CURVE_MAGIC_LEVELS ? 'levels' : 'gain';
-    return { bandCount, frameMs, frameCount, data, mode };
+    const mode: BeatCurveMode = magic === AMLL_BEAT_CURVE_MAGIC_LEVELS ? 'levels' : 'gain';
+    const curve: BeatCurve = mode === 'levels'
+      ? { bandCount, frameMs, frameCount, data, mode }
+      : { bandCount, frameMs, frameCount, data, mode };
+    return curve;
   }
 
   private clearBeatCurvePolling() {
@@ -7423,7 +7455,7 @@ class WebLyricsPlayer {
     this.requestBeatCurveFromServer();
   }
 
-  private sampleBeatCurve(targetBands: number) {
+  private sampleBeatCurve(targetBands: number): BeatCurveSample | null {
     const curve = this.beatState.beatCurve;
     if (!curve || !this.audio) return null;
     const timeMs = Number.isFinite(this.audio.currentTime) ? this.audio.currentTime * 1000 : 0;
@@ -7508,9 +7540,11 @@ class WebLyricsPlayer {
       this.beatState.globalEnergy = curveSample.globalEnergy;
       return curveSample.levels;
     }
-    if (!this.beatState.analyser || !this.beatState.freqData) return levels;
-    this.beatState.analyser.getByteFrequencyData(this.beatState.freqData);
-    const totalBins = this.beatState.freqData.length;
+    const analyser = this.beatState.analyser;
+    const freqData = this.beatState.freqData;
+    if (!analyser || !freqData) return levels;
+    analyser.getByteFrequencyData(freqData);
+    const totalBins = freqData.length;
     const nyquist = (this.beatState.audioContext && this.beatState.audioContext.sampleRate)
       ? this.beatState.audioContext.sampleRate / 2
       : 22050;
@@ -7535,7 +7569,7 @@ class WebLyricsPlayer {
       let peak = 0;
       let count = 0;
       for (let j = start; j < end; j += 1) {
-        const v = this.beatState.freqData[j] || 0;
+        const v = freqData[j] || 0;
         sumSq += v * v;
         if (v > peak) peak = v;
         count += 1;
