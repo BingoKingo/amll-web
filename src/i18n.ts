@@ -218,6 +218,8 @@ export const translations: Record<Language, Translations> = {
       albumCover: "Album Cover",
       songTitle: "Song Title",
       songArtist: "Song Artist",
+      dominantColorLight: "Dominant Color (Light)",
+      dominantColorDark: "Dominant Color (Dark)",
     },
     placeholder: {
       songTitle: "Title",
@@ -441,6 +443,8 @@ export const translations: Record<Language, Translations> = {
       albumCover: "专辑封面",
       songTitle: "歌曲标题",
       songArtist: "艺术家",
+      dominantColorLight: "主色调（亮）",
+      dominantColorDark: "主色调（暗）",
     },
     placeholder: {
       songTitle: "标题",

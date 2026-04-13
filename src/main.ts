@@ -834,11 +834,51 @@ class WebLyricsPlayer {
         }
       });
     });
+
+    this.updateMetaDescription();
   }
 
   private reapplyI18n() {
     this.applyI18nToDom();
     this.updateAlbumSidePanel();
+    this.refreshPageMetadata();
+    this.updateMarqueeSettings();
+  }
+
+  private getBasePageTitle(): string {
+    return t("meta.pageTitle");
+  }
+
+  private buildDocumentTitle(songTitle?: string, songArtist?: string): string {
+    const baseTitle = this.getBasePageTitle();
+    const title = (songTitle ?? "").trim();
+    const artist = (songArtist ?? "").trim();
+    if (title) {
+      const songInfo = artist ? `${artist} - ${title}` : title;
+      return `${songInfo} | ${baseTitle}`;
+    }
+    return baseTitle;
+  }
+
+  private setDocumentTitle(songTitle?: string, songArtist?: string) {
+    document.title = this.buildDocumentTitle(songTitle ?? this.state.songTitle, songArtist ?? this.state.songArtist);
+  }
+
+  private updateMetaDescription() {
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      metaDescription.setAttribute("content", t("meta.description"));
+    }
+
+    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (appleTitle) {
+      appleTitle.setAttribute("content", this.getBasePageTitle());
+    }
+  }
+
+  private refreshPageMetadata(songTitle?: string, songArtist?: string) {
+    this.setDocumentTitle(songTitle, songArtist);
+    this.updateMetaDescription();
   }
 
   private initUploadButtons() {
@@ -1216,6 +1256,7 @@ class WebLyricsPlayer {
   private updateMarqueeSettings() {
     const songTitle = this.songTitle;
     const songArtist = this.songArtist;
+    const baseTitle = this.getBasePageTitle();
 
     const updateTitleMarquee = () => {
       if (this.titleMarqueeInterval) {
@@ -1224,13 +1265,15 @@ class WebLyricsPlayer {
       }
 
       if (!this.originalTitle) {
-        this.originalTitle = document.title;
+        this.originalTitle = document.title || baseTitle;
       }
 
-      if (this.state.marqueeEnabled && (this.state.songTitle || this.state.songArtist)) {
-        const songInfo = `${this.state.songArtist ? this.state.songArtist + ' - ' : ''}${this.state.songTitle}`;
-        const fullTitle = `${songInfo} | AMLL Web Player`;
+      const hasSongInfo = Boolean(this.state.songTitle || this.state.songArtist);
+      const songInfo = `${this.state.songArtist ? this.state.songArtist + ' - ' : ''}${this.state.songTitle}`;
+      const fullTitle = this.buildDocumentTitle(this.state.songTitle, this.state.songArtist);
 
+      if (this.state.marqueeEnabled && hasSongInfo) {
+        
         if (fullTitle.length > 50) { // 假设50字符为阈值
           let position = 0;
           const scrollTitle = () => {
@@ -1261,11 +1304,10 @@ class WebLyricsPlayer {
           document.title = fullTitle;
         }
       } else {
-        if (this.state.songTitle || this.state.songArtist) {
-          const songInfo = `${this.state.songArtist ? this.state.songArtist + ' - ' : ''}${this.state.songTitle}`;
-          document.title = `${songInfo} | AMLL Web Player`;
+        if (hasSongInfo) {
+          document.title = fullTitle;
         } else {
-          document.title = this.originalTitle || 'AMLL Web Player';
+          document.title = this.originalTitle || baseTitle;
         }
       }
     };
@@ -4051,13 +4093,7 @@ class WebLyricsPlayer {
       shouldPersistSettings = true;
     }
 
-    if (this.state.songTitle) {
-      if (this.state.songArtist) {
-        document.title = `${this.state.songArtist} - ${this.state.songTitle} | AMLL Web Player`;
-      } else {
-        document.title = `${this.state.songTitle} | AMLL Web Player`;
-      }
-    }
+    this.refreshPageMetadata();
 
     if (musicUrl) {
       this.state.musicUrl = musicUrl;
@@ -4155,11 +4191,7 @@ class WebLyricsPlayer {
     const title = this.state.songTitle;
     const artist = this.state.songArtist;
     if (title) {
-      if (artist) {
-        document.title = `${artist} - ${title} | AMLL Web Player`;
-      } else {
-        document.title = `${title} | AMLL Web Player`;
-      }
+      this.refreshPageMetadata(title, artist);
     }
 
     if (currentTime && this.audio) {
@@ -5220,7 +5252,7 @@ class WebLyricsPlayer {
     this.dynamicCoverUrl = "";
     this.dynamicCoverPosterUrl = "";
     this.dynamicCoverLoadFailed = false;
-    document.title = t("meta.pageTitle");
+    this.refreshPageMetadata();
 
     if (this.controlPointCodeInput) {
       this.controlPointCodeInput.value = '';
@@ -5576,16 +5608,7 @@ class WebLyricsPlayer {
     this.adjustLyricPosition();
     this.updateMediaSessionMetadata();
     this.updateMarqueeSettings();
-    const baseTitle = t("meta.pageTitle");
-    if (this.state.songTitle) {
-      if (this.state.songArtist) {
-        document.title = `${this.state.songArtist} - ${this.state.songTitle} | ${baseTitle}`;
-      } else {
-        document.title = `${this.state.songTitle} | ${baseTitle}`;
-      }
-    } else {
-      document.title = baseTitle;
-    }
+    this.setDocumentTitle();
   }
 
   private adjustLyricPosition() {
@@ -6121,18 +6144,16 @@ class WebLyricsPlayer {
       this.urlOverrides.add("songTitleInput");
       if (this.songTitleInput) this.songTitleInput.value = title;
       this.state.songTitle = title;
-
-      if (artist) {
-        document.title = `${artist} - ${title} | AMLL Web Player`;
-      } else {
-        document.title = `${title} | AMLL Web Player`;
-      }
     }
     if (artist) {
       this.urlOverrides.add("songArtist");
       this.urlOverrides.add("songArtistInput");
       if (this.songArtistInput) this.songArtistInput.value = artist;
       this.state.songArtist = artist;
+    }
+
+    if (title || artist) {
+      this.refreshPageMetadata(title, artist);
     }
 
     Object.entries(URL_ALIAS_CONFIG).forEach(([queryKey, config]) => {
