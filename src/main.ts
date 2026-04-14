@@ -637,6 +637,7 @@ class WebLyricsPlayer {
   private isHydratingSettings = true;
   private fluidBackgroundReplayTimer: number | null = null;
   private fluidBackgroundReplayReason: string | null = null;
+  private fluidBackgroundReplayToken = 0;
   private fluidBackgroundGuardInterval: number | null = null;
   private colorThief: ColorThief;
   private static debounce(func: Function, wait: number) {
@@ -3504,8 +3505,13 @@ class WebLyricsPlayer {
   private replayFluidBackground(reason = "fluid-refresh", delayMs = 200): void {
     this.clearFluidBackgroundReplay(reason || "fluid-refresh");
 
+    const replayToken = ++this.fluidBackgroundReplayToken;
     const effectiveDelay = Math.max(0, Math.round(delayMs ?? 0));
     this.fluidBackgroundReplayReason = reason || "fluid-refresh";
+
+    if (!this.state.shouldEnforceFluidBackground) {
+      return;
+    }
 
     this.fluidBackgroundReplayTimer = window.setTimeout(() => {
       this.fluidBackgroundReplayTimer = null;
@@ -3513,17 +3519,29 @@ class WebLyricsPlayer {
       this.fluidBackgroundReplayReason = null;
       void replayReason;
 
-      if (!this.isInitialized || !this.background || this.isHydratingSettings) {
+      if (replayToken !== this.fluidBackgroundReplayToken) {
         return;
       }
 
-      if (this.state.backgroundType !== 'fluid') {
+      if (!this.state.shouldEnforceFluidBackground) {
+        return;
+      }
+
+      if (!this.isInitialized || !this.background || this.isHydratingSettings) {
         return;
       }
 
       this.switchBackgroundStyle('cover', { skipSave: true, source: 'auto' });
       window.setTimeout(() => {
-        if (!this.background) {
+        if (replayToken !== this.fluidBackgroundReplayToken) {
+          return;
+        }
+
+        if (!this.state.shouldEnforceFluidBackground) {
+          return;
+        }
+
+        if (!this.background || this.isHydratingSettings || !this.isInitialized) {
           return;
         }
 
@@ -3541,9 +3559,11 @@ class WebLyricsPlayer {
       }
 
       const hasBackground = Boolean(this.background);
-      const isBackgroundVisible = hasBackground
-        ? this.background.getElement().style.display !== 'none'
-        : false;
+      if (!this.isInitialized || !hasBackground || this.isHydratingSettings) {
+        return;
+      }
+
+      const isBackgroundVisible = this.background.getElement().style.display !== 'none';
       const isCoverBlurHidden = this.coverBlurBackground
         ? this.coverBlurBackground.style.display === 'none'
         : false;
@@ -3552,9 +3572,6 @@ class WebLyricsPlayer {
         : false;
 
       const needsRepair =
-        !this.isInitialized ||
-        !hasBackground ||
-        this.isHydratingSettings ||
         this.state.backgroundType !== 'fluid' ||
         !isStyleSelectFluid ||
         !isBackgroundVisible ||
