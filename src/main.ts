@@ -3413,6 +3413,10 @@ class WebLyricsPlayer {
     if (!this.background) return;
 
     const source = options?.source ?? 'auto';
+    if (source === 'user' || source === 'url' || source === 'hydrate') {
+      this.fluidBackgroundReplayToken += 1;
+      this.clearFluidBackgroundReplay('user-switch');
+    }
     const currentStyle = this.state.backgroundType;
     if (this.fluidDesc) this.fluidDesc.style.display = style === "fluid" ? "block" : "none";
     if (this.coverDesc) this.coverDesc.style.display = style === "cover" ? "block" : "none";
@@ -4642,6 +4646,8 @@ class WebLyricsPlayer {
       }
       case 'backgroundType': {
         if (value === 'fluid' || value === 'cover' || value === 'solid') {
+          this.fluidBackgroundReplayToken += 1;
+          this.clearFluidBackgroundReplay('url-style');
           this.state.backgroundType = value;
           this.state.shouldEnforceFluidBackground = value === 'fluid';
           if (this.backgroundStyleSelect) {
