@@ -1,15 +1,16 @@
 // Service Worker for AMLL Web Player
-const CACHE_NAME = "amll-web-player-v3";
+const BASE = "/amll-web/";
+const CACHE_NAME = "amll-web-player-v4";
 const urlsToCache = [
-  "/",
-  "/index.html",
-  "/assets/icon-96x96.png",
-  "/assets/icon-512x512.png",
-  "/public/jsmediatags.min.js",
+  BASE,
+  `${BASE}index.html`,
+  `${BASE}assets/icon-96x96.png`,
+  `${BASE}assets/icon-512x512.png`,
+  `${BASE}public/jsmediatags.min.js`,
 ];
 
 const NETWORK_FIRST_EXT = [".js", ".css", ".html", ".wasm"];
-const BYPASS_CACHE_PATHS = ["/songs/summary", "/get_json_data"];
+const BYPASS_CACHE_PATHS = [`${BASE}songs/summary`, `${BASE}get_json_data`];
 
 function shouldUseNetworkFirst(request, url) {
   if (request.mode === "navigate") {

@@ -3,6 +3,11 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { resolveBackendRoot } from "./project-paths.mjs";
 
+console.error(
+  "[DEPRECATED] Do not run templates/amll-web/scripts/sync-backend.mjs anymore. The backend now serves templates/amll-web/dist directly; this script must not be executed."
+);
+process.exit(1);
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function pathExists(target) {
