@@ -3479,6 +3479,16 @@ class WebLyricsPlayer {
     }
   }
 
+  private resetFluidBackgroundReplay(reason?: string): void {
+    if (this.fluidBackgroundRefreshTimer !== null) {
+      window.clearTimeout(this.fluidBackgroundRefreshTimer);
+      this.fluidBackgroundRefreshTimer = null;
+    }
+
+    this.hasPerformedFluidBackgroundReplay = false;
+    this.fluidBackgroundRefreshReason = typeof reason === "string" ? reason : null;
+  }
+
   // Work around a legacy startup issue by replaying the known-good manual toggle.
   private scheduleFluidBackgroundRefresh(reason = "fluid-refresh", delay = 200): void {
     if (this.hasPerformedFluidBackgroundReplay) {
@@ -4024,6 +4034,7 @@ class WebLyricsPlayer {
   }
 
   private async loadCoverFromFile(file: File) {
+    this.resetFluidBackgroundReplay("loadCoverFromFile");
     try {
       const url = URL.createObjectURL(file);
       this.state.coverUrl = url;
@@ -4042,6 +4053,7 @@ class WebLyricsPlayer {
   }
 
   private async loadFromURLs(options?: { persist?: boolean }) {
+    this.resetFluidBackgroundReplay("loadFromURLs");
     const persist = options?.persist !== false;
     let musicUrl = this.musicUrl?.value;
     let lyricUrl = this.lyricUrl?.value;
@@ -4290,6 +4302,7 @@ class WebLyricsPlayer {
   }
 
   private async processCoverInput(input: string) {
+    this.resetFluidBackgroundReplay("processCoverInput");
     if (!input.trim()) {
       return;
     }
