@@ -161,6 +161,7 @@ interface PlayerState {
   volume: number;
   lyricDelay: number;
   backgroundType: 'fluid' | 'cover' | 'solid';
+  shouldEnforceFluidBackground: boolean;
   backgroundDynamic: boolean;
   backgroundFlowSpeed: number;
   backgroundColorMask: boolean;
@@ -227,6 +228,7 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   volume: 50,
   lyricDelay: 0,
   backgroundType: 'fluid',
+  shouldEnforceFluidBackground: true,
   backgroundDynamic: true,
   backgroundFlowSpeed: 4,
   backgroundColorMask: true,
@@ -633,9 +635,9 @@ class WebLyricsPlayer {
   private gui: GUI | null = null;
   private urlOverrides = new Set<string>();
   private isHydratingSettings = true;
-  private fluidBackgroundRefreshTimer: number | null = null;
-  private fluidBackgroundRefreshReason: string | null = null;
-  private hasPerformedFluidBackgroundReplay = false;
+  private fluidBackgroundReplayTimer: number | null = null;
+  private fluidBackgroundReplayReason: string | null = null;
+  private fluidBackgroundGuardInterval: number | null = null;
   private colorThief: ColorThief;
   private static debounce(func: Function, wait: number) {
     let timeout: number | null = null;
@@ -3237,7 +3239,7 @@ class WebLyricsPlayer {
     if (this.backgroundStyleSelect) {
       this.backgroundStyleSelect.addEventListener("change", (e) => {
         const value = (e.target as HTMLSelectElement).value;
-        this.switchBackgroundStyle(value);
+        this.switchBackgroundStyle(value, { source: 'user' });
       });
 
       const backgroundStyleSelect = this.backgroundStyleSelect;
@@ -3247,7 +3249,7 @@ class WebLyricsPlayer {
           const delta = e.key === "ArrowUp" ? -1 : 1;
           const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
           backgroundStyleSelect.selectedIndex = newIndex;
-          this.switchBackgroundStyle(backgroundStyleSelect.value);
+          this.switchBackgroundStyle(backgroundStyleSelect.value, { source: 'user' });
         }
       });
       if (this.backgroundStyleSelect) {
@@ -3257,7 +3259,7 @@ class WebLyricsPlayer {
           const delta = e.deltaY > 0 ? 1 : -1;
           const newIndex = Math.max(0, Math.min(backgroundStyleSelect.options.length - 1, backgroundStyleSelect.selectedIndex + delta));
           backgroundStyleSelect.selectedIndex = newIndex;
-          this.switchBackgroundStyle(backgroundStyleSelect.value);
+          this.switchBackgroundStyle(backgroundStyleSelect.value, { source: 'user' });
         }, { passive: false });
       }
     }
@@ -3403,13 +3405,21 @@ class WebLyricsPlayer {
     }
   }
 
-  private switchBackgroundStyle(style: string, options?: { skipSave?: boolean }) {
+  private switchBackgroundStyle(
+    style: string,
+    options?: { skipSave?: boolean; source?: 'user' | 'auto' | 'hydrate' | 'url' }
+  ) {
     if (!this.background) return;
 
+    const source = options?.source ?? 'auto';
     const currentStyle = this.state.backgroundType;
     if (this.fluidDesc) this.fluidDesc.style.display = style === "fluid" ? "block" : "none";
     if (this.coverDesc) this.coverDesc.style.display = style === "cover" ? "block" : "none";
     if (this.solidDesc) this.solidDesc.style.display = style === "solid" ? "block" : "none";
+
+    if (source === 'user' || source === 'url') {
+      this.state.shouldEnforceFluidBackground = style === 'fluid';
+    }
 
     if (this.solidOptions) {
       const showSolidOptions = style === 'cover' && this.state.backgroundColorMask && this.state.backgroundMaskOpacity === 0;
@@ -3479,60 +3489,88 @@ class WebLyricsPlayer {
     }
   }
 
-  private resetFluidBackgroundReplay(reason?: string): void {
-    if (this.fluidBackgroundRefreshTimer !== null) {
-      window.clearTimeout(this.fluidBackgroundRefreshTimer);
-      this.fluidBackgroundRefreshTimer = null;
+  private clearFluidBackgroundReplay(reason?: string): void {
+    if (this.fluidBackgroundReplayTimer !== null) {
+      window.clearTimeout(this.fluidBackgroundReplayTimer);
+      this.fluidBackgroundReplayTimer = null;
     }
 
-    this.hasPerformedFluidBackgroundReplay = false;
-    this.fluidBackgroundRefreshReason = typeof reason === "string" ? reason : null;
+    if (typeof reason === "string") {
+      this.fluidBackgroundReplayReason = reason;
+    }
   }
 
   // Work around a legacy startup issue by replaying the known-good manual toggle.
-  private scheduleFluidBackgroundRefresh(reason = "fluid-refresh", delay = 200): void {
-    if (this.hasPerformedFluidBackgroundReplay) {
-      return;
-    }
+  private replayFluidBackground(reason = "fluid-refresh", delayMs = 200): void {
+    this.clearFluidBackgroundReplay(reason || "fluid-refresh");
 
-    if (this.fluidBackgroundRefreshTimer !== null) {
-      window.clearTimeout(this.fluidBackgroundRefreshTimer);
-    }
+    const effectiveDelay = Math.max(0, Math.round(delayMs ?? 0));
+    this.fluidBackgroundReplayReason = reason || "fluid-refresh";
 
-    this.fluidBackgroundRefreshReason = reason || null;
-    const effectiveDelay = Math.max(0, Math.round(delay ?? 200));
-
-    this.fluidBackgroundRefreshTimer = window.setTimeout(() => {
-      this.fluidBackgroundRefreshTimer = null;
-      const replayReason = this.fluidBackgroundRefreshReason || "fluid-refresh";
-      this.fluidBackgroundRefreshReason = null;
-
-      if (this.hasPerformedFluidBackgroundReplay) {
-        return;
-      }
-
-      if (!this.isInitialized || !this.background || this.state.backgroundType !== 'fluid' || this.isHydratingSettings) {
-        return;
-      }
-
-      this.hasPerformedFluidBackgroundReplay = true;
+    this.fluidBackgroundReplayTimer = window.setTimeout(() => {
+      this.fluidBackgroundReplayTimer = null;
+      const replayReason = this.fluidBackgroundReplayReason || "fluid-refresh";
+      this.fluidBackgroundReplayReason = null;
       void replayReason;
 
-      this.switchBackgroundStyle('cover', { skipSave: true });
-      window.requestAnimationFrame(() => {
+      if (!this.isInitialized || !this.background || this.isHydratingSettings) {
+        return;
+      }
+
+      if (this.state.backgroundType !== 'fluid') {
+        return;
+      }
+
+      this.switchBackgroundStyle('cover', { skipSave: true, source: 'auto' });
+      window.setTimeout(() => {
         if (!this.background) {
           return;
         }
 
-        window.setTimeout(() => {
-          if (!this.background) {
-            return;
-          }
-
-          this.switchBackgroundStyle('fluid', { skipSave: true });
-        }, 30);
-      });
+        this.switchBackgroundStyle('fluid', { skipSave: true, source: 'auto' });
+      }, 30);
     }, effectiveDelay);
+  }
+
+  private startFluidBackgroundGuard() {
+    this.stopFluidBackgroundGuard();
+
+    this.fluidBackgroundGuardInterval = window.setInterval(() => {
+      if (!this.state.shouldEnforceFluidBackground) {
+        return;
+      }
+
+      const hasBackground = Boolean(this.background);
+      const isBackgroundVisible = hasBackground
+        ? this.background.getElement().style.display !== 'none'
+        : false;
+      const isCoverBlurHidden = this.coverBlurBackground
+        ? this.coverBlurBackground.style.display === 'none'
+        : false;
+      const isStyleSelectFluid = this.backgroundStyleSelect
+        ? this.backgroundStyleSelect.value === 'fluid'
+        : false;
+
+      const needsRepair =
+        !this.isInitialized ||
+        !hasBackground ||
+        this.isHydratingSettings ||
+        this.state.backgroundType !== 'fluid' ||
+        !isStyleSelectFluid ||
+        !isBackgroundVisible ||
+        !isCoverBlurHidden;
+
+      if (needsRepair) {
+        this.replayFluidBackground('guard-check');
+      }
+    }, 2000);
+  }
+
+  private stopFluidBackgroundGuard() {
+    if (this.fluidBackgroundGuardInterval !== null) {
+      window.clearInterval(this.fluidBackgroundGuardInterval);
+      this.fluidBackgroundGuardInterval = null;
+    }
   }
 
   private setupAudioEvents() {
@@ -4034,7 +4072,6 @@ class WebLyricsPlayer {
   }
 
   private async loadCoverFromFile(file: File) {
-    this.resetFluidBackgroundReplay("loadCoverFromFile");
     try {
       const url = URL.createObjectURL(file);
       this.state.coverUrl = url;
@@ -4045,7 +4082,7 @@ class WebLyricsPlayer {
       this.updateBackground();
       this.updateSongInfo();
       this.updateFileInputDisplay("coverFile", file);
-      this.scheduleFluidBackgroundRefresh("loadCoverFromFile", 200);
+      this.replayFluidBackground("loadCoverFromFile", 200);
       this.showStatus(t("status.coverLoadSuccess"));
     } catch (error) {
       this.showStatus(t("status.coverLoadFailed"), true);
@@ -4053,7 +4090,6 @@ class WebLyricsPlayer {
   }
 
   private async loadFromURLs(options?: { persist?: boolean }) {
-    this.resetFluidBackgroundReplay("loadFromURLs");
     const persist = options?.persist !== false;
     let musicUrl = this.musicUrl?.value;
     let lyricUrl = this.lyricUrl?.value;
@@ -4279,7 +4315,7 @@ class WebLyricsPlayer {
     if (persist) {
       this.saveBackgroundSettings();
     }
-    this.scheduleFluidBackgroundRefresh("loadFromURLs", 200);
+    this.replayFluidBackground("loadFromURLs", 200);
     this.showStatus(t("status.loadFromUrlComplete"));
   }
 
@@ -4302,7 +4338,6 @@ class WebLyricsPlayer {
   }
 
   private async processCoverInput(input: string) {
-    this.resetFluidBackgroundReplay("processCoverInput");
     if (!input.trim()) {
       return;
     }
@@ -4315,7 +4350,7 @@ class WebLyricsPlayer {
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", input);
-      this.scheduleFluidBackgroundRefresh("processCoverInput-url", 200);
+      this.replayFluidBackground("processCoverInput-url", 200);
       return;
     }
 
@@ -4330,7 +4365,7 @@ class WebLyricsPlayer {
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
-      this.scheduleFluidBackgroundRefresh("processCoverInput-base64", 200);
+      this.replayFluidBackground("processCoverInput-base64", 200);
       return;
     }
 
@@ -4340,7 +4375,7 @@ class WebLyricsPlayer {
     await this.extractAndProcessCoverColor(input);
     this.applyDominantColorAsCSSVariable();
     this.updateFileInputDisplay("coverFile", input);
-    this.scheduleFluidBackgroundRefresh("processCoverInput-generic", 200);
+    this.replayFluidBackground("processCoverInput-generic", 200);
   }
 
   private async processLyricInput(input: string) {
@@ -4591,6 +4626,7 @@ class WebLyricsPlayer {
       case 'backgroundType': {
         if (value === 'fluid' || value === 'cover' || value === 'solid') {
           this.state.backgroundType = value;
+          this.state.shouldEnforceFluidBackground = value === 'fluid';
           if (this.backgroundStyleSelect) {
             this.backgroundStyleSelect.value = value;
           }
@@ -6421,7 +6457,8 @@ class WebLyricsPlayer {
 
     this.isInitialized = true;
     this.initAlbumCoverEffects();
-    this.scheduleFluidBackgroundRefresh("start-fallback", 500);
+    this.replayFluidBackground("start-fallback", 500);
+    this.startFluidBackgroundGuard();
 
     if (this.urlLyricDelayOverride !== null) {
       if (this.lyricDelayInput) {
@@ -6644,6 +6681,7 @@ class WebLyricsPlayer {
 
     const backgroundSettings = {
       backgroundType: this.state.backgroundType,
+      shouldEnforceFluidBackground: this.state.shouldEnforceFluidBackground,
       backgroundDynamic: this.state.backgroundDynamic,
       backgroundFlowSpeed: this.state.backgroundFlowSpeed,
       backgroundColorMask: this.state.backgroundColorMask,
@@ -6732,6 +6770,17 @@ class WebLyricsPlayer {
 
         if (hasSetting('backgroundType')) {
           this.state.backgroundType = typeof settings.backgroundType === 'string' ? settings.backgroundType : defaults.backgroundType;
+        }
+        const hasShouldEnforceFluidBackground = hasSetting('shouldEnforceFluidBackground');
+        if (hasShouldEnforceFluidBackground && typeof settings.shouldEnforceFluidBackground === 'boolean') {
+          this.state.shouldEnforceFluidBackground = settings.shouldEnforceFluidBackground;
+        } else {
+          const hasBackgroundTypeSetting = hasSetting('backgroundType');
+          if (hasBackgroundTypeSetting) {
+            this.state.shouldEnforceFluidBackground = this.state.backgroundType === 'fluid';
+          } else {
+            this.state.shouldEnforceFluidBackground = defaults.shouldEnforceFluidBackground;
+          }
         }
         if (hasSetting('backgroundDynamic')) {
           this.state.backgroundDynamic = typeof settings.backgroundDynamic === 'boolean' ? settings.backgroundDynamic : defaults.backgroundDynamic;
