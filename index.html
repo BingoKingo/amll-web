@@ -99,6 +99,7 @@
       max-height: 100vh;
       height: 100vh;
       overflow: hidden;
+      background: var(--dominant-color-dark);
       margin: 0;
     }
 
@@ -1126,6 +1127,8 @@
         <span class="control-value" data-i18n="backgroundStyle">Background Style</span>
         <select id="backgroundStyle" title="Background style" class="select-input" data-i18n-title="control.backgroundStyle">
           <option value="fluid" selected data-i18n="amllBackground">AMLL Background</option>
+          <option value="cover" data-i18n="coverBackground">Cover Background</option>
+          <!-- <option value="solid" data-i18n="solidBackground">Solid Background</option> -->
         </select>
       </div>
       <div id="fluid-desc" class="bg-desc">
@@ -1158,6 +1161,32 @@
           <input style="flex: 1; margin-bottom: 0px;" type="text" id="controlPointCode"
             data-i18n-placeholder="controlPointCode" class="text-input" style="width: 300px;">
         </div>
+      </div>
+      <div id="cover-desc" class="bg-desc" style="display:none">
+        <div class="flex-group">
+          <span class="control-value" data-i18n="coverBlurLevel">Blur Level</span>
+          <input type="range" id="coverBlurLevel" min="0" max="100" step="5" value="0" class="range-input"
+            title="Adjust cover blur level" data-i18n-title="control.coverBlurLevel">
+          <span class="control-value" id="coverBlurLevelValue">100%</span>
+        </div>
+        <div class="flex-group">
+          <input type="checkbox" id="bgColorMask" checked title="Enable color mask" data-i18n-title="control.colorMask">
+          <span class="control-value" data-i18n="colorMask">Color Mask</span>
+          <input type="color" id="bgMaskColor" value="#FFFFFF" style="width: 3em; height: 1.25em;" title="Mask color" data-i18n-title="control.maskColor">
+          <input type="range" id="bgMaskOpacity" min="0" max="100" step="5" value="70" class="range-input"
+            title="Adjust mask opacity" data-i18n-title="control.maskOpacity">
+          <span class="control-value" id="bgMaskOpacityValue">70%</span>
+        </div>
+        <div class="flex-group">
+          <input type="checkbox" id="invertColors" title="Invert dominant colors" data-i18n-title="control.invertColors">
+          <span class="control-value" data-i18n="invertColors">Invert</span>
+          <span class="control-value" data-i18n="dominantColor">Dominant Colors</span>
+          <input type="color" id="dominantColor" style="width: 3em; height: 1.25em;" title="Dominant color" data-i18n-title="control.dominantColor">
+          <input type="color" id="dominantColorLight" style="width: 3em; height: 1.25em;" title="Dominant color light" data-i18n-title="label.dominantColorLight">
+          <input type="color" id="dominantColorDark" style="width: 3em; height: 1.25em;" title="Dominant color dark" data-i18n-title="label.dominantColorDark">
+        </div>
+      </div>
+      <div id="solid-desc" class="bg-desc" style="display:none">
       </div>
     </div>
     <div class="control-group">
