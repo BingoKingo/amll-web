@@ -633,6 +633,9 @@ class WebLyricsPlayer {
   private gui: GUI | null = null;
   private urlOverrides = new Set<string>();
   private isHydratingSettings = true;
+  private fluidBackgroundRefreshTimer: number | null = null;
+  private fluidBackgroundRefreshReason: string | null = null;
+  private hasPerformedFluidBackgroundReplay = false;
   private colorThief: ColorThief;
   private static debounce(func: Function, wait: number) {
     let timeout: number | null = null;
@@ -3400,7 +3403,7 @@ class WebLyricsPlayer {
     }
   }
 
-  private switchBackgroundStyle(style: string) {
+  private switchBackgroundStyle(style: string, options?: { skipSave?: boolean }) {
     if (!this.background) return;
 
     const currentStyle = this.state.backgroundType;
@@ -3423,7 +3426,9 @@ class WebLyricsPlayer {
         this.state.backgroundType = 'fluid';
         this.updateBackground();
         this.updateBackgroundUI();
-        this.saveBackgroundSettings();
+        if (!options?.skipSave) {
+          this.saveBackgroundSettings();
+        }
         break;
       case "cover":
         this.background.setAlbum(resolveDefaultCover(this.state.coverUrl));
@@ -3431,7 +3436,9 @@ class WebLyricsPlayer {
         this.state.backgroundType = 'cover';
         this.updateBackground();
         this.updateBackgroundUI();
-        this.saveBackgroundSettings();
+        if (!options?.skipSave) {
+          this.saveBackgroundSettings();
+        }
         break;
       case "solid":
         this.background.setAlbum("");
@@ -3439,7 +3446,9 @@ class WebLyricsPlayer {
         this.state.backgroundType = 'solid';
         this.updateBackground();
         this.updateBackgroundUI();
-        this.saveBackgroundSettings();
+        if (!options?.skipSave) {
+          this.saveBackgroundSettings();
+        }
         break;
       default:
         break;
@@ -3447,14 +3456,14 @@ class WebLyricsPlayer {
 
     if (style !== 'cover' && this.invertColorsCheckbox) {
       this.invertColorsCheckbox.checked = false;
-      this.invertColors(false);
+      this.invertColors(false, { skipSave: options?.skipSave });
     }
 
     if (style === 'cover' && currentStyle !== 'cover' && this.invertColorsCheckbox) {
       const invertState = this.state.originalInvertColors !== null && this.state.originalInvertColors !== undefined ?
         this.state.originalInvertColors : this.state.invertColors;
       this.invertColorsCheckbox.checked = invertState;
-      this.invertColors(invertState);
+      this.invertColors(invertState, { skipSave: options?.skipSave });
     }
 
     if (this.invertColorsCheckbox) {
@@ -3465,9 +3474,55 @@ class WebLyricsPlayer {
         }
       };
       if (isChecked && style === 'cover') {
-        this.invertColors(isChecked);
+        this.invertColors(isChecked, { skipSave: options?.skipSave });
       }
     }
+  }
+
+  // Work around a legacy startup issue by replaying the known-good manual toggle.
+  private scheduleFluidBackgroundRefresh(reason = "fluid-refresh", delay = 200): void {
+    if (this.hasPerformedFluidBackgroundReplay) {
+      return;
+    }
+
+    if (this.fluidBackgroundRefreshTimer !== null) {
+      window.clearTimeout(this.fluidBackgroundRefreshTimer);
+    }
+
+    this.fluidBackgroundRefreshReason = reason || null;
+    const effectiveDelay = Math.max(0, Math.round(delay ?? 200));
+
+    this.fluidBackgroundRefreshTimer = window.setTimeout(() => {
+      this.fluidBackgroundRefreshTimer = null;
+      const replayReason = this.fluidBackgroundRefreshReason || "fluid-refresh";
+      this.fluidBackgroundRefreshReason = null;
+
+      if (this.hasPerformedFluidBackgroundReplay) {
+        return;
+      }
+
+      if (!this.isInitialized || !this.background || this.state.backgroundType !== 'fluid' || this.isHydratingSettings) {
+        return;
+      }
+
+      this.hasPerformedFluidBackgroundReplay = true;
+      void replayReason;
+
+      this.switchBackgroundStyle('cover', { skipSave: true });
+      window.requestAnimationFrame(() => {
+        if (!this.background) {
+          return;
+        }
+
+        window.setTimeout(() => {
+          if (!this.background) {
+            return;
+          }
+
+          this.switchBackgroundStyle('fluid', { skipSave: true });
+        }, 30);
+      });
+    }, effectiveDelay);
   }
 
   private setupAudioEvents() {
@@ -3979,6 +4034,7 @@ class WebLyricsPlayer {
       this.updateBackground();
       this.updateSongInfo();
       this.updateFileInputDisplay("coverFile", file);
+      this.scheduleFluidBackgroundRefresh("loadCoverFromFile", 200);
       this.showStatus(t("status.coverLoadSuccess"));
     } catch (error) {
       this.showStatus(t("status.coverLoadFailed"), true);
@@ -4211,6 +4267,7 @@ class WebLyricsPlayer {
     if (persist) {
       this.saveBackgroundSettings();
     }
+    this.scheduleFluidBackgroundRefresh("loadFromURLs", 200);
     this.showStatus(t("status.loadFromUrlComplete"));
   }
 
@@ -4245,6 +4302,7 @@ class WebLyricsPlayer {
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", input);
+      this.scheduleFluidBackgroundRefresh("processCoverInput-url", 200);
       return;
     }
 
@@ -4259,6 +4317,7 @@ class WebLyricsPlayer {
       await this.extractAndProcessCoverColor(input);
       this.applyDominantColorAsCSSVariable();
       this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
+      this.scheduleFluidBackgroundRefresh("processCoverInput-base64", 200);
       return;
     }
 
@@ -4268,6 +4327,7 @@ class WebLyricsPlayer {
     await this.extractAndProcessCoverColor(input);
     this.applyDominantColorAsCSSVariable();
     this.updateFileInputDisplay("coverFile", input);
+    this.scheduleFluidBackgroundRefresh("processCoverInput-generic", 200);
   }
 
   private async processLyricInput(input: string) {
@@ -6348,6 +6408,7 @@ class WebLyricsPlayer {
 
     this.isInitialized = true;
     this.initAlbumCoverEffects();
+    this.scheduleFluidBackgroundRefresh("start-fallback", 500);
 
     if (this.urlLyricDelayOverride !== null) {
       if (this.lyricDelayInput) {
