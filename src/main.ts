@@ -660,6 +660,7 @@ class WebLyricsPlayer {
   private handleResizeBound: (() => void) | null = null;
   private titleMarqueeInterval: number | null = null;
   private mediaSessionRefreshTimeout: number | null = null;
+  private mediaSessionEnabled = true;
   private originalTitle: string = '';
   private originalLyricLines: any[] = [];
   private processedLyricLines: LyricLine[] = [];
@@ -1593,6 +1594,8 @@ class WebLyricsPlayer {
 
   constructor() {
     this.applyI18nToDom();
+    const urlParams = new URLSearchParams(window.location.search);
+    this.mediaSessionEnabled = urlParams.get('sessionOwner') !== 'outer';
     this.audio = document.createElement("audio");
     this.state = cloneDefaultState();
     this.audio.volume = this.state.volume / 100;
@@ -3665,7 +3668,7 @@ class WebLyricsPlayer {
       this.updateCoverRotation();
       this.syncBackgroundBeatState();
 
-      if ("mediaSession" in navigator) {
+      if (this.canUseMediaSession()) {
         navigator.mediaSession.playbackState = "playing";
       }
     });
@@ -3678,7 +3681,7 @@ class WebLyricsPlayer {
       this.updateCoverRotation();
       this.syncBackgroundBeatState();
 
-      if ("mediaSession" in navigator) {
+      if (this.canUseMediaSession()) {
         navigator.mediaSession.playbackState = "paused";
       }
     });
@@ -3699,7 +3702,7 @@ class WebLyricsPlayer {
         this.audio.play();
       }
 
-      if ("mediaSession" in navigator) {
+      if (this.canUseMediaSession()) {
         navigator.mediaSession.playbackState = "none";
       }
     });
@@ -3725,6 +3728,10 @@ class WebLyricsPlayer {
     });
     srcObserver.observe(this.audio, { attributes: true });
     this.setupMediaSessionHandlers();
+  }
+
+  private canUseMediaSession() {
+    return this.mediaSessionEnabled && typeof navigator !== 'undefined' && "mediaSession" in navigator;
   }
 
   private setupLyricEvents() {
@@ -5696,7 +5703,7 @@ class WebLyricsPlayer {
 
   // 设置媒体会话操作处理程序
   private setupMediaSessionHandlers() {
-    if ("mediaSession" in navigator) {
+    if (this.canUseMediaSession()) {
       navigator.mediaSession.setActionHandler("play", () => {
         this.audio.play();
       });
@@ -5776,7 +5783,7 @@ class WebLyricsPlayer {
 
   // 更新媒体会话元数据
   private updateMediaSessionMetadata() {
-    if ("mediaSession" in navigator) {
+    if (this.canUseMediaSession()) {
       const coverUrl = resolveDefaultCover(this.state.coverUrl);
 
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -5796,7 +5803,7 @@ class WebLyricsPlayer {
   }
 
   private refreshMediaSession() {
-    if ("mediaSession" in navigator) {
+    if (this.canUseMediaSession()) {
       navigator.mediaSession.setActionHandler("play", null);
       navigator.mediaSession.setActionHandler("pause", null);
       navigator.mediaSession.setActionHandler("seekbackward", null);
