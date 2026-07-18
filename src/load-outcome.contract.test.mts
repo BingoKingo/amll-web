@@ -70,4 +70,20 @@ assert(
 const appliedAll = buildLoadOutcome("applied", "applied", "skipped", true);
 assert(shouldApplyAutoLoadPlayback(appliedAll) === true, "fully applied audio should autoplay");
 
+const supersededTransaction = buildLoadOutcome("applied", "applied", "skipped", true, {
+  transactionStale: true,
+});
+assert(
+  supersededTransaction.status === "applied",
+  "superseded transaction preserves section statuses in summary",
+);
+assert(
+  shouldSkipGlobalFinalize(supersededTransaction) === true,
+  "superseded transaction must skip finalize",
+);
+assert(
+  shouldApplyAutoLoadPlayback(supersededTransaction) === false,
+  "superseded transaction must not drive auto-load playback",
+);
+
 console.log("load-outcome contract checks passed");

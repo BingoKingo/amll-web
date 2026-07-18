@@ -10,6 +10,7 @@ export interface LoadOutcome {
   audioStatus: SectionStatus;
   lyricStatus: SectionStatus;
   coverStatus: SectionStatus;
+  transactionStale: boolean;
 }
 
 export function summarizeLoadOutcome(
@@ -54,7 +55,8 @@ export function summarizeLoadOutcome(
 
 export function shouldSkipGlobalFinalize(outcome: LoadOutcome): boolean {
   return (
-    outcome.audioStatus === "stale"
+    outcome.transactionStale
+    || outcome.audioStatus === "stale"
     || outcome.lyricStatus === "stale"
     || outcome.coverStatus === "stale"
   );
@@ -74,6 +76,7 @@ export function buildLoadOutcome(
   lyricStatus: SectionStatus,
   coverStatus: SectionStatus,
   willLoadMedia: boolean,
+  options?: { transactionStale?: boolean },
 ): LoadOutcome {
   return {
     status: summarizeLoadOutcome(audioStatus, lyricStatus, coverStatus, willLoadMedia),
@@ -83,5 +86,6 @@ export function buildLoadOutcome(
     audioStatus,
     lyricStatus,
     coverStatus,
+    transactionStale: options?.transactionStale === true,
   };
 }

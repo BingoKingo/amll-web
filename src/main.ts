@@ -4577,13 +4577,12 @@ class WebLyricsPlayer {
       }
 
       if (this.isStaleSongLoad(loadTx.song)) {
-        const coerceStale = (status: SectionStatus): SectionStatus =>
-          status === "applied" || status === "skipped" ? status : "stale";
         return buildLoadOutcome(
-          coerceStale(audioStatus),
-          coerceStale(lyricStatus),
-          coerceStale(coverStatus),
+          audioStatus,
+          lyricStatus,
+          coverStatus,
           willLoadMedia,
+          { transactionStale: true },
         );
       }
     }
