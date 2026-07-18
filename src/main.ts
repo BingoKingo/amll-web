@@ -26,6 +26,17 @@ import { isSrtFormat, parseSrt, srtToTTML } from "./lyric/srt-parser";
 
 // 导入测试脚本（仅在开发环境中使用）
 import { getCurrentLanguage, setCurrentLanguage, t } from "./i18n";
+import {
+  classifyMusicUrl,
+  ensurePlayableMusicUrl,
+  isLocalSongMusicUrl,
+  resolveSongRelativePath,
+} from "./media-audio";
+import {
+  buildLoadOutcome,
+  type LoadOutcome,
+  type SectionStatus,
+} from "./load-outcome";
 import GUI from "lil-gui";
 import Stats from "stats.js";
 import ColorThief from 'colorthief';
@@ -598,6 +609,17 @@ type BeatState = {
   beatCurve: BeatCurve | null;
 };
 
+interface SectionResult {
+  status: SectionStatus;
+}
+
+interface CombinedLoadTransaction {
+  song: number;
+  audio?: number;
+  lyric?: number;
+  cover?: number;
+}
+
 class WebLyricsPlayer {
   private audio: HTMLAudioElement;
   private lyricPlayer: BaseDomLyricPlayer;
@@ -606,6 +628,20 @@ class WebLyricsPlayer {
   private beatCurvePollTimer: number | null = null;
   private beatCurveRequestInFlight = false;
   private beatCurvePath: string | null = null;
+  private songFileRelative = "";
+  private songJsonFile = "";
+  /** In-flight media refresh for an audio generation; later play intents may await it. */
+  private mediaPlaybackRetryState: { loadGeneration: number; promise: Promise<boolean> } | null = null;
+  /** Independent generations so lyric/cover loads do not cancel audio signature refresh. */
+  private songLoadGeneration = 0;
+  private audioLoadGeneration = 0;
+  private lyricLoadGeneration = 0;
+  private coverLoadGeneration = 0;
+  private coverValidationGeneration = 0;
+  /** Bumped when the user/system changes desired play vs pause. */
+  private playbackIntentGeneration = 0;
+  /** Whether playback is currently desired (independent of transient audio errors). */
+  private desiredPlaying = false;
   private beatState: BeatState = {
     basePaletteHsl: [],
     analyser: null,
@@ -2310,7 +2346,9 @@ class WebLyricsPlayer {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        this.loadMusicFromFile(file);
+        void this.loadMusicFromFile(file).catch((error) => {
+          console.error("loadMusicFromFile failed:", error);
+        });
       }
     });
 
@@ -2318,7 +2356,9 @@ class WebLyricsPlayer {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        this.loadLyricFromFile(file);
+        void this.loadLyricFromFile(file).catch((error) => {
+          console.error("loadLyricFromFile failed:", error);
+        });
       }
     });
 
@@ -2326,7 +2366,9 @@ class WebLyricsPlayer {
       if (!e.target) return;
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        this.loadCoverFromFile(file);
+        void this.loadCoverFromFile(file).catch((error) => {
+          console.error("loadCoverFromFile failed:", error);
+        });
       }
     });
 
@@ -2521,12 +2563,16 @@ class WebLyricsPlayer {
     });
 
     this.loadFromUrlBtn?.addEventListener("click", () => {
-      this.loadFromURLs();
+      void this.loadFromURLs().catch((error) => {
+        console.error("loadFromURLs failed:", error);
+      });
     });
 
     this.musicUrl?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
-        this.loadFromURLs();
+        void this.loadFromURLs().catch((error) => {
+          console.error("loadFromURLs failed:", error);
+        });
       }
     });
     this.musicUrl?.addEventListener("input", () => {
@@ -2563,7 +2609,9 @@ class WebLyricsPlayer {
           this.processLyricInput(this.lyricUrl.value);
         }
       } else if (e.key === "Enter" && !e.shiftKey) {
-        this.loadFromURLs();
+        void this.loadFromURLs().catch((error) => {
+          console.error("loadFromURLs failed:", error);
+        });
       }
     });
 
@@ -2579,7 +2627,9 @@ class WebLyricsPlayer {
     });
 
     this.loadFilesBtn?.addEventListener("click", () => {
-      this.loadFromFiles();
+      void this.loadFromFiles().catch((error) => {
+        console.error("loadFromFiles failed:", error);
+      });
     });
 
     this.resetPlayerBtn?.addEventListener("click", () => {
@@ -3699,11 +3749,27 @@ class WebLyricsPlayer {
         setTimeout(() => {
           this.lyricPlayer.setCurrentTime(this.state.lyricDelay);
         }, 50);
-        this.audio.play();
+        this.requestPlay();
+      } else {
+        this.requestPause();
       }
 
       if (this.canUseMediaSession()) {
         navigator.mediaSession.playbackState = "none";
+      }
+    });
+
+    this.audio.addEventListener("error", () => {
+      const mediaError = this.audio.error;
+      if (!mediaError) {
+        return;
+      }
+      if (
+        mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+        || mediaError.code === MediaError.MEDIA_ERR_NETWORK
+      ) {
+        // Resume only if playback is still desired when refresh completes.
+        void this.retryPlaybackAfterMediaRefresh(new Error(`audio error ${mediaError.code}`));
       }
     });
 
@@ -3816,10 +3882,14 @@ class WebLyricsPlayer {
         if (e.dataTransfer?.files.length) {
           const file = e.dataTransfer.files[0];
           if (file.type.startsWith("image/")) {
-            this.loadCoverFromFile(file);
+            void this.loadCoverFromFile(file).catch((error) => {
+              console.error("loadCoverFromFile failed:", error);
+            });
             this.updateFileInputDisplay("coverFile", file);
           } else if (file.type.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name)) {
-            this.loadMusicFromFile(file);
+            void this.loadMusicFromFile(file).catch((error) => {
+              console.error("loadMusicFromFile failed:", error);
+            });
             this.updateFileInputDisplay("musicFile", file);
           } else {
             this.showStatus(t("status.unsupportedFileType"), true);
@@ -3850,7 +3920,9 @@ class WebLyricsPlayer {
             file.type === "text/plain" ||
             file.type === ""
           ) {
-            this.loadLyricFromFile(file);
+            void this.loadLyricFromFile(file).catch((error) => {
+              console.error("loadLyricFromFile failed:", error);
+            });
             this.updateFileInputDisplay("lyricFile", file);
           }
         }
@@ -4028,18 +4100,24 @@ class WebLyricsPlayer {
     this.updateLayoutByOrientation();
   }
 
-  private async loadMusicFromFile(file: File) {
-    try {
-      // 检查文件类型，iOS Safari 可能会上传不同类型的音频文件
-      const isAudioType = file.type.startsWith("audio/");
-      const isValidExtension = /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
+  private async loadMusicFromFile(
+    file: File,
+    audioTx?: number,
+    options?: { deferMetadata?: boolean; skipEmbeddedCover?: boolean }
+  ) {
+    const isAudioType = file.type.startsWith("audio/");
+    const isValidExtension = /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
+    if (!isAudioType && !isValidExtension) {
+      this.showStatus(t("status.musicLoadFailed"), true);
+      return;
+    }
 
-      if (!isAudioType && !isValidExtension) {
-        this.showStatus(t("status.musicLoadFailed"), true);
+    let tx = audioTx ?? this.beginAudioLoad();
+    try {
+      const url = URL.createObjectURL(file);
+      if (this.isStaleAudioLoad(tx)) {
         return;
       }
-
-      const url = URL.createObjectURL(file);
       this.state.musicUrl = url;
       this.audio.crossOrigin = "anonymous"; // 允许跨域访问音频文件
       this.audio.src = url;
@@ -4054,13 +4132,23 @@ class WebLyricsPlayer {
       }
 
       if (this.state.autoPlay) {
-        this.togglePlayPause();
+        this.requestPlay();
       } else {
-        this.state.isPlaying = false;
-        this.updatePlayButton();
+        this.requestPause();
       }
-      await this.parseAudioMetadata(file);
-      this.updateMediaSessionMetadata();
+
+      const metadataOptions = {
+        allowEmbeddedCover: !options?.skipEmbeddedCover,
+      };
+      if (options?.deferMetadata) {
+        void this.parseAudioMetadata(file, tx, metadataOptions);
+      } else {
+        await this.parseAudioMetadata(file, tx, metadataOptions);
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
+        this.updateMediaSessionMetadata();
+      }
 
       if (this.controlPanel) {
         this.controlPanel.style.width = "0px";
@@ -4071,53 +4159,95 @@ class WebLyricsPlayer {
       this.updateFileInputDisplay("musicFile", file);
       this.showStatus(t("status.musicLoadSuccess"));
     } catch (error) {
+      if (this.isStaleAudioLoad(tx)) {
+        return;
+      }
       this.showStatus(t("status.musicLoadFailed"), true);
     }
   }
 
-  private async loadLyricFromFile(file: File) {
-    try {
-      // 检查文件类型，iOS Safari 可能会上传 text/plain 类型的文件
-      const isValidExtension = /\.(lrc|ttml|yrc|lys|qrc|txt|ass|lqe|lyl|srt|spl)$/i.test(
-        file.name
-      );
-      const isTextPlain = file.type === "text/plain" || file.type === "";
+  private async loadLyricFromFile(file: File, lyricTx?: number) {
+    const isValidExtension = /\.(lrc|ttml|yrc|lys|qrc|txt|ass|lqe|lyl|srt|spl)$/i.test(
+      file.name
+    );
+    const isTextPlain = file.type === "text/plain" || file.type === "";
+    if (!isValidExtension && !isTextPlain) {
+      this.showStatus(t("status.lyricsLoadFailed"), true);
+      return;
+    }
 
-      if (!isValidExtension && !isTextPlain) {
-        this.showStatus(t("status.lyricsLoadFailed"), true);
+    let tx = lyricTx ?? this.beginLyricLoad();
+    try {
+      const text = await file.text();
+      if (this.isStaleLyricLoad(tx)) {
         return;
       }
-
-      const text = await file.text();
       const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
       this.state.lyricUrl = url;
-      await this.loadLyricContent(text, file.name);
+      const ok = await this.loadLyricContent(text, file.name);
+      if (!ok || this.isStaleLyricLoad(tx)) {
+        return;
+      }
       this.updateFileInputDisplay("lyricFile", file);
       this.showStatus(t("status.lyricsLoadSuccess"));
     } catch (error) {
+      if (this.isStaleLyricLoad(tx)) {
+        return;
+      }
       this.showStatus(t("status.lyricsLoadFailed"), true);
     }
   }
 
-  private async loadCoverFromFile(file: File) {
+  private async loadCoverFromFile(file: File, coverTx?: number, songTx?: number) {
+    if (!this.isValidCoverFile(file)) {
+      this.showStatus(t("status.coverLoadFailed"), true);
+      return;
+    }
+
+    const validationGen = this.registerCoverValidationIntent();
+    try {
+      await this.verifyCoverImageDecodable(file);
+    } catch {
+      if (!this.isStaleCoverValidation(validationGen)) {
+        this.showStatus(t("status.coverLoadFailed"), true);
+      }
+      return;
+    }
+
+    if (this.isStaleCoverValidation(validationGen)) {
+      return;
+    }
+    if (songTx !== undefined && this.isStaleSongLoad(songTx)) {
+      return;
+    }
+
+    const tx = coverTx ?? this.beginCoverLoad();
     try {
       const url = URL.createObjectURL(file);
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.state.coverUrl = url;
       this.updateBackground();
       this.background.setAlbum(resolveDefaultCover(url));
-      await this.extractAndProcessCoverColor(url);
-      this.applyDominantColorAsCSSVariable();
+      await this.extractAndProcessCoverColor(url, tx);
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.updateBackground();
       this.updateSongInfo();
       this.updateFileInputDisplay("coverFile", file);
       this.replayFluidBackground("loadCoverFromFile", 200);
       this.showStatus(t("status.coverLoadSuccess"));
     } catch (error) {
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.showStatus(t("status.coverLoadFailed"), true);
     }
   }
 
-  private async loadFromURLs(options?: { persist?: boolean }) {
+  private async loadFromURLs(options?: { persist?: boolean }): Promise<LoadOutcome> {
     const persist = options?.persist !== false;
     let musicUrl = this.musicUrl?.value;
     let lyricUrl = this.lyricUrl?.value;
@@ -4234,89 +4364,237 @@ class WebLyricsPlayer {
 
     this.refreshPageMetadata();
 
-    if (musicUrl) {
-      this.state.musicUrl = musicUrl;
-      this.audio.src = musicUrl;
-      this.audio.load();
+    const willLoadMedia = Boolean(musicUrl || lyricUrl || coverUrl);
+    const loadTx = willLoadMedia
+      ? this.beginCombinedLoadTransaction({
+          audio: Boolean(musicUrl),
+          lyric: Boolean(lyricUrl),
+          cover: Boolean(coverUrl),
+        })
+      : null;
 
-      if (this.playControls) {
-        this.playControls.style.bottom = "";
-        this.playControls.style.opacity = "";
-      }
-      if (this.progressBar) {
-        this.progressBar.style.width = "";
-      }
+    type SectionResult = { status: SectionStatus };
 
-      if (this.state.autoPlay) {
-        this.togglePlayPause();
-      } else {
-        this.state.isPlaying = false;
-        this.updatePlayButton();
-      }
-      this.updateMediaSessionMetadata();
-      this.updateFileInputDisplay("musicFile", musicUrl);
-    }
+    let audioStatus: SectionStatus = "skipped";
+    let lyricStatus: SectionStatus = "skipped";
+    let coverStatus: SectionStatus = "skipped";
 
-    if (lyricUrl) {
-      this.state.lyricUrl = lyricUrl;
-
-      const urlPattern = /^https?:\/\/.+/;
-      if (urlPattern.test(lyricUrl.trim())) {
-        try {
-          const response = await fetch(lyricUrl);
-          const text = await response.text();
-
-          const isESFormat = isESLyRiCFormat(text);
-          const isA2Format = isLyRiCA2Format(text);
-
-          if (lyricUrl.endsWith(".lrc")) {
-            if (isESFormat || isA2Format) {
-              await this.loadLyricContent(text, lyricUrl);
-            } else {
-              await this.loadLyricContent(text, lyricUrl);
+    if (loadTx) {
+      try {
+        const sectionResults = await Promise.all([
+          (async (): Promise<SectionResult> => {
+            if (!musicUrl || loadTx.audio === undefined) {
+              return { status: "skipped" };
             }
-          } else {
-            await this.loadLyricContent(text, lyricUrl);
-          }
-          this.updateFileInputDisplay("lyricFile", lyricUrl);
-        } catch (error) {
-          this.showStatus(t("status.lyricsUrlLoadFailed"), true);
-        }
-      } else {
-        await this.processLyricInput(lyricUrl);
+            const audioTx = loadTx.audio;
+            try {
+              const musicKind = classifyMusicUrl(musicUrl);
+              if (!this.urlOverrides.has("songJsonFile")) {
+                this.songJsonFile = "";
+              }
+
+              let resolvedMusicUrl = musicUrl;
+              if (musicKind === "unknown") {
+                if (this.isStaleAudioLoad(audioTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                this.songFileRelative = "";
+                this.state.musicUrl = resolvedMusicUrl;
+                if (this.musicUrl) {
+                  this.musicUrl.value = resolvedMusicUrl;
+                }
+                this.audio.src = resolvedMusicUrl;
+              } else {
+                const playable = await ensurePlayableMusicUrl(resolvedMusicUrl);
+                if (this.isStaleAudioLoad(audioTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                if (playable.file) {
+                  this.songFileRelative = playable.file;
+                } else {
+                  this.songFileRelative = "";
+                }
+                resolvedMusicUrl = playable.url;
+                this.state.musicUrl = resolvedMusicUrl;
+                if (this.musicUrl) {
+                  this.musicUrl.value = resolvedMusicUrl;
+                }
+                this.audio.src = resolvedMusicUrl;
+              }
+              if (this.isStaleAudioLoad(audioTx) || this.isStaleSongLoad(loadTx.song)) {
+                return { status: "stale" };
+              }
+              this.audio.load();
+
+              if (this.playControls) {
+                this.playControls.style.bottom = "";
+                this.playControls.style.opacity = "";
+              }
+              if (this.progressBar) {
+                this.progressBar.style.width = "";
+              }
+
+              if (this.state.autoPlay) {
+                this.requestPlay();
+              } else {
+                this.requestPause();
+              }
+              this.updateMediaSessionMetadata();
+              this.updateFileInputDisplay("musicFile", resolvedMusicUrl);
+              return { status: "applied" };
+            } catch {
+              if (this.isStaleAudioLoad(audioTx) || this.isStaleSongLoad(loadTx.song)) {
+                return { status: "stale" };
+              }
+              this.showStatus(t("status.musicLoadFailed"), true);
+              return { status: "failed" };
+            }
+          })(),
+          (async (): Promise<SectionResult> => {
+            if (!lyricUrl || loadTx.lyric === undefined) {
+              return { status: "skipped" };
+            }
+            const lyricTx = loadTx.lyric;
+            if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+              return { status: "stale" };
+            }
+            this.state.lyricUrl = lyricUrl;
+
+            const urlPattern = /^https?:\/\/.+/;
+            if (urlPattern.test(lyricUrl.trim())) {
+              try {
+                const response = await fetch(lyricUrl);
+                if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                if (!response.ok) {
+                  if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+                    return { status: "stale" };
+                  }
+                  this.showStatus(t("status.lyricsUrlLoadFailed"), true);
+                  return { status: "failed" };
+                }
+                const text = await response.text();
+                if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+
+                const loaded = await this.loadLyricContent(text, lyricUrl);
+                if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                if (!loaded) {
+                  return { status: "failed" };
+                }
+                this.updateFileInputDisplay("lyricFile", lyricUrl);
+                return { status: "applied" };
+              } catch {
+                if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                this.showStatus(t("status.lyricsUrlLoadFailed"), true);
+                return { status: "failed" };
+              }
+            }
+
+            const lyricOk = await this.processLyricInput(lyricUrl, lyricTx);
+            if (this.isStaleLyricLoad(lyricTx) || this.isStaleSongLoad(loadTx.song)) {
+              return { status: "stale" };
+            }
+            if (!lyricOk) {
+              return { status: "failed" };
+            }
+            return { status: "applied" };
+          })(),
+          (async (): Promise<SectionResult> => {
+            if (!coverUrl || loadTx.cover === undefined) {
+              return { status: "skipped" };
+            }
+            const coverTx = loadTx.cover;
+            if (this.isStaleCoverLoad(coverTx) || this.isStaleSongLoad(loadTx.song)) {
+              return { status: "stale" };
+            }
+            try {
+              const urlPattern = /^https?:\/\/.+/;
+              if (urlPattern.test(coverUrl.trim())) {
+                this.state.coverUrl = coverUrl;
+                this.updateBackground();
+                this.background.setAlbum(resolveDefaultCover(coverUrl));
+                await this.extractAndProcessCoverColor(coverUrl, coverTx);
+                if (this.isStaleCoverLoad(coverTx) || this.isStaleSongLoad(loadTx.song)) {
+                  return { status: "stale" };
+                }
+                this.updateFileInputDisplay("coverFile", coverUrl);
+              } else {
+                const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
+                const base64Match = coverUrl.trim().match(base64Pattern);
+                if (base64Match) {
+                  const contentType = base64Match[1] || 'image/png';
+                  this.state.coverUrl = coverUrl;
+                  this.updateBackground();
+                  this.background.setAlbum(resolveDefaultCover(coverUrl));
+                  await this.extractAndProcessCoverColor(coverUrl, coverTx);
+                  if (this.isStaleCoverLoad(coverTx) || this.isStaleSongLoad(loadTx.song)) {
+                    return { status: "stale" };
+                  }
+                  this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
+                } else {
+                  this.state.coverUrl = coverUrl;
+                  this.updateBackground();
+                  this.background.setAlbum(resolveDefaultCover(coverUrl));
+                  await this.extractAndProcessCoverColor(coverUrl, coverTx);
+                  if (this.isStaleCoverLoad(coverTx) || this.isStaleSongLoad(loadTx.song)) {
+                    return { status: "stale" };
+                  }
+                  this.applyDominantColorAsCSSVariable();
+                  this.updateFileInputDisplay("coverFile", coverUrl);
+                }
+              }
+              return { status: "applied" };
+            } catch {
+              if (this.isStaleCoverLoad(coverTx) || this.isStaleSongLoad(loadTx.song)) {
+                return { status: "stale" };
+              }
+              this.showStatus(t("status.coverLoadFailed"), true);
+              return { status: "failed" };
+            }
+          })(),
+        ]);
+
+        audioStatus = sectionResults[0].status;
+        lyricStatus = sectionResults[1].status;
+        coverStatus = sectionResults[2].status;
+      } catch {
+        return buildLoadOutcome(
+          musicUrl ? "failed" : "skipped",
+          lyricUrl ? "failed" : "skipped",
+          coverUrl ? "failed" : "skipped",
+          willLoadMedia,
+        );
+      }
+
+      if (this.isStaleSongLoad(loadTx.song)) {
+        const coerceStale = (status: SectionStatus): SectionStatus =>
+          status === "applied" || status === "skipped" ? status : "stale";
+        return buildLoadOutcome(
+          coerceStale(audioStatus),
+          coerceStale(lyricStatus),
+          coerceStale(coverStatus),
+          willLoadMedia,
+        );
       }
     }
 
-    if (coverUrl) {
-      const urlPattern = /^https?:\/\/.+/;
-      if (urlPattern.test(coverUrl.trim())) {
-        this.state.coverUrl = coverUrl;
-        this.updateBackground();
-        this.background.setAlbum(resolveDefaultCover(coverUrl));
-        await this.extractAndProcessCoverColor(coverUrl);
-        this.applyDominantColorAsCSSVariable();
-        this.updateFileInputDisplay("coverFile", coverUrl);
-      } else {
-        const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
-        const base64Match = coverUrl.trim().match(base64Pattern);
-        if (base64Match) {
-          const contentType = base64Match[1] || 'image/png';
-          const charset = base64Match[3] || 'utf-8';
-          this.state.coverUrl = coverUrl;
-          this.updateBackground();
-          this.background.setAlbum(resolveDefaultCover(coverUrl));
-          await this.extractAndProcessCoverColor(coverUrl);
-          this.applyDominantColorAsCSSVariable();
-          this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
-        } else {
-          this.state.coverUrl = coverUrl;
-          this.updateBackground();
-          this.background.setAlbum(resolveDefaultCover(coverUrl));
-          await this.extractAndProcessCoverColor(coverUrl);
-          this.applyDominantColorAsCSSVariable();
-          this.updateFileInputDisplay("coverFile", coverUrl);
-        }
-      }
+    let outcome = buildLoadOutcome(audioStatus, lyricStatus, coverStatus, willLoadMedia);
+
+    if (
+      loadTx
+      && outcome.status === "stale"
+      && !outcome.audioApplied
+      && !outcome.lyricApplied
+      && !outcome.coverApplied
+    ) {
+      return outcome;
     }
 
     this.updateSongInfo();
@@ -4344,7 +4622,46 @@ class WebLyricsPlayer {
       this.saveBackgroundSettings();
     }
     this.replayFluidBackground("loadFromURLs", 200);
-    this.showStatus(t("status.loadFromUrlComplete"));
+
+    if (outcome.status === "applied") {
+      this.showStatus(t("status.loadFromUrlComplete"));
+    }
+
+    return outcome;
+  }
+
+  private isValidMusicFile(file: File): boolean {
+    return file.type.startsWith("audio/")
+      || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
+  }
+
+  private isValidLyricFile(file: File): boolean {
+    return /\.(lrc|ttml|yrc|lys|qrc|txt|ass|lqe|lyl|srt|spl)$/i.test(file.name)
+      || file.type === "text/plain"
+      || file.type === "";
+  }
+
+  private isValidCoverFile(file: File): boolean {
+    if (file.type.startsWith("image/")) {
+      return true;
+    }
+    return /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(file.name);
+  }
+
+  private verifyCoverImageDecodable(file: File): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("invalid_cover_image"));
+      };
+      img.src = url;
+    });
   }
 
   private async loadFromFiles() {
@@ -4352,17 +4669,55 @@ class WebLyricsPlayer {
     const lyricFile = this.lyricFile?.files?.[0];
     const coverFile = this.coverFile?.files?.[0];
 
-    if (musicFile) {
-      await this.loadMusicFromFile(musicFile);
+    if (!musicFile && !lyricFile && !coverFile) {
+      return;
     }
 
-    if (lyricFile) {
-      await this.loadLyricFromFile(lyricFile);
+    const musicOk = Boolean(musicFile && this.isValidMusicFile(musicFile));
+    const lyricOk = Boolean(lyricFile && this.isValidLyricFile(lyricFile));
+    const coverCandidate = Boolean(coverFile && this.isValidCoverFile(coverFile));
+
+    if (musicFile && !musicOk) {
+      this.showStatus(t("status.musicLoadFailed"), true);
+    }
+    if (lyricFile && !lyricOk) {
+      this.showStatus(t("status.lyricsLoadFailed"), true);
+    }
+    if (coverFile && !coverCandidate) {
+      this.showStatus(t("status.coverLoadFailed"), true);
     }
 
-    if (coverFile) {
-      await this.loadCoverFromFile(coverFile);
+    if (!musicOk && !lyricOk && !coverCandidate) {
+      return;
     }
+
+    const loadTx = this.beginCombinedLoadTransaction({
+      audio: musicOk,
+      lyric: lyricOk,
+      cover: false,
+    });
+
+    const hasExplicitCover = coverCandidate;
+    const tasks: Promise<void>[] = [];
+
+    if (musicFile && musicOk && loadTx.audio !== undefined) {
+      tasks.push(
+        this.loadMusicFromFile(musicFile, loadTx.audio, {
+          deferMetadata: true,
+          skipEmbeddedCover: hasExplicitCover,
+        })
+      );
+    }
+
+    if (lyricFile && lyricOk && loadTx.lyric !== undefined) {
+      tasks.push(this.loadLyricFromFile(lyricFile, loadTx.lyric));
+    }
+
+    if (coverFile && coverCandidate) {
+      tasks.push(this.loadCoverFromFile(coverFile, undefined, loadTx.song));
+    }
+
+    await Promise.all(tasks);
   }
 
   private async processCoverInput(input: string) {
@@ -4370,13 +4725,19 @@ class WebLyricsPlayer {
       return;
     }
 
+    const tx = this.beginCoverLoad();
     const urlPattern = /^https?:\/\/.+/;
     if (urlPattern.test(input.trim())) {
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.state.coverUrl = input;
       this.updateBackground();
       this.background.setAlbum(resolveDefaultCover(input));
-      await this.extractAndProcessCoverColor(input);
-      this.applyDominantColorAsCSSVariable();
+      await this.extractAndProcessCoverColor(input, tx);
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.updateFileInputDisplay("coverFile", input);
       this.replayFluidBackground("processCoverInput-url", 200);
       return;
@@ -4386,37 +4747,49 @@ class WebLyricsPlayer {
     const base64Match = input.trim().match(base64Pattern);
     if (base64Match) {
       const contentType = base64Match[1] || 'image/png';
-      const charset = base64Match[3] || 'utf-8';
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.state.coverUrl = input;
       this.updateBackground();
       this.background.setAlbum(resolveDefaultCover(input));
-      await this.extractAndProcessCoverColor(input);
-      this.applyDominantColorAsCSSVariable();
+      await this.extractAndProcessCoverColor(input, tx);
+      if (this.isStaleCoverLoad(tx)) {
+        return;
+      }
       this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (${contentType})`);
       this.replayFluidBackground("processCoverInput-base64", 200);
       return;
     }
 
+    if (this.isStaleCoverLoad(tx)) {
+      return;
+    }
     this.state.coverUrl = input;
     this.updateBackground();
     this.background.setAlbum(resolveDefaultCover(input));
-    await this.extractAndProcessCoverColor(input);
-    this.applyDominantColorAsCSSVariable();
+    await this.extractAndProcessCoverColor(input, tx);
+    if (this.isStaleCoverLoad(tx)) {
+      return;
+    }
     this.updateFileInputDisplay("coverFile", input);
     this.replayFluidBackground("processCoverInput-generic", 200);
   }
 
-  private async processLyricInput(input: string) {
+  private async processLyricInput(input: string, existingTransaction?: number): Promise<boolean> {
     if (!input.trim()) {
-      return;
+      return false;
     }
 
     const urlPattern = /^https?:\/\/.+/;
     if (urlPattern.test(input.trim())) {
-      await this.loadFromURLs();
-      return;
+      void this.loadFromURLs().catch((error) => {
+        console.error("loadFromURLs failed:", error);
+      });
+      return false;
     }
 
+    const tx = existingTransaction ?? this.beginLyricLoad();
     const base64Pattern = /^data:([^;]+)(;charset=([^;]+))?;base64,([A-Za-z0-9+/=]+)$/;
     const base64Match = input.trim().match(base64Pattern);
     if (base64Match) {
@@ -4435,27 +4808,54 @@ class WebLyricsPlayer {
         } catch (e) {
           decodedContent = new TextDecoder('utf-8').decode(bytes);
         }
-        await this.loadLyricContent(decodedContent, "direct-input.txt");
+        if (this.isStaleLyricLoad(tx)) {
+          return false;
+        }
+        const loaded = await this.loadLyricContent(decodedContent, "direct-input.txt");
+        if (this.isStaleLyricLoad(tx)) {
+          return false;
+        }
+        if (!loaded) {
+          return false;
+        }
         this.updateFileInputDisplay("lyricFile", t("label.base64Input", { type: contentType }));
         this.showStatus(t("status.lyricsParseSuccess"));
+        return true;
       } catch (error) {
+        if (this.isStaleLyricLoad(tx)) {
+          return false;
+        }
         console.error("Base64 decoding error:", error);
         this.showStatus(t("status.lyricsParseFailed"), true);
+        return false;
       }
-      return;
     }
 
     try {
-      await this.loadLyricContent(input, "direct-input.txt");
+      if (this.isStaleLyricLoad(tx)) {
+        return false;
+      }
+      const loaded = await this.loadLyricContent(input, "direct-input.txt");
+      if (this.isStaleLyricLoad(tx)) {
+        return false;
+      }
+      if (!loaded) {
+        return false;
+      }
       this.updateFileInputDisplay("lyricFile", t("label.directInput"));
       this.showStatus(t("status.lyricsParseSuccess"));
+      return true;
     } catch (error) {
+      if (this.isStaleLyricLoad(tx)) {
+        return false;
+      }
       console.error("Direct lyric input error:", error);
       this.showStatus(t("status.lyricsParseFailed"), true);
+      return false;
     }
   }
 
-  private async loadLyricContent(content: string, filename: string) {
+  private async loadLyricContent(content: string, filename: string): Promise<boolean> {
     try {
       let lines: LyricLine[] = [];
 
@@ -4555,6 +4955,11 @@ class WebLyricsPlayer {
         consecutiveBgCount
       );
 
+      if (lines.length === 0) {
+        this.showStatus(t("status.lyricsParseFailed"), true);
+        return false;
+      }
+
       this.originalLyricLines = JSON.parse(JSON.stringify(lines));
       this.hasLyrics = lines.length > 0;
       this.updateLyricsDisplay();
@@ -4564,9 +4969,11 @@ class WebLyricsPlayer {
       }
       this.updateLyricAreaHint();
       this.showStatus(t("status.lyricsParseSuccessWithCount", { count: lines.length }));
+      return true;
     } catch (error) {
       console.error("Lyric parsing error:", error);
       this.showStatus(t("status.lyricsParseFailed"), true);
+      return false;
     }
   }
 
@@ -4955,19 +5362,276 @@ class WebLyricsPlayer {
     }
   }
 
+  private beginAudioLoad(): number {
+    this.audioLoadGeneration += 1;
+    this.mediaPlaybackRetryState = null;
+    return this.audioLoadGeneration;
+  }
+
+  private beginLyricLoad(): number {
+    this.lyricLoadGeneration += 1;
+    return this.lyricLoadGeneration;
+  }
+
+  private beginCoverLoad(): number {
+    this.coverLoadGeneration += 1;
+    return this.coverLoadGeneration;
+  }
+
+  private registerCoverValidationIntent(): number {
+    this.coverValidationGeneration += 1;
+    return this.coverValidationGeneration;
+  }
+
+  private isStaleCoverValidation(generation: number): boolean {
+    return generation !== this.coverValidationGeneration;
+  }
+
+  private beginCombinedLoadTransaction(flags: {
+    audio?: boolean;
+    lyric?: boolean;
+    cover?: boolean;
+  }): CombinedLoadTransaction {
+    this.songLoadGeneration += 1;
+    const tx: CombinedLoadTransaction = { song: this.songLoadGeneration };
+    if (flags.audio) {
+      tx.audio = this.beginAudioLoad();
+    }
+    if (flags.lyric) {
+      tx.lyric = this.beginLyricLoad();
+    }
+    if (flags.cover) {
+      tx.cover = this.beginCoverLoad();
+    }
+    return tx;
+  }
+
+  private bumpAllLoadGenerations(): void {
+    this.songLoadGeneration += 1;
+    this.audioLoadGeneration += 1;
+    this.lyricLoadGeneration += 1;
+    this.coverLoadGeneration += 1;
+    this.coverValidationGeneration += 1;
+    this.mediaPlaybackRetryState = null;
+  }
+
+  private isStaleSongLoad(transaction: number): boolean {
+    return transaction !== this.songLoadGeneration;
+  }
+
+  private isStaleAudioLoad(transaction: number): boolean {
+    return transaction !== this.audioLoadGeneration;
+  }
+
+  private isStaleLyricLoad(transaction: number): boolean {
+    return transaction !== this.lyricLoadGeneration;
+  }
+
+  private isStaleCoverLoad(transaction: number): boolean {
+    return transaction !== this.coverLoadGeneration;
+  }
+
+  /** Record play/pause intent; bumps intent generation when the desire changes. */
+  private setDesiredPlaying(playing: boolean) {
+    if (this.desiredPlaying !== playing) {
+      this.playbackIntentGeneration += 1;
+    }
+    this.desiredPlaying = playing;
+    this.state.isPlaying = playing;
+    this.updatePlayButton();
+  }
+
+  private isRecoverablePlaybackError(error: unknown): boolean {
+    if (error instanceof DOMException) {
+      if (error.name === "NotAllowedError" || error.name === "AbortError") {
+        return false;
+      }
+    }
+    const message = String((error as Error)?.message || error || "");
+    if (/notallowed|autoplay|user didn't interact|aborted/i.test(message)) {
+      return false;
+    }
+    const mediaError = this.audio?.error;
+    if (mediaError) {
+      return (
+        mediaError.code === MediaError.MEDIA_ERR_NETWORK
+        || mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+      );
+    }
+    return isLocalSongMusicUrl(this.state.musicUrl || this.audio.src || "");
+  }
+
+  private canResumePlaybackAfterRefresh(
+    audioGenerationAtStart: number,
+    intentGenerationAtStart?: number
+  ): boolean {
+    if (audioGenerationAtStart !== this.audioLoadGeneration) {
+      return false;
+    }
+    if (
+      intentGenerationAtStart !== undefined
+      && intentGenerationAtStart !== this.playbackIntentGeneration
+    ) {
+      return false;
+    }
+    return this.desiredPlaying;
+  }
+
+  private settlePlayFailure(
+    intentGenerationAtStart: number,
+    audioGenerationAtStart: number,
+    options?: { onBlocked?: () => void }
+  ): void {
+    if (intentGenerationAtStart !== this.playbackIntentGeneration) {
+      return;
+    }
+    if (audioGenerationAtStart !== this.audioLoadGeneration) {
+      return;
+    }
+    if (!this.audio.paused) {
+      return;
+    }
+    if (this.desiredPlaying) {
+      this.setDesiredPlaying(false);
+    }
+    options?.onBlocked?.();
+  }
+
+  private requestPlay(options?: { onBlocked?: () => void }) {
+    this.setDesiredPlaying(true);
+    const intentAtStart = this.playbackIntentGeneration;
+    const audioAtStart = this.audioLoadGeneration;
+    const runPlay = () => {
+      this.audio.play().catch(playError => {
+        if (!this.isRecoverablePlaybackError(playError)) {
+          this.settlePlayFailure(intentAtStart, audioAtStart, options);
+          return;
+        }
+        void this.retryPlaybackAfterMediaRefresh(playError).then((played) => {
+          if (!played) {
+            this.settlePlayFailure(intentAtStart, audioAtStart, options);
+          }
+        });
+      });
+    };
+    const pending = this.mediaPlaybackRetryState;
+    if (pending && pending.loadGeneration === this.audioLoadGeneration) {
+      void pending.promise.then((played) => {
+        if (this.isStaleAudioLoad(pending.loadGeneration)) {
+          return;
+        }
+        if (played) {
+          return;
+        }
+        if (this.desiredPlaying && this.audio.paused) {
+          runPlay();
+        } else {
+          this.settlePlayFailure(intentAtStart, audioAtStart, options);
+        }
+      });
+      return;
+    }
+    runPlay();
+  }
+
+  private requestPause() {
+    this.setDesiredPlaying(false);
+    this.audio.pause();
+  }
+
   private togglePlayPause() {
-    if (this.audio.paused) {
-      this.state.isPlaying = true;
-      this.updatePlayButton();
-      this.audio.play().catch(error => {
-        console.error("Playback failed:", error);
+    // Use desiredPlaying (not audio.paused) so a pending media refresh can be cancelled
+    // while the button still shows the pause icon.
+    if (this.desiredPlaying) {
+      this.requestPause();
+    } else {
+      this.requestPlay();
+    }
+  }
+
+  private async retryPlaybackAfterMediaRefresh(error: unknown): Promise<boolean> {
+    const failedUrl = this.state.musicUrl || this.audio.src || "";
+    if (!isLocalSongMusicUrl(failedUrl)) {
+      if (!this.desiredPlaying) {
         this.state.isPlaying = false;
         this.updatePlayButton();
-      });
-    } else {
-      this.state.isPlaying = false;
-      this.updatePlayButton();
-      this.audio.pause();
+      }
+      console.error("Playback failed:", error);
+      return false;
+    }
+    if (!this.isRecoverablePlaybackError(error)) {
+      console.error("Playback failed (non-recoverable):", error);
+      return false;
+    }
+
+    const audioGenerationAtStart = this.audioLoadGeneration;
+    if (this.mediaPlaybackRetryState?.loadGeneration === audioGenerationAtStart) {
+      return this.mediaPlaybackRetryState.promise;
+    }
+
+    const intentGenerationAtStart = this.playbackIntentGeneration;
+    const failedRelative = resolveSongRelativePath(failedUrl);
+    const promise = (async (): Promise<boolean> => {
+      try {
+        const playable = await ensurePlayableMusicUrl(failedUrl, {
+          forceRefresh: true,
+        });
+        if (!playable.url) {
+          throw error;
+        }
+
+        if (audioGenerationAtStart !== this.audioLoadGeneration) {
+          return false;
+        }
+        const latestUrl = this.state.musicUrl || this.audio.src || "";
+        if (latestUrl !== failedUrl) {
+          const latestRelative = resolveSongRelativePath(latestUrl);
+          if (!failedRelative || !latestRelative || failedRelative !== latestRelative) {
+            return false;
+          }
+        }
+
+        if (playable.file) {
+          this.songFileRelative = playable.file;
+        }
+        this.state.musicUrl = playable.url;
+        if (this.musicUrl) {
+          this.musicUrl.value = playable.url;
+        }
+        if (this.audio.src !== playable.url) {
+          this.audio.src = playable.url;
+          this.audio.load();
+        }
+
+        if (!this.canResumePlaybackAfterRefresh(audioGenerationAtStart, intentGenerationAtStart)) {
+          this.state.isPlaying = this.desiredPlaying;
+          this.updatePlayButton();
+          return false;
+        }
+
+        await this.audio.play();
+        if (!this.canResumePlaybackAfterRefresh(audioGenerationAtStart, intentGenerationAtStart)) {
+          this.audio.pause();
+          this.state.isPlaying = this.desiredPlaying;
+          this.updatePlayButton();
+          return false;
+        }
+        this.state.isPlaying = true;
+        this.updatePlayButton();
+        return true;
+      } catch (retryError) {
+        console.error("Playback failed:", retryError);
+        return false;
+      }
+    })();
+
+    this.mediaPlaybackRetryState = { loadGeneration: audioGenerationAtStart, promise };
+    try {
+      return await promise;
+    } finally {
+      if (this.mediaPlaybackRetryState?.promise === promise) {
+        this.mediaPlaybackRetryState = null;
+      }
     }
   }
 
@@ -5410,11 +6074,12 @@ class WebLyricsPlayer {
   private resetPlayer() {
     this.resetUploadButtons();
     Object.assign(this.state, cloneDefaultState());
+    this.bumpAllLoadGenerations();
     this.audio.pause();
     this.audio.currentTime = 0;
     this.audio.src = "";
     this.state.musicUrl = "";
-    this.state.isPlaying = false;
+    this.requestPause();
     this.state.manualDominantColor = null;
     this.state.manualDominantColorLight = null;
     this.state.manualDominantColorDark = null;
@@ -5705,11 +6370,11 @@ class WebLyricsPlayer {
   private setupMediaSessionHandlers() {
     if (this.canUseMediaSession()) {
       navigator.mediaSession.setActionHandler("play", () => {
-        this.audio.play();
+        this.requestPlay();
       });
 
       navigator.mediaSession.setActionHandler("pause", () => {
-        this.audio.pause();
+        this.requestPause();
       });
 
       navigator.mediaSession.setActionHandler("seekbackward", (details) => {
@@ -5986,7 +6651,50 @@ class WebLyricsPlayer {
     this.updateTimeDisplay();
   }
 
-  private async parseAudioMetadata(file: File) {
+  private readAudioTags(file: File, timeoutMs = 15000): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const jsmediatags = (window as any).jsmediatags;
+      if (!jsmediatags) {
+        reject(new Error("jsmediatags_not_loaded"));
+        return;
+      }
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("jsmediatags_timeout"));
+      }, timeoutMs);
+      jsmediatags.read(file, {
+        onSuccess: (tag: any) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(tag);
+        },
+        onError: (error: any) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timer);
+          reject(error);
+        },
+      });
+    });
+  }
+
+  private async parseAudioMetadata(
+    file: File,
+    audioTx?: number,
+    options?: { allowEmbeddedCover?: boolean }
+  ) {
+    const tx = audioTx ?? this.audioLoadGeneration;
+    const coverGenAtStart = this.coverLoadGeneration;
+    const allowEmbeddedCover = options?.allowEmbeddedCover !== false;
     try {
       console.log(
         "Parsing audio metadata, file:",
@@ -5995,102 +6703,110 @@ class WebLyricsPlayer {
         file.size
       );
 
-      // 使用 jsmediatags 库解析音频元数据
-      const jsmediatags = (window as any).jsmediatags;
+      const tag = await this.readAudioTags(file);
+      if (this.isStaleAudioLoad(tx)) {
+        return;
+      }
 
-      if (jsmediatags) {
-        jsmediatags.read(file, {
-          onSuccess: (tag: any) => {
-            console.log("Audio metadata parsed successfully, full data:", tag);
-            console.log("tags:", tag.tags);
+      console.log("Audio metadata parsed successfully, full data:", tag);
+      console.log("tags:", tag.tags);
 
-            let hasMetadata = false;
+      let hasMetadata = false;
 
-            // 提取歌曲信息 - 优先使用TIT2(歌曲名)而不是TALB(专辑名)
-            if (tag.tags && tag.tags.title) {
-              this.state.songTitle = tag.tags.title;
-              if (this.songTitleInput) {
-                this.songTitleInput.value = tag.tags.title;
-              }
-              console.log("Extracted song title:", tag.tags.title);
-              hasMetadata = true;
+      if (tag.tags && tag.tags.title) {
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
+        this.state.songTitle = tag.tags.title;
+        if (this.songTitleInput) {
+          this.songTitleInput.value = tag.tags.title;
+        }
+        console.log("Extracted song title:", tag.tags.title);
+        hasMetadata = true;
+      }
+
+      if (tag.tags && tag.tags.artist) {
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
+        this.state.songArtist = tag.tags.artist;
+        if (this.songArtistInput) {
+          this.songArtistInput.value = tag.tags.artist;
+        }
+        console.log("Extracted song artist:", tag.tags.artist);
+        hasMetadata = true;
+      }
+
+      if (tag.tags && tag.tags.picture && allowEmbeddedCover) {
+        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
+          return;
+        }
+        console.log("Found cover image:", tag.tags.picture);
+        const { data, format } = tag.tags.picture;
+        let base64String = "";
+        for (let i = 0; i < data.length; i++) {
+          base64String += String.fromCharCode(data[i]);
+        }
+        const base64 = `data:${format};base64,${window.btoa(base64String)}`;
+        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
+          return;
+        }
+        this.state.coverUrl = base64;
+        if (this.coverUrl) {
+          const maxLength = 65536;
+          if (base64.length > maxLength) {
+            const prefix = `data:${format};base64,`;
+            const availableChars = maxLength - prefix.length;
+            let truncatedBase64 = prefix + base64.substring(prefix.length, prefix.length + availableChars);
+            while (truncatedBase64.length % 4 !== 0) {
+              truncatedBase64 = truncatedBase64.substring(0, truncatedBase64.length - 1);
             }
+            this.coverUrl.value = truncatedBase64;
+          } else {
+            this.coverUrl.value = base64;
+          }
+        }
+        this.background.setAlbum(resolveDefaultCover(base64));
+        await this.extractAndProcessCoverColor(base64, coverGenAtStart);
+        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
+          return;
+        }
+        this.updateBackground();
+        this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (Embedded ${format})`);
+        console.log("Extracted cover image, format:", format, "size:", data.length);
+        hasMetadata = true;
+      }
 
-            if (tag.tags && tag.tags.artist) {
-              this.state.songArtist = tag.tags.artist;
-              if (this.songArtistInput) {
-                this.songArtistInput.value = tag.tags.artist;
-              }
-              console.log("Extracted song artist:", tag.tags.artist);
-              hasMetadata = true;
-            }
+      if (this.isStaleAudioLoad(tx)) {
+        return;
+      }
+      this.updateSongInfo();
+      this.updateMediaSessionMetadata();
 
-            // 提取封面图片
-            if (tag.tags && tag.tags.picture) {
-              console.log("Found cover image:", tag.tags.picture);
-              const { data, format } = tag.tags.picture;
-              let base64String = "";
-              for (let i = 0; i < data.length; i++) {
-                base64String += String.fromCharCode(data[i]);
-              }
-              const base64 = `data:${format};base64,${window.btoa(
-                base64String
-              )}`;
-              this.state.coverUrl = base64;
-              if (this.coverUrl) {
-                const maxLength = 65536;
-                if (base64.length > maxLength) {
-                  const prefix = `data:${format};base64,`;
-                  const availableChars = maxLength - prefix.length;
-                  let truncatedBase64 = prefix + base64.substring(prefix.length, prefix.length + availableChars);
-                  while (truncatedBase64.length % 4 !== 0) {
-                    truncatedBase64 = truncatedBase64.substring(0, truncatedBase64.length - 1);
-                  }
-                  this.coverUrl.value = truncatedBase64;
-                } else {
-                  this.coverUrl.value = base64;
-                }
-              }
-              this.background.setAlbum(resolveDefaultCover(base64));
-              this.extractAndProcessCoverColor(base64);
-              this.applyDominantColorAsCSSVariable();
-              this.updateBackground();
-              this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (Embedded ${format})`);
-              console.log(
-                "Extracted cover image, format:",
-                format,
-                "size:",
-                data.length
-              );
-              hasMetadata = true;
-            }
-
-            this.updateSongInfo();
-            this.updateMediaSessionMetadata();
-
-            if (hasMetadata) {
-              this.showStatus(t("status.metadataParseSuccess"));
-            } else {
-              this.parseAudioMetadataFallback(file);
-            }
-          },
-          onError: (error: any) => {
-            this.showStatus(t("status.metadataParseFailed"), true);
-            this.parseAudioMetadataFallback(file);
-          },
-        });
+      if (hasMetadata) {
+        this.showStatus(t("status.metadataParseSuccess"));
       } else {
-        console.log("jsmediatags library not loaded");
-        this.showStatus(t("status.metadataLibNotLoaded"), true);
-        this.parseAudioMetadataFallback(file);
+        await this.parseAudioMetadataFallback(file, tx);
       }
     } catch (error) {
-      this.showStatus(t("status.metadataParseError"), true);
-      this.parseAudioMetadataFallback(file);
+      if (this.isStaleAudioLoad(tx)) {
+        return;
+      }
+      if (error instanceof Error && error.message === "jsmediatags_not_loaded") {
+        console.log("jsmediatags library not loaded");
+        this.showStatus(t("status.metadataLibNotLoaded"), true);
+      } else if (error instanceof Error && error.message === "jsmediatags_timeout") {
+        console.log("jsmediatags timed out");
+        this.showStatus(t("status.metadataParseFailed"), true);
+      } else {
+        this.showStatus(t("status.metadataParseFailed"), true);
+      }
+      await this.parseAudioMetadataFallback(file, tx);
     }
   }
 
-  private async parseAudioMetadataFallback(file: File) {
+  private async parseAudioMetadataFallback(file: File, audioTx?: number) {
+    const tx = audioTx ?? this.audioLoadGeneration;
     try {
       // 备用方案：从文件名提取信息
       const fileName = file.name;
@@ -6099,6 +6815,9 @@ class WebLyricsPlayer {
       // 尝试从文件名解析歌曲信息（格式：艺术家 - 歌曲名）
       const parts = nameWithoutExt.split(" - ");
       if (parts.length >= 2) {
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
         this.state.songArtist = parts[0].trim();
         this.state.songTitle = parts[1].trim();
 
@@ -6113,12 +6832,18 @@ class WebLyricsPlayer {
           artist: this.state.songArtist,
           title: this.state.songTitle,
         });
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
         this.updateSongInfo();
         this.updateMediaSessionMetadata();
         this.showStatus(t("status.extractedSongInfo"));
       } else {
         const altParts = nameWithoutExt.split(" – ");
         if (altParts.length >= 2) {
+          if (this.isStaleAudioLoad(tx)) {
+            return;
+          }
           this.state.songArtist = altParts[0].trim();
           this.state.songTitle = altParts[1].trim();
 
@@ -6133,13 +6858,22 @@ class WebLyricsPlayer {
             artist: this.state.songArtist,
             title: this.state.songTitle,
           });
+          if (this.isStaleAudioLoad(tx)) {
+            return;
+          }
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
           this.showStatus(t("status.extractedSongInfo"));
         } else {
+          if (this.isStaleAudioLoad(tx)) {
+            return;
+          }
           this.state.songTitle = nameWithoutExt;
           if (this.songTitleInput) {
             this.songTitleInput.value = this.state.songTitle;
+          }
+          if (this.isStaleAudioLoad(tx)) {
+            return;
           }
           this.updateSongInfo();
           this.updateMediaSessionMetadata();
@@ -6152,6 +6886,9 @@ class WebLyricsPlayer {
         const audioContext = new (window.AudioContext ||
           (window as any).webkitAudioContext)();
         const arrayBuffer = await file.arrayBuffer();
+        if (this.isStaleAudioLoad(tx)) {
+          return;
+        }
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         console.log("Audio info:", {
           duration: audioBuffer.duration,
@@ -6162,6 +6899,9 @@ class WebLyricsPlayer {
         console.log("Web Audio API parsing failed:", audioError);
       }
     } catch (error) {
+      if (this.isStaleAudioLoad(tx)) {
+        return;
+      }
       console.log("Fallback parsing method failed:", error);
       this.showStatus(t("status.cannotParseAudioInfo"), true);
     }
@@ -6309,6 +7049,7 @@ class WebLyricsPlayer {
       urlParams.get("auto") === "1" || urlParams.get("auto") === "true";
     const currentTime = null; // 固定为 null，忽略 URL 参数 t
     const endTime = urlParams.get("te");
+    const jsonFile = urlParams.get("file");
 
     this.updateDynamicCoverFromUrlParams(urlParams);
 
@@ -6350,6 +7091,19 @@ class WebLyricsPlayer {
       if (this.musicUrl) {
         this.musicUrl.value = music;
       }
+      const resolvedSongFile = resolveSongRelativePath(music);
+      if (resolvedSongFile) {
+        this.songFileRelative = resolvedSongFile;
+      } else if (classifyMusicUrl(music) === "unknown") {
+        this.songFileRelative = "";
+      }
+    }
+    if (jsonFile) {
+      this.songJsonFile = jsonFile;
+      this.urlOverrides.add("songJsonFile");
+    } else if (music) {
+      this.songJsonFile = "";
+      this.urlOverrides.delete("songJsonFile");
     }
     if (lyric) {
       this.urlOverrides.add("lyricUrl");
@@ -6416,7 +7170,10 @@ class WebLyricsPlayer {
 
     if (music || lyric || cover) {
       this.hasAutoLoadedFromUrl = true;
-      this.loadFromURLs({ persist: false }).then(() => {
+      this.loadFromURLs({ persist: false }).then((outcome) => {
+        if (outcome.status === "stale" || !outcome.audioApplied) {
+          return;
+        }
         // t 参数固定为 0，不从 URL 读取
         console.log('[AMLL] 设置播放时间为 0，忽略 URL 参数 t');
         if (this.audio) {
@@ -6436,10 +7193,10 @@ class WebLyricsPlayer {
         }
 
         if ((hasAutoParam ? autoPlay : this.state.autoPlay) && this.audio) {
-          this.audio.play().catch(() => {
-            this.showAutoPlayHint();
-          });
+          this.requestPlay({ onBlocked: () => this.showAutoPlayHint() });
         }
+      }).catch((error) => {
+        console.error("loadFromURLs failed:", error);
       });
       return styleParamsChanged;
     }
@@ -6549,11 +7306,30 @@ class WebLyricsPlayer {
     return this.background;
   }
 
-  private async extractAndProcessCoverColor(imageUrl: string): Promise<void> {
+  private async extractAndProcessCoverColor(
+    imageUrl: string,
+    transaction?: number
+  ): Promise<void> {
+    const analysis = await this.computeCoverColor(imageUrl);
+    if (transaction !== undefined && this.isStaleCoverLoad(transaction)) {
+      return;
+    }
+    if (!analysis) {
+      this.setDefaultColors();
+      this.applyDominantColorAsCSSVariable();
+      return;
+    }
+    this.commitCoverColor(analysis);
+  }
+
+  private async computeCoverColor(imageUrl: string): Promise<{
+    dominantColor: string;
+    coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }>;
+    shouldInvert: boolean;
+  } | null> {
     try {
       const img = new Image();
 
-      // 只有在非base64和非blob URL时才设置crossOrigin
       if (!imageUrl.startsWith('data:image/') && !imageUrl.startsWith('blob:')) {
         img.crossOrigin = 'Anonymous';
       }
@@ -6564,6 +7340,7 @@ class WebLyricsPlayer {
         img.src = imageUrl;
       });
       const [r, g, b] = this.colorThief.getColor(img);
+      let coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }> = [];
       try {
         const palette = this.colorThief.getPalette(img, AMLL_PALETTE_TARGET);
         if (Array.isArray(palette) && palette.length) {
@@ -6576,9 +7353,7 @@ class WebLyricsPlayer {
           }).filter(Boolean) as Array<{ h: number; l: number; baseS: number; origS?: number }>;
           hslPalette.sort((a, b) => (a.h - b.h) || (a.l - b.l));
           if (hslPalette.length) {
-            this.coverPaletteHsl = hslPalette;
-            this.beatState.basePaletteHsl = hslPalette.map((entry) => ({ ...entry }));
-            this.beatState.lastColors = null;
+            coverPaletteHsl = hslPalette;
           }
         }
       } catch {
@@ -6587,25 +7362,40 @@ class WebLyricsPlayer {
       const hsl = this.rgbToHsl(r, g, b);
       hsl[2] = 0.8;
       const [newR, newG, newB] = this.hslToRgb(hsl[0], hsl[1], hsl[2]);
-      this.dominantColor = this.rgbToHex(newR, newG, newB);
-      // 计算颜色亮度并自动决定是否需要反转使用相对亮度公式: L = (0.299*R + 0.587*G + 0.114*B)/255
+      const dominantColor = this.rgbToHex(newR, newG, newB);
       const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const shouldInvert = brightness >= 0.5;
-      this.applyDominantColorAsCSSVariable();
-      if (this.invertColorsCheckbox) {
-        if (this.state.backgroundType === 'cover') {
-          if (this.state.originalInvertColors === null && this.state.originalInvertColors === undefined) {
-            this.invertColorsCheckbox.checked = shouldInvert;
-            this.invertColors(shouldInvert);
-          } else {
-            this.invertColorsCheckbox.checked = this.state.originalInvertColors;
-            this.invertColors(this.state.originalInvertColors);
-          }
+      return {
+        dominantColor,
+        coverPaletteHsl,
+        shouldInvert: brightness >= 0.5,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private commitCoverColor(analysis: {
+    dominantColor: string;
+    coverPaletteHsl: Array<{ h: number; l: number; baseS: number; origS?: number }>;
+    shouldInvert: boolean;
+  }): void {
+    if (analysis.coverPaletteHsl.length) {
+      this.coverPaletteHsl = analysis.coverPaletteHsl;
+      this.beatState.basePaletteHsl = analysis.coverPaletteHsl.map((entry) => ({ ...entry }));
+      this.beatState.lastColors = null;
+    }
+    this.dominantColor = analysis.dominantColor;
+    this.applyDominantColorAsCSSVariable();
+    if (this.invertColorsCheckbox) {
+      if (this.state.backgroundType === 'cover') {
+        if (this.state.originalInvertColors === null && this.state.originalInvertColors === undefined) {
+          this.invertColorsCheckbox.checked = analysis.shouldInvert;
+          this.invertColors(analysis.shouldInvert);
+        } else {
+          this.invertColorsCheckbox.checked = this.state.originalInvertColors;
+          this.invertColors(this.state.originalInvertColors);
         }
       }
-    } catch (error) {
-      this.setDefaultColors();
-      this.applyDominantColorAsCSSVariable();
     }
   }
 
@@ -6776,6 +7566,8 @@ class WebLyricsPlayer {
           coverUrlInput: this.coverUrl?.value || '',
           songTitleInput: this.songTitleInput?.value || '',
           songArtistInput: this.songArtistInput?.value || '',
+          songFileRelative: this.songFileRelative,
+          songJsonFile: this.songJsonFile,
           isRangeMode: this.state.isRangeMode,
           rangeStartTime: this.state.rangeStartTime,
           rangeEndTime: this.state.rangeEndTime,
@@ -6987,6 +7779,17 @@ class WebLyricsPlayer {
 
         if (hasSetting('musicUrlInput') && this.musicUrl && typeof settings.musicUrlInput === 'string' && !this.urlOverrides.has('musicUrlInput')) {
           this.musicUrl.value = settings.musicUrlInput;
+        }
+        if (hasSetting('songFileRelative') && typeof settings.songFileRelative === 'string' && !this.urlOverrides.has('songFileRelative')) {
+          const cachedMusicUrl = typeof settings.musicUrl === 'string' ? settings.musicUrl : '';
+          if (!cachedMusicUrl || isLocalSongMusicUrl(cachedMusicUrl)) {
+            this.songFileRelative = settings.songFileRelative;
+          } else {
+            this.songFileRelative = '';
+          }
+        }
+        if (hasSetting('songJsonFile') && typeof settings.songJsonFile === 'string' && !this.urlOverrides.has('songJsonFile')) {
+          this.songJsonFile = settings.songJsonFile;
         }
         if (hasSetting('lyricUrlInput') && this.lyricUrl && typeof settings.lyricUrlInput === 'string' && !this.urlOverrides.has('lyricUrlInput')) {
           this.lyricUrl.value = settings.lyricUrlInput;
@@ -7513,6 +8316,10 @@ class WebLyricsPlayer {
   }
 
   private getBeatCurveJsonPath(): string | null {
+    if (this.songJsonFile) {
+      return null;
+    }
+
     const candidates = [this.state.lyricUrl, this.state.musicUrl];
     for (const candidate of candidates) {
       if (!candidate) continue;
@@ -7528,6 +8335,22 @@ class WebLyricsPlayer {
       }
       path = path.split("?")[0].split("#")[0].replace(/\\/g, "/");
       if (!path) continue;
+
+      if (path.endsWith(".json")) {
+        if (path.startsWith("/static/")) {
+          return path;
+        }
+        if (path.startsWith("static/")) {
+          return `/${path}`;
+        }
+        return path.startsWith("/") ? path : `/static/${path.replace(/^\/+/, "")}`;
+      }
+
+      const mediaFile = resolveSongRelativePath(trimmed);
+      if (mediaFile) {
+        continue;
+      }
+
       let relative = "";
       if (path.startsWith("/songs/")) {
         relative = path.slice(1);
@@ -7573,22 +8396,33 @@ class WebLyricsPlayer {
     this.beatCurveRequestInFlight = true;
     try {
       const jsonPath = this.getBeatCurveJsonPath();
+      const requestPayload: Record<string, string> = {};
+      if (jsonPath) {
+        requestPayload.json_path = jsonPath;
+      }
+      if (this.songJsonFile && this.urlOverrides.has("songJsonFile")) {
+        requestPayload.json_file = this.songJsonFile;
+      }
+      const audioFile = resolveSongRelativePath(this.state.musicUrl);
+      if (audioFile) {
+        requestPayload.audio_file = audioFile;
+      }
       const response = await fetch('/amll/generate_beat_curve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(jsonPath ? { json_path: jsonPath } : {})
+        body: JSON.stringify(requestPayload)
       });
-      const payload = await response.json().catch(() => null);
+      const responsePayload = await response.json().catch(() => null);
       if (!response.ok && response.status !== 202) {
         console.warn('[AMLL] Beat curve request failed', response.status);
         return;
       }
-      if (payload && payload.status === 'success' && payload.curve) {
-        this.beatCurvePath = payload.curve;
-        await this.loadBeatCurve(payload.curve);
+      if (responsePayload && responsePayload.status === 'success' && responsePayload.curve) {
+        this.beatCurvePath = responsePayload.curve;
+        await this.loadBeatCurve(responsePayload.curve);
         return;
       }
-      if (payload && payload.status === 'pending') {
+      if (responsePayload && responsePayload.status === 'pending') {
         this.beatCurvePollTimer = window.setTimeout(() => this.requestBeatCurveFromServer(), 2000);
       }
     } catch (error) {
