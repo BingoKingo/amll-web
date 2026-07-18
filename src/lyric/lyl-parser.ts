@@ -62,7 +62,8 @@ export function parseLyl(content: string): RawLyricLine[] {
       const words = [{
         word: text,
         startTime: startMs,
-        endTime: endMs
+        endTime: endMs,
+        romanWord: ''
       }];
 
       result.push({

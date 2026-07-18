@@ -82,7 +82,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
     const textWithTags = match.groups["Text"] ?? "";
 
     // 解析 \k 标签
-    const words: { word: string; startTime: number; endTime: number }[] = [];
+    const words: { word: string; startTime: number; endTime: number; romanWord: string }[] = [];
     let cursor = startMs;
     const tagMatches = [...textWithTags.matchAll(KARAOKE_TAG_REGEX)];
 
@@ -93,7 +93,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
         trim: false,
       });
       if (cleaned) {
-        words.push({ word: cleaned, startTime: startMs, endTime: endMs });
+        words.push({ word: cleaned, startTime: startMs, endTime: endMs, romanWord: '' });
       }
     } else {
       for (let i = 0; i < tagMatches.length; i++) {
@@ -111,7 +111,7 @@ export function parseAss(assContent: string): RawLyricLine[] {
         const durationMs = Math.max(0, durCs * 10);
         const segEndTime = cursor + durationMs;
         if (cleaned) {
-          words.push({ word: cleaned, startTime: cursor, endTime: segEndTime });
+          words.push({ word: cleaned, startTime: cursor, endTime: segEndTime, romanWord: '' });
         }
         cursor = segEndTime;
       }
