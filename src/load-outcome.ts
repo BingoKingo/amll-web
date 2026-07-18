@@ -32,7 +32,12 @@ export function summarizeLoadOutcome(
   if (anyApplied && anyFailed) {
     return "partial";
   }
-  if (anyApplied) {
+  if (anyApplied && anyStale) {
+    return "partial";
+  }
+  const allActiveApplied =
+    statuses.length > 0 && statuses.every((status) => status === "applied");
+  if (allActiveApplied) {
     return "applied";
   }
   if (anyFailed) {
@@ -45,6 +50,23 @@ export function summarizeLoadOutcome(
     return "applied";
   }
   return "failed";
+}
+
+export function shouldSkipGlobalFinalize(outcome: LoadOutcome): boolean {
+  return (
+    outcome.audioStatus === "stale"
+    || outcome.lyricStatus === "stale"
+    || outcome.coverStatus === "stale"
+  );
+}
+
+/** Old URL auto-load must not reset playback when any section was superseded. */
+export function shouldApplyAutoLoadPlayback(outcome: LoadOutcome): boolean {
+  return outcome.audioApplied && !shouldSkipGlobalFinalize(outcome);
+}
+
+export function shouldShowLoadComplete(outcome: LoadOutcome): boolean {
+  return outcome.status === "applied";
 }
 
 export function buildLoadOutcome(

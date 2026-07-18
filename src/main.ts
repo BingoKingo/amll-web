@@ -34,6 +34,9 @@ import {
 } from "./media-audio";
 import {
   buildLoadOutcome,
+  shouldApplyAutoLoadPlayback,
+  shouldShowLoadComplete,
+  shouldSkipGlobalFinalize,
   type LoadOutcome,
   type SectionStatus,
 } from "./load-outcome";
@@ -4587,13 +4590,7 @@ class WebLyricsPlayer {
 
     let outcome = buildLoadOutcome(audioStatus, lyricStatus, coverStatus, willLoadMedia);
 
-    if (
-      loadTx
-      && outcome.status === "stale"
-      && !outcome.audioApplied
-      && !outcome.lyricApplied
-      && !outcome.coverApplied
-    ) {
+    if (loadTx && shouldSkipGlobalFinalize(outcome)) {
       return outcome;
     }
 
@@ -4623,7 +4620,7 @@ class WebLyricsPlayer {
     }
     this.replayFluidBackground("loadFromURLs", 200);
 
-    if (outcome.status === "applied") {
+    if (shouldShowLoadComplete(outcome)) {
       this.showStatus(t("status.loadFromUrlComplete"));
     }
 
@@ -4697,14 +4694,12 @@ class WebLyricsPlayer {
       cover: false,
     });
 
-    const hasExplicitCover = coverCandidate;
     const tasks: Promise<void>[] = [];
 
     if (musicFile && musicOk && loadTx.audio !== undefined) {
       tasks.push(
         this.loadMusicFromFile(musicFile, loadTx.audio, {
           deferMetadata: true,
-          skipEmbeddedCover: hasExplicitCover,
         })
       );
     }
@@ -6737,10 +6732,13 @@ class WebLyricsPlayer {
         hasMetadata = true;
       }
 
-      if (tag.tags && tag.tags.picture && allowEmbeddedCover) {
-        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
-          return;
-        }
+      if (
+        tag.tags
+        && tag.tags.picture
+        && allowEmbeddedCover
+        && !this.isStaleAudioLoad(tx)
+        && !this.isStaleCoverLoad(coverGenAtStart)
+      ) {
         console.log("Found cover image:", tag.tags.picture);
         const { data, format } = tag.tags.picture;
         let base64String = "";
@@ -6748,33 +6746,37 @@ class WebLyricsPlayer {
           base64String += String.fromCharCode(data[i]);
         }
         const base64 = `data:${format};base64,${window.btoa(base64String)}`;
-        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
-          return;
-        }
-        this.state.coverUrl = base64;
-        if (this.coverUrl) {
-          const maxLength = 65536;
-          if (base64.length > maxLength) {
-            const prefix = `data:${format};base64,`;
-            const availableChars = maxLength - prefix.length;
-            let truncatedBase64 = prefix + base64.substring(prefix.length, prefix.length + availableChars);
-            while (truncatedBase64.length % 4 !== 0) {
-              truncatedBase64 = truncatedBase64.substring(0, truncatedBase64.length - 1);
+        if (
+          !this.isStaleAudioLoad(tx)
+          && !this.isStaleCoverLoad(coverGenAtStart)
+        ) {
+          this.state.coverUrl = base64;
+          if (this.coverUrl) {
+            const maxLength = 65536;
+            if (base64.length > maxLength) {
+              const prefix = `data:${format};base64,`;
+              const availableChars = maxLength - prefix.length;
+              let truncatedBase64 = prefix + base64.substring(prefix.length, prefix.length + availableChars);
+              while (truncatedBase64.length % 4 !== 0) {
+                truncatedBase64 = truncatedBase64.substring(0, truncatedBase64.length - 1);
+              }
+              this.coverUrl.value = truncatedBase64;
+            } else {
+              this.coverUrl.value = base64;
             }
-            this.coverUrl.value = truncatedBase64;
-          } else {
-            this.coverUrl.value = base64;
+          }
+          this.background.setAlbum(resolveDefaultCover(base64));
+          await this.extractAndProcessCoverColor(base64, coverGenAtStart);
+          if (
+            !this.isStaleAudioLoad(tx)
+            && !this.isStaleCoverLoad(coverGenAtStart)
+          ) {
+            this.updateBackground();
+            this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (Embedded ${format})`);
+            console.log("Extracted cover image, format:", format, "size:", data.length);
+            hasMetadata = true;
           }
         }
-        this.background.setAlbum(resolveDefaultCover(base64));
-        await this.extractAndProcessCoverColor(base64, coverGenAtStart);
-        if (this.isStaleAudioLoad(tx) || this.isStaleCoverLoad(coverGenAtStart)) {
-          return;
-        }
-        this.updateBackground();
-        this.updateFileInputDisplay("coverFile", `Base64 Encoded Input (Embedded ${format})`);
-        console.log("Extracted cover image, format:", format, "size:", data.length);
-        hasMetadata = true;
       }
 
       if (this.isStaleAudioLoad(tx)) {
@@ -7171,7 +7173,7 @@ class WebLyricsPlayer {
     if (music || lyric || cover) {
       this.hasAutoLoadedFromUrl = true;
       this.loadFromURLs({ persist: false }).then((outcome) => {
-        if (outcome.status === "stale" || !outcome.audioApplied) {
+        if (!shouldApplyAutoLoadPlayback(outcome)) {
           return;
         }
         // t 参数固定为 0，不从 URL 读取
